@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="뜨는맛집 API",
+    title="요즘뭐먹 API",
     description="바이럴 음식 트렌드 탐지 크롤러",
     version="0.1.0",
     lifespan=lifespan,

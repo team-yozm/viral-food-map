@@ -1,6 +1,6 @@
 {
-  "name": "뜨는맛집",
-  "short_name": "뜨는맛집",
+  "name": "요즘뭐먹",
+  "short_name": "요즘뭐먹",
   "description": "지금 유행하는 음식, 어디서 살까?",
   "start_url": "/",
   "display": "standalone",

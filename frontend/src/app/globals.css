@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css");
+@import url("https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap");
+
 :root {
   --primary: #ff6b35;
   --secondary: #f7c59f;
@@ -9,12 +12,18 @@
 
 body {
   font-family:
-    "Pretendard",
+    "Wanted Sans Variable",
+    "Wanted Sans",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
   background: #fafafa;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: "Black Han Sans", sans-serif;
 }
 
 .card-hover {

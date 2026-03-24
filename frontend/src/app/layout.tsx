@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "뜨는맛집 - 지금 유행하는 음식, 어디서 살까?",
+  title: "요즘뭐먹 - 지금 유행하는 음식, 어디서 살까?",
   description: "바이럴 음식 트렌드를 자동 탐지하고 내 주변 판매처를 찾아주는 서비스",
   manifest: "/manifest.json",
 };
