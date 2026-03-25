@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 KAKAO_SEARCH_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
+NAVER_LOCAL_URL = "https://openapi.naver.com/v1/search/local.json"
 
 MAJOR_CITIES = [
     {"name": "서울", "x": 126.978, "y": 37.5665, "radius": 20000},
@@ -78,6 +79,61 @@ async def find_stores_kakao(
     return all_stores
 
 
+async def fetch_naver_rating(client: httpx.AsyncClient, store_name: str) -> float | None:
+    """네이버 플레이스에서 가게 평점 조회"""
+    headers = {
+        "X-Naver-Client-Id": settings.NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": settings.NAVER_CLIENT_SECRET,
+    }
+    try:
+        resp = await client.get(
+            NAVER_LOCAL_URL,
+            params={"query": store_name, "display": 1},
+            headers=headers,
+            timeout=5,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("items", [])
+        if not items:
+            return None
+
+        # 네이버 플레이스 페이지에서 평점 스크래핑
+        link = items[0].get("link", "")
+        if not link:
+            return None
+
+        page_resp = await client.get(link, timeout=5, follow_redirects=True)
+        page_text = page_resp.text
+
+        # 평점 패턴: "별점 4.52" 또는 "rating":"4.52"
+        import re
+        match = re.search(r'"rating"\s*:\s*"?(\d+\.?\d*)"?', page_text)
+        if match:
+            return round(float(match.group(1)), 1)
+
+        match = re.search(r'별점\s*(\d+\.?\d*)', page_text)
+        if match:
+            return round(float(match.group(1)), 1)
+
+    except Exception as e:
+        logger.debug(f"네이버 평점 조회 실패 ({store_name}): {e}")
+
+    return None
+
+
+async def enrich_stores_with_ratings(stores: list[dict]) -> list[dict]:
+    """판매처 목록에 네이버 평점 추가"""
+    async with httpx.AsyncClient() as client:
+        for store in stores:
+            rating = await fetch_naver_rating(client, store["name"])
+            store["rating"] = rating
+            await asyncio.sleep(0.1)
+    rated = sum(1 for s in stores if s.get("rating"))
+    logger.info(f"평점 수집 완료: {rated}/{len(stores)}곳")
+    return stores
+
+
 async def find_stores_nationwide(keyword: str) -> list[dict]:
     """전국 주요 도시에서 판매처 검색 (중복 제거)"""
     all_stores = []
@@ -99,4 +155,8 @@ async def find_stores_nationwide(keyword: str) -> list[dict]:
         await asyncio.sleep(0.1)  # rate limit 방지
 
     logger.info(f"'{keyword}' 전국 판매처 {len(all_stores)}곳 수집 ({len(MAJOR_CITIES)}개 도시)")
+
+    # 네이버 평점 추가
+    all_stores = await enrich_stores_with_ratings(all_stores)
+
     return all_stores

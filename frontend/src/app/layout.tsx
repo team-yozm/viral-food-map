@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "요즘뭐먹 - 지금 유행하는 음식, 어디서 살까?",
   description: "바이럴 음식 트렌드를 자동 탐지하고 내 주변 판매처를 찾아주는 서비스",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
 };
 
 export const viewport: Viewport = {

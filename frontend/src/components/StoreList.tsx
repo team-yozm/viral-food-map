@@ -36,7 +36,7 @@ function StarRating({ rating }: { rating: number | null }) {
 
 function getStoreLink(store: Store): string {
   if (store.place_url) return store.place_url;
-  return `https://map.naver.com/search/${encodeURIComponent(store.name + " " + store.address)}`;
+  return `https://m.place.naver.com/search/${encodeURIComponent(store.name)}`;
 }
 
 export default function StoreList({
@@ -91,24 +91,9 @@ export default function StoreList({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="flex-shrink-0 text-primary hover:text-purple-700 transition-colors"
-            title="상세 보기"
+            className="flex-shrink-0 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-green-600 transition-colors"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
+            네이버
           </a>
         </div>
       ))}
