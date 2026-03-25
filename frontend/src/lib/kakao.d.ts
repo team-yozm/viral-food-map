@@ -7,6 +7,7 @@ declare namespace kakao.maps {
     getCenter(): LatLng;
     getLevel(): number;
     setBounds(bounds: LatLngBounds): void;
+    getBounds(): LatLngBounds;
   }
 
   interface MapOptions {
@@ -23,6 +24,8 @@ declare namespace kakao.maps {
   class LatLngBounds {
     constructor();
     extend(latlng: LatLng): void;
+    getSouthWest(): LatLng;
+    getNorthEast(): LatLng;
   }
 
   class Marker {

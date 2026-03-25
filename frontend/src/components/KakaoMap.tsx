@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Store } from "@/lib/types";
 
+export interface MapBounds {
+  sw: { lat: number; lng: number };
+  ne: { lat: number; lng: number };
+}
+
 interface KakaoMapProps {
   stores: Store[];
   center?: { lat: number; lng: number };
@@ -10,6 +15,7 @@ interface KakaoMapProps {
   className?: string;
   selectedStoreId?: string | null;
   onMarkerClick?: (storeId: string) => void;
+  onBoundsChange?: (bounds: MapBounds) => void;
 }
 
 export default function KakaoMap({
@@ -19,6 +25,7 @@ export default function KakaoMap({
   className = "map-container",
   selectedStoreId,
   onMarkerClick,
+  onBoundsChange,
 }: KakaoMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<kakao.maps.Map | null>(null);
@@ -40,6 +47,21 @@ export default function KakaoMap({
       center: new kakao.maps.LatLng(center.lat, center.lng),
       level,
     });
+
+    const emitBounds = () => {
+      if (!onBoundsChange) return;
+      const b = newMap.getBounds();
+      const sw = b.getSouthWest();
+      const ne = b.getNorthEast();
+      onBoundsChange({
+        sw: { lat: sw.getLat(), lng: sw.getLng() },
+        ne: { lat: ne.getLat(), lng: ne.getLng() },
+      });
+    };
+
+    kakao.maps.event.addListener(newMap, "idle", emitBounds);
+    setTimeout(emitBounds, 500);
+
     setMap(newMap);
   }, [loaded, center.lat, center.lng, level]);
 

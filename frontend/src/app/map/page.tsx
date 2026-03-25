@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import type { Store, Trend } from "@/lib/types";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import KakaoMap from "@/components/KakaoMap";
+import KakaoMap, { type MapBounds } from "@/components/KakaoMap";
 import StoreList from "@/components/StoreList";
 
 export default function MapPage() {
@@ -13,6 +13,7 @@ export default function MapPage() {
   const [trends, setTrends] = useState<Trend[]>([]);
   const [selectedTrendId, setSelectedTrendId] = useState<string | "all">("all");
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number }>({
     lat: 37.5665,
     lng: 126.978,
@@ -43,10 +44,20 @@ export default function MapPage() {
       });
   }, []);
 
-  const filteredStores =
+  const trendFiltered =
     selectedTrendId === "all"
       ? stores
       : stores.filter((s) => s.trend_id === selectedTrendId);
+
+  const filteredStores = mapBounds
+    ? trendFiltered.filter(
+        (s) =>
+          s.lat >= mapBounds.sw.lat &&
+          s.lat <= mapBounds.ne.lat &&
+          s.lng >= mapBounds.sw.lng &&
+          s.lng <= mapBounds.ne.lng
+      )
+    : trendFiltered;
 
   const trendMap = new Map(trends.map((t) => [t.id, t.name]));
 
@@ -81,12 +92,13 @@ export default function MapPage() {
         </div>
 
         <KakaoMap
-          stores={filteredStores}
+          stores={trendFiltered}
           center={userLoc}
           level={7}
           className="map-container !h-[60vh]"
           selectedStoreId={selectedStoreId}
           onMarkerClick={setSelectedStoreId}
+          onBoundsChange={setMapBounds}
         />
 
         <div>
