@@ -45,8 +45,14 @@ function StarRating({ rating }: { rating: number | null }) {
   );
 }
 
+interface TrendOption {
+  id: string;
+  name: string;
+}
+
 export default function StoresTab() {
   const [stores, setStores] = useState<StoreRow[]>([]);
+  const [trends, setTrends] = useState<TrendOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -61,8 +67,16 @@ export default function StoresTab() {
     setLoading(false);
   };
 
+  const fetchTrends = async () => {
+    const { data } = await supabase
+      .from("trends")
+      .select("id, name")
+      .order("name");
+    if (data) setTrends(data);
+  };
+
   useEffect(() => {
-    fetchStores();
+    Promise.all([fetchStores(), fetchTrends()]);
   }, []);
 
   const toggleVerified = async (store: StoreRow) => {
@@ -87,6 +101,7 @@ export default function StoresTab() {
       place_url: store.place_url,
       rating: store.rating,
       verified: store.verified,
+      trend_id: store.trend_id,
     });
   };
 
@@ -101,6 +116,7 @@ export default function StoresTab() {
         place_url: editForm.place_url || null,
         rating: editForm.rating ?? null,
         verified: editForm.verified,
+        trend_id: editForm.trend_id,
       })
       .eq("id", editingId);
     setEditingId(null);
@@ -150,6 +166,18 @@ export default function StoresTab() {
               {editingId === s.id ? (
                 <div className="flex flex-col gap-3">
                   <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-400 mb-1 block">트렌드</label>
+                      <select
+                        value={editForm.trend_id || ""}
+                        onChange={(e) => setEditForm({ ...editForm, trend_id: e.target.value })}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+                      >
+                        {trends.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div>
                       <label className="text-xs text-gray-400 mb-1 block">이름</label>
                       <input
