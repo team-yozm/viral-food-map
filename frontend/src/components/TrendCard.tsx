@@ -57,14 +57,15 @@ export default function TrendCard({ trend }: TrendCardProps) {
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
               판매처 {trend.store_count || 0}곳
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              <span>인기도</span>
               <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-primary"
                   style={{ width: `${Math.min(trend.peak_score, 100)}%` }}
                 />
               </div>
-              <span>{trend.peak_score}점</span>
+              <span className="font-medium text-primary">{Math.min(trend.peak_score, 100)}%</span>
             </div>
           </div>
         </div>

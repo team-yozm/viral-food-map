@@ -50,7 +50,7 @@ export default function MapPage() {
     <>
       <Header />
       <main className="max-w-lg mx-auto px-4 py-4 space-y-3">
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="flex gap-2 overflow-x-auto pb-1 pr-4 scrollbar-hide">
           <button
             onClick={() => setSelectedTrendId("all")}
             className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${

@@ -118,9 +118,9 @@ export default function ReportForm() {
       </button>
 
       {submitted && (
-        <p className="text-center text-sm text-green-500 font-medium">
-          제보가 접수되었습니다! 감사합니다 🙏
-        </p>
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-slide-up">
+          제보가 접수되었습니다! 감사합니다
+        </div>
       )}
     </form>
   );

@@ -166,12 +166,12 @@ export default function Home() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-gray-900">트렌드 목록</h3>
             <span className="text-xs text-gray-400">
-              {trends.length}개 감지
+              {trends.length}개 트렌드
             </span>
           </div>
 
           {loading ? (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
@@ -186,7 +186,7 @@ export default function Home() {
               <p className="text-sm mt-1">크롤러가 열심히 찾는 중...</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {trends.map((trend) => (
                 <TrendCard key={trend.id} trend={trend} />
               ))}
