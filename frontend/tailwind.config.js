@@ -3,6 +3,10 @@ module.exports = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
+      fontFamily: {
+        gmarket: ["GmarketSans", "sans-serif"],
+        pretendard: ["Pretendard Variable", "Pretendard", "sans-serif"],
+      },
       colors: {
         primary: "#9B7DD4",
         secondary: "#8BACD8",
