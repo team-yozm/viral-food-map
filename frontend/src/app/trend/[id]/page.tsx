@@ -18,14 +18,20 @@ export default function TrendDetailPage() {
   const [loading, setLoading] = useState(true);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [locReady, setLocReady] = useState(false);
 
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {},
+        (pos) => {
+          setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setLocReady(true);
+        },
+        () => setLocReady(true), // 거부해도 locReady → 판매처 자동줌으로 fallback
         { timeout: 5000 }
       );
+    } else {
+      setLocReady(true);
     }
   }, []);
 
@@ -98,14 +104,20 @@ export default function TrendDetailPage() {
           </p>
         </div>
 
-        <KakaoMap
-          stores={stores}
-          center={userLoc ?? { lat: 37.5665, lng: 126.978 }}
-          level={userLoc ? 7 : 5}
-          autoFitBounds={!userLoc}
-          selectedStoreId={selectedStoreId}
-          onMarkerClick={setSelectedStoreId}
-        />
+        {locReady ? (
+          <KakaoMap
+            stores={stores}
+            center={userLoc ?? { lat: 37.5665, lng: 126.978 }}
+            level={userLoc ? 7 : 5}
+            autoFitBounds={!userLoc}
+            selectedStoreId={selectedStoreId}
+            onMarkerClick={setSelectedStoreId}
+          />
+        ) : (
+          <div className="map-container bg-gray-100 flex items-center justify-center rounded-xl">
+            <p className="text-gray-400 text-sm">위치 확인 중...</p>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between mb-3">
