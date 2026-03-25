@@ -117,9 +117,10 @@ export default function Home() {
             <p className="text-sm opacity-90">
               SNS에서 바이럴 중인 음식과 판매처를 실시간으로 알려드려요
             </p>
-            <InstallPrompt />
           </div>
         </section>
+
+        <InstallPrompt />
 
         {nearbyStores.length > 0 && (
           <section className="mb-6">
