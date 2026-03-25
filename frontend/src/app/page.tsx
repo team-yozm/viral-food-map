@@ -7,6 +7,7 @@ import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import TrendCard from "@/components/TrendCard";
 import InstallPrompt from "@/components/InstallPrompt";
+import Footer from "@/components/Footer";
 import Link from "next/link";
 
 function getDistance(
@@ -112,10 +113,10 @@ export default function Home() {
       <Header />
       <main className="max-w-lg mx-auto px-4 py-4">
         <section className="mb-6">
-          <div className="bg-gradient-to-br from-purple-400 to-blue-400 rounded-2xl p-5 text-white text-center">
-            <h2 className="text-[1.688rem] font-extrabold mb-1">요즘 뭐 먹어? 🔥</h2>
-            <p className="text-sm opacity-90">
-              SNS에서 바이럴 중인 음식과 판매처를 실시간으로 알려드려요
+          <div className="bg-gradient-to-br from-purple-400 to-blue-400 rounded-2xl py-8 px-6 text-white text-center">
+            <h2 className="text-[44px] font-extrabold leading-tight mb-2">요즘 뭐 먹어? 🔥</h2>
+            <p className="text-base opacity-80">
+              SNS 바이럴 음식 · 내 주변 판매처 실시간
             </p>
           </div>
         </section>
@@ -181,10 +182,10 @@ export default function Home() {
               ))}
             </div>
           ) : trends.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-4xl mb-3">🔍</p>
-              <p className="font-medium">아직 감지된 트렌드가 없어요</p>
-              <p className="text-sm mt-1">크롤러가 열심히 찾는 중...</p>
+            <div className="text-center py-14 text-gray-400">
+              <p className="text-5xl mb-4">🍽️</p>
+              <p className="font-semibold text-gray-600 text-base">아직 유행하는 음식을 찾는 중이에요!</p>
+              <p className="text-sm mt-2 text-gray-400">크롤러가 SNS를 샅샅이 뒤지고 있어요 🔍</p>
             </div>
           ) : (
             <div className="flex flex-col gap-8">
@@ -194,6 +195,7 @@ export default function Home() {
             </div>
           )}
         </section>
+      <Footer />
       </main>
       <BottomNav />
     </>

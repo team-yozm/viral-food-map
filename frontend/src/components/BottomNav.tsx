@@ -51,12 +51,12 @@ export default function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center px-4 py-1 rounded-lg transition-colors ${
-                isActive ? "text-primary" : "text-gray-400"
+              className={`flex flex-col items-center px-4 py-1 rounded-lg transition-colors group ${
+                isActive ? "text-primary" : "text-gray-400 hover:text-primary"
               }`}
             >
               <item.Icon active={isActive} />
-              <span className="text-xs mt-0.5 font-medium">{item.label}</span>
+              <span className="text-xs mt-0.5 font-medium relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-px after:bg-primary after:transition-all after:duration-200 group-hover:after:w-full">{item.label}</span>
             </Link>
           );
         })}
