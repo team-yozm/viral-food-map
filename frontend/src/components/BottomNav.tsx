@@ -3,10 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+function HomeIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
+      {!active && <path d="M9 21V12h6v9" />}
+    </svg>
+  );
+}
+
+function MapIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 10c0 6-9 13-9 13S3 16 3 10a9 9 0 1 1 18 0z" />
+      <circle cx="12" cy="10" r="3" fill={active ? "white" : "none"} />
+    </svg>
+  );
+}
+
+function ReportIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  );
+}
+
 const navItems = [
-  { href: "/", label: "홈", icon: "🏠" },
-  { href: "/map", label: "지도", icon: "🗺️" },
-  { href: "/report", label: "제보", icon: "📍" },
+  { href: "/", label: "홈", Icon: HomeIcon },
+  { href: "/map", label: "지도", Icon: MapIcon },
+  { href: "/report", label: "제보", Icon: ReportIcon },
 ];
 
 export default function BottomNav() {
@@ -28,7 +55,7 @@ export default function BottomNav() {
                 isActive ? "text-primary" : "text-gray-400"
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
+              <item.Icon active={isActive} />
               <span className="text-xs mt-0.5 font-medium">{item.label}</span>
             </Link>
           );
