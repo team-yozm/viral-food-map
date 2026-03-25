@@ -64,6 +64,7 @@ async def find_stores_kakao(
                         "lat": float(doc["y"]),
                         "lng": float(doc["x"]),
                         "phone": doc.get("phone") or None,
+                        "place_url": doc.get("place_url") or None,
                         "source": "kakao_api",
                         "verified": True,
                     })

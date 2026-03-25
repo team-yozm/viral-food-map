@@ -9,6 +9,36 @@ interface StoreListProps {
   onStoreClick?: (storeId: string) => void;
 }
 
+function StarRating({ rating }: { rating: number | null }) {
+  if (!rating) return null;
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: 5 }, (_, i) => (
+        <span
+          key={i}
+          className={`text-xs ${
+            i < full
+              ? "text-yellow-400"
+              : i === full && half
+                ? "text-yellow-300"
+                : "text-gray-200"
+          }`}
+        >
+          ★
+        </span>
+      ))}
+      <span className="text-xs text-gray-500 ml-0.5">{rating.toFixed(1)}</span>
+    </div>
+  );
+}
+
+function getStoreLink(store: Store): string {
+  if (store.place_url) return store.place_url;
+  return `https://map.naver.com/search/${encodeURIComponent(store.name + " " + store.address)}`;
+}
+
 export default function StoreList({
   stores,
   selectedStoreId,
@@ -38,9 +68,7 @@ export default function StoreList({
           key={store.id}
           id={`store-${store.id}`}
           onClick={() => onStoreClick?.(store.id)}
-          className={`bg-white rounded-xl p-3 border flex items-center gap-3 transition-all ${
-            onStoreClick ? "cursor-pointer" : ""
-          } ${
+          className={`bg-white rounded-xl p-3 border flex items-center gap-3 transition-all cursor-pointer ${
             store.id === selectedStoreId
               ? "ring-2 ring-purple-400 border-purple-300"
               : "border-gray-100"
@@ -50,14 +78,38 @@ export default function StoreList({
             {store.verified ? "✅" : "📍"}
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="font-semibold text-sm text-gray-900 truncate">
-              {store.name}
-            </h4>
+            <div className="flex items-center gap-1.5">
+              <h4 className="font-semibold text-sm text-gray-900 truncate">
+                {store.name}
+              </h4>
+              <StarRating rating={store.rating} />
+            </div>
             <p className="text-xs text-gray-400 truncate">{store.address}</p>
           </div>
-          <div className="flex-shrink-0 text-xs text-gray-300">
-            {store.source === "user_report" ? "제보" : "자동수집"}
-          </div>
+          <a
+            href={getStoreLink(store)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex-shrink-0 text-primary hover:text-purple-700 transition-colors"
+            title="상세 보기"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+          </a>
         </div>
       ))}
     </div>

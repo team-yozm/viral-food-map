@@ -19,6 +19,8 @@ export interface Store {
   lat: number;
   lng: number;
   phone: string | null;
+  place_url: string | null;
+  rating: number | null;
   source: "kakao_api" | "naver_place" | "user_report";
   verified: boolean;
   last_updated: string;
