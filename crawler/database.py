@@ -54,6 +54,10 @@ def insert_keywords(keywords: list[dict]):
     ).execute()
 
 
+# alias for backward compatibility
+upsert_keywords = insert_keywords
+
+
 def update_trend_status(trend_id: str, status: str):
     return (
         get_client()
