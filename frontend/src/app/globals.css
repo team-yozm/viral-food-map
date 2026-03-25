@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 @import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css");
-@import url("https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap");
 
 :root {
   --primary: #9B7DD4;
@@ -20,10 +19,6 @@ body {
     sans-serif;
   background: #fafafa;
   -webkit-font-smoothing: antialiased;
-}
-
-.font-display {
-  font-family: "Black Han Sans", sans-serif;
 }
 
 .card-hover {

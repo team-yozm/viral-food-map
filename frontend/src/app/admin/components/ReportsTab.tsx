@@ -144,7 +144,9 @@ export default function ReportsTab() {
                   <div className="flex gap-2 flex-shrink-0">
                     <button
                       onClick={() => approveReport(r)}
-                      className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors"
+                      disabled={!r.lat || !r.lng}
+                      title={!r.lat || !r.lng ? "좌표 없음 – 승인 불가 (거절 처리하세요)" : undefined}
+                      className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       승인
                     </button>
