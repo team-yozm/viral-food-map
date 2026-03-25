@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import PageViewTracker from "@/components/PageViewTracker";
 
 export const metadata: Metadata = {
   title: "요즘뭐먹 - 지금 유행하는 음식, 어디서 살까?",
@@ -31,7 +32,10 @@ export default function RootLayout({
           src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&autoload=false&libraries=services,clusterer`}
         />
       </head>
-      <body className="bg-gray-50 min-h-screen pb-16">{children}</body>
+      <body className="bg-gray-50 min-h-screen pb-16">
+        <PageViewTracker />
+        {children}
+      </body>
     </html>
   );
 }

@@ -46,3 +46,14 @@ export interface Keyword {
   last_checked: string | null;
   baseline_volume: number;
 }
+
+export interface AnalyticsSummary {
+  total_views: number;
+  today_views: number;
+  unique_visitors: number;
+  today_unique: number;
+  top_pages: { page_path: string; view_count: number }[] | null;
+  trend_views: { trend_id: string; trend_name: string; view_count: number }[] | null;
+  hourly_distribution: { hour: number; view_count: number }[] | null;
+  daily_views: { date: string; view_count: number; unique_count: number }[] | null;
+}
