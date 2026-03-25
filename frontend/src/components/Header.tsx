@@ -10,7 +10,6 @@ export default function Header() {
           <img src="/logo.png" alt="요즘뭐먹" className="w-8 h-8 rounded-full" />
           <h1 className="text-xl font-display text-primary tracking-tight">요즘뭐먹</h1>
         </Link>
-        <p className="text-xs text-gray-400 font-medium">트렌드 음식 지도</p>
       </div>
     </header>
   );
