@@ -11,6 +11,15 @@ import StoreList from "@/components/StoreList";
 import TrendBadge from "@/components/TrendBadge";
 import Link from "next/link";
 
+function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function TrendDetailPage() {
   const { id } = useParams();
   const [trend, setTrend] = useState<Trend | null>(null);
@@ -104,37 +113,49 @@ export default function TrendDetailPage() {
           </p>
         </div>
 
-        {locReady ? (
-          <KakaoMap
-            stores={stores}
-            center={userLoc ?? { lat: 37.5665, lng: 126.978 }}
-            level={userLoc ? 7 : 5}
-            autoFitBounds={!userLoc}
-            selectedStoreId={selectedStoreId}
-            onMarkerClick={setSelectedStoreId}
-          />
-        ) : (
-          <div className="map-container bg-gray-100 flex items-center justify-center rounded-xl">
-            <p className="text-gray-400 text-sm">위치 확인 중...</p>
-          </div>
-        )}
+        {(() => {
+          const sortedStores = userLoc
+            ? [...stores].sort((a, b) =>
+                getDistance(userLoc.lat, userLoc.lng, a.lat, a.lng) -
+                getDistance(userLoc.lat, userLoc.lng, b.lat, b.lng)
+              )
+            : stores;
+          return (
+            <>
+              {locReady ? (
+                <KakaoMap
+                  stores={sortedStores}
+                  center={userLoc ?? { lat: 37.5665, lng: 126.978 }}
+                  autoFitBounds={true}
+                  selectedStoreId={selectedStoreId}
+                  onMarkerClick={setSelectedStoreId}
+                />
+              ) : (
+                <div className="map-container bg-gray-100 flex items-center justify-center rounded-xl">
+                  <p className="text-gray-400 text-sm">위치 확인 중...</p>
+                </div>
+              )}
 
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-900">판매처 목록</h3>
-            <Link
-              href={`/report?trend=${id}`}
-              className="text-xs text-primary font-medium"
-            >
-              + 제보하기
-            </Link>
-          </div>
-          <StoreList
-            stores={stores}
-            selectedStoreId={selectedStoreId}
-            onStoreClick={setSelectedStoreId}
-          />
-        </div>
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-gray-900">판매처 목록</h3>
+                  <Link
+                    href={`/report?trend=${id}`}
+                    className="text-xs text-primary font-medium"
+                  >
+                    + 제보하기
+                  </Link>
+                </div>
+                <StoreList
+                  stores={sortedStores}
+                  userLoc={userLoc}
+                  selectedStoreId={selectedStoreId}
+                  onStoreClick={setSelectedStoreId}
+                />
+              </div>
+            </>
+          );
+        })()}
       </main>
       <BottomNav />
     </>
