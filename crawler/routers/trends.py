@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 from database import get_client
-from detector.trend_detector import detect_trends
-from detector.keyword_discoverer import discover_keywords
+from scheduler.jobs import run_trend_detection_job, run_keyword_discovery_job
 
 router = APIRouter(prefix="/api/trends", tags=["trends"])
 
@@ -47,15 +46,18 @@ async def get_trend(trend_id: str):
 @router.post("/detect")
 async def trigger_detection():
     """수동 트렌드 탐지 트리거"""
-    await detect_trends()
-    return {"message": "트렌드 탐지 완료"}
+    summary = await run_trend_detection_job(trigger="manual")
+    return {
+        "message": "트렌드 탐지 완료",
+        "summary": summary,
+    }
 
 
 @router.post("/discover-keywords")
 async def trigger_discovery():
     """수동 키워드 발굴 트리거"""
-    new_keywords = await discover_keywords()
+    summary = await run_keyword_discovery_job(trigger="manual")
     return {
-        "message": f"키워드 {len(new_keywords)}개 발견",
-        "keywords": new_keywords,
+        "message": f"키워드 {summary['new_keywords']}개 발견",
+        "summary": summary,
     }

@@ -10,6 +10,7 @@ class Settings:
     NAVER_CLIENT_ID: str = os.getenv("NAVER_CLIENT_ID", "")
     NAVER_CLIENT_SECRET: str = os.getenv("NAVER_CLIENT_SECRET", "")
     KAKAO_REST_API_KEY: str = os.getenv("KAKAO_REST_API_KEY", "")
+    DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
 
     TREND_THRESHOLD: float = 30.0
     TREND_SCORE_THRESHOLD: float = 50.0

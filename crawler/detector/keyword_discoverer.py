@@ -104,9 +104,15 @@ def classify_category(noun: str, context_nouns: Counter) -> str:
     return "기타"
 
 
-async def discover_keywords() -> list[dict]:
+async def discover_keywords() -> dict:
     """블로그 기반 키워드 자동 발굴 파이프라인"""
     logger.info("키워드 발굴 시작")
+    summary = {
+        "queries": len(META_QUERIES),
+        "collected_posts": 0,
+        "new_keywords": 0,
+        "keywords": [],
+    }
 
     # 1. 블로그 검색으로 텍스트 수집
     all_texts = []
@@ -117,11 +123,12 @@ async def discover_keywords() -> list[dict]:
             all_texts.append(text)
         logger.info(f"  '{query}': {len(items)}건 수집")
 
+    summary["collected_posts"] = len(all_texts)
     logger.info(f"총 {len(all_texts)}개 블로그 스니펫 수집 완료")
 
     if not all_texts:
         logger.warning("수집된 블로그 데이터 없음")
-        return []
+        return summary
 
     # 2. 명사 추출 + 빈도 집계
     noun_counter = Counter()
@@ -167,7 +174,7 @@ async def discover_keywords() -> list[dict]:
 
     if not candidates:
         logger.info("새로 발견된 키워드 없음")
-        return []
+        return summary
 
     # 5. 카테고리 분류 + DB 등록
     new_keywords = []
@@ -186,5 +193,7 @@ async def discover_keywords() -> list[dict]:
         )
 
     insert_keywords(new_keywords)
+    summary["new_keywords"] = len(new_keywords)
+    summary["keywords"] = [kw["keyword"] for kw in new_keywords]
     logger.info(f"키워드 {len(new_keywords)}개 DB 등록 완료")
-    return new_keywords
+    return summary

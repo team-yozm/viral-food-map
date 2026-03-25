@@ -14,7 +14,7 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-async def detect_trends():
+async def detect_trends() -> dict:
     """메인 트렌드 탐지 로직"""
     logger.info("=== 트렌드 탐지 시작 ===")
 
@@ -24,6 +24,15 @@ async def detect_trends():
         keywords = [kw["keyword"] for kw in db_keywords]
     else:
         keywords = get_flat_keywords()
+
+    summary = {
+        "keywords": len(keywords),
+        "candidates": 0,
+        "confirmed": 0,
+        "stored_trends": 0,
+        "stored_stores": 0,
+        "confirmed_keywords": [],
+    }
 
     logger.info(f"모니터링 키워드 {len(keywords)}개")
 
@@ -42,9 +51,11 @@ async def detect_trends():
             })
             logger.info(f"후보 발견: {keyword} (증가율 {acceleration:.1f}%)")
 
+    summary["candidates"] = len(candidates)
+
     if not candidates:
         logger.info("급등 키워드 없음")
-        return
+        return summary
 
     # 4. 교차 검증
     confirmed = []
@@ -90,6 +101,9 @@ async def detect_trends():
         else:
             logger.info(f"트렌드 미달: {kw} (점수 {score})")
 
+    summary["confirmed"] = len(confirmed)
+    summary["confirmed_keywords"] = [trend["keyword"] for trend in confirmed]
+
     # 5. 확정된 트렌드 저장 + 판매처 수집
     for trend in confirmed:
         kw = trend["keyword"]
@@ -123,6 +137,7 @@ async def detect_trends():
             logger.info(f"'{kw}' 대표 이미지 수집 완료")
 
         upsert_trend(trend_data)
+        summary["stored_trends"] += 1
 
         # 판매처 검색
         stores = await find_stores_nationwide(kw)
@@ -132,6 +147,8 @@ async def detect_trends():
                 for s in stores
             ]
             insert_stores(store_records)
+            summary["stored_stores"] += len(stores)
             logger.info(f"'{kw}' 판매처 {len(stores)}개 등록")
 
     logger.info(f"=== 트렌드 탐지 완료: {len(confirmed)}개 확정 ===")
+    return summary
