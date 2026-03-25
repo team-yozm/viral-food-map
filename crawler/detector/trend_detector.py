@@ -6,6 +6,7 @@ from crawlers.naver_datalab import get_search_trend, calculate_acceleration
 from crawlers.naver_search import get_blog_mention_count
 from crawlers.instagram import get_hashtag_post_count
 from crawlers.store_finder import find_stores_kakao
+from crawlers.image_finder import find_food_image
 from detector.keyword_manager import get_flat_keywords
 from database import upsert_trend, insert_stores, get_all_keywords
 from config import settings
@@ -110,6 +111,13 @@ async def detect_trends():
             "description": None,
             "image_url": None,
         }
+
+        # 대표 이미지 검색
+        image_url = await find_food_image(kw)
+        if image_url:
+            trend_data["image_url"] = image_url
+            logger.info(f"'{kw}' 대표 이미지 수집 완료")
+
         upsert_trend(trend_data)
 
         # 판매처 검색
