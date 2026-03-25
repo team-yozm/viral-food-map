@@ -1,0 +1,72 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: dev-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - yozmeat-dev
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Sync workspace to deployment directory
+        run: |
+          set -euo pipefail
+          DEPLOY_ROOT=/home/yozmeatserver/apps/viral-food-map-dev
+          CURRENT_DIR="$DEPLOY_ROOT/current"
+          mkdir -p "$CURRENT_DIR"
+          rsync -a --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            "$GITHUB_WORKSPACE"/ "$CURRENT_DIR"/
+
+      - name: Build and start containers
+        run: |
+          set -euo pipefail
+          DEPLOY_ROOT=/home/yozmeatserver/apps/viral-food-map-dev
+          CURRENT_DIR="$DEPLOY_ROOT/current"
+          ENV_FILE="$DEPLOY_ROOT/shared/dev.env"
+
+          test -f "$ENV_FILE"
+          cd "$CURRENT_DIR"
+
+          docker compose \
+            --env-file "$ENV_FILE" \
+            -f docker-compose.dev.yml \
+            -p viral-food-map-dev \
+            up -d --build --remove-orphans
+
+      - name: Health check frontend
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Health check crawler
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
