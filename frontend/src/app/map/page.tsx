@@ -14,18 +14,25 @@ export default function MapPage() {
   const [selectedTrendId, setSelectedTrendId] = useState<string | "all">("all");
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
-  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number }>({
-    lat: 37.5665,
-    lng: 126.978,
-  });
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [locReady, setLocReady] = useState(false);
 
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) =>
-          setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {}
+        (pos) => {
+          setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setLocReady(true);
+        },
+        () => {
+          setUserLoc({ lat: 37.5665, lng: 126.978 });
+          setLocReady(true);
+        },
+        { timeout: 5000 }
       );
+    } else {
+      setUserLoc({ lat: 37.5665, lng: 126.978 });
+      setLocReady(true);
     }
 
     supabase
@@ -91,15 +98,22 @@ export default function MapPage() {
           ))}
         </div>
 
-        <KakaoMap
-          stores={trendFiltered}
-          center={userLoc}
-          level={7}
-          className="map-container !h-[60vh]"
-          selectedStoreId={selectedStoreId}
-          onMarkerClick={setSelectedStoreId}
-          onBoundsChange={setMapBounds}
-        />
+        {locReady && userLoc ? (
+          <KakaoMap
+            stores={trendFiltered}
+            center={userLoc}
+            level={7}
+            className="map-container !h-[60vh]"
+            selectedStoreId={selectedStoreId}
+            onMarkerClick={setSelectedStoreId}
+            onBoundsChange={setMapBounds}
+            autoFitBounds={false}
+          />
+        ) : (
+          <div className="map-container !h-[60vh] bg-gray-100 flex items-center justify-center rounded-xl">
+            <p className="text-gray-400 text-sm">위치 확인 중...</p>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between mb-2">

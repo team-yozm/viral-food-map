@@ -16,6 +16,7 @@ interface KakaoMapProps {
   selectedStoreId?: string | null;
   onMarkerClick?: (storeId: string) => void;
   onBoundsChange?: (bounds: MapBounds) => void;
+  autoFitBounds?: boolean;
 }
 
 export default function KakaoMap({
@@ -26,6 +27,7 @@ export default function KakaoMap({
   selectedStoreId,
   onMarkerClick,
   onBoundsChange,
+  autoFitBounds = true,
 }: KakaoMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<kakao.maps.Map | null>(null);
@@ -107,7 +109,7 @@ export default function KakaoMap({
 
     markerMapRef.current = newMarkerMap;
 
-    if (stores.length > 1) {
+    if (autoFitBounds && stores.length > 1) {
       map.setBounds(bounds);
     }
 
