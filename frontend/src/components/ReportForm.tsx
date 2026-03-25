@@ -4,6 +4,25 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Trend } from "@/lib/types";
 
+function geocodeAddress(
+  address: string
+): Promise<{ lat: number; lng: number } | null> {
+  return new Promise((resolve) => {
+    if (!window.kakao?.maps?.services) {
+      resolve(null);
+      return;
+    }
+    const geocoder = new kakao.maps.services.Geocoder();
+    geocoder.addressSearch(address, (result, status) => {
+      if (status === kakao.maps.services.Status.OK && result.length > 0) {
+        resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x) });
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
 export default function ReportForm() {
   const [trends, setTrends] = useState<Trend[]>([]);
   const [trendId, setTrendId] = useState("");
@@ -29,22 +48,41 @@ export default function ReportForm() {
     if (!trendId || !storeName || !address) return;
 
     setSubmitting(true);
-    const { error } = await supabase.from("reports").insert({
+
+    // 1. 주소 → 좌표 변환
+    const coords = await geocodeAddress(address);
+
+    // 2. reports 테이블에 제보 기록
+    await supabase.from("reports").insert({
       trend_id: trendId,
       store_name: storeName,
       address,
+      lat: coords?.lat || null,
+      lng: coords?.lng || null,
       note: note || null,
       status: "pending",
     });
 
-    setSubmitting(false);
-    if (!error) {
-      setSubmitted(true);
-      setStoreName("");
-      setAddress("");
-      setNote("");
-      setTimeout(() => setSubmitted(false), 3000);
+    // 3. stores 테이블에 즉시 반영 (좌표가 있을 때만)
+    if (coords) {
+      await supabase.from("stores").insert({
+        trend_id: trendId,
+        name: storeName,
+        address,
+        lat: coords.lat,
+        lng: coords.lng,
+        phone: null,
+        source: "user_report",
+        verified: false,
+      });
     }
+
+    setSubmitting(false);
+    setSubmitted(true);
+    setStoreName("");
+    setAddress("");
+    setNote("");
+    setTimeout(() => setSubmitted(false), 3000);
   };
 
   return (
@@ -119,7 +157,7 @@ export default function ReportForm() {
 
       {submitted && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-slide-up">
-          제보가 접수되었습니다! 감사합니다
+          제보 완료! 지도에 바로 반영되었습니다
         </div>
       )}
     </form>
