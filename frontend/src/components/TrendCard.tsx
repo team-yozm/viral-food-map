@@ -11,7 +11,7 @@ interface TrendCardProps {
 export default function TrendCard({ trend }: TrendCardProps) {
   return (
     <Link href={`/trend/${trend.id}`}>
-      <div className="bg-white rounded-2xl overflow-hidden shadow-sm card-hover border border-gray-100">
+      <div className="bg-white rounded-2xl overflow-hidden shadow-md card-hover border border-gray-100">
         {trend.image_url && (
           <div className="relative h-40 w-full">
             <img
