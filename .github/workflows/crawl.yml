@@ -1,0 +1,26 @@
+name: Trend Crawl
+
+on:
+  schedule:
+    # 30분마다 실행 (UTC 기준)
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger trend detection
+        run: |
+          echo "Triggering trend detection..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://silly-donnamarie-aiproject-41bab04f.koyeb.app/api/trends/detect" \
+            --max-time 120)
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -1)
+          echo "Status: $http_code"
+          echo "Response: $body"
+          if [ "$http_code" != "200" ]; then
+            echo "Failed with status $http_code"
+            exit 1
+          fi
