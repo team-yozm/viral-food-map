@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -6,7 +7,7 @@ from config import settings
 from notifications import send_discord_message
 from routers.trends import router as trends_router
 from routers.stores import router as stores_router
-from scheduler.jobs import start_scheduler, stop_scheduler
+from scheduler.jobs import run_store_update_job, start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,12 +27,25 @@ def _build_startup_message() -> str:
     )
 
 
+def _handle_background_task_result(task: asyncio.Task):
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.info("시작 직후 판매처 갱신 작업 취소")
+    except Exception:
+        logger.exception("시작 직후 판매처 갱신 작업 실패")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("서버 시작")
     start_scheduler()
     await send_discord_message(_build_startup_message())
+    startup_store_update = asyncio.create_task(run_store_update_job(trigger="startup"))
+    startup_store_update.add_done_callback(_handle_background_task_result)
     yield
+    if not startup_store_update.done():
+        startup_store_update.cancel()
     stop_scheduler()
     logger.info("서버 종료")
 
