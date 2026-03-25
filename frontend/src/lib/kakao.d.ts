@@ -95,9 +95,14 @@ declare namespace kakao.maps {
     class Places {
       keywordSearch(
         keyword: string,
-        callback: (result: any[], status: any, pagination: any) => void,
+        callback: (result: any[], status: any, pagination: PlacesPagination) => void,
         options?: { size?: number; category_group_code?: string }
       ): void;
+    }
+    interface PlacesPagination {
+      totalCount: number;
+      hasNextPage: boolean;
+      nextPage(): void;
     }
     const Status: { OK: string; ZERO_RESULT: string };
   }

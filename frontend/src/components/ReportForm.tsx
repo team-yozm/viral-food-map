@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Trend } from "@/lib/types";
 
@@ -27,32 +27,6 @@ function ensureKakaoLoaded(): Promise<void> {
   });
 }
 
-function searchPlaces(keyword: string): Promise<PlaceResult[]> {
-  return new Promise(async (resolve) => {
-    if (!keyword.trim()) {
-      resolve([]);
-      return;
-    }
-    await ensureKakaoLoaded();
-    if (!window.kakao?.maps?.services) {
-      resolve([]);
-      return;
-    }
-    const ps = new kakao.maps.services.Places();
-    ps.keywordSearch(
-      keyword,
-      (result, status) => {
-        if (status === kakao.maps.services.Status.OK) {
-          resolve(result.slice(0, 5) as PlaceResult[]);
-        } else {
-          resolve([]);
-        }
-      },
-      { size: 5 }
-    );
-  });
-}
-
 export default function ReportForm() {
   const [trends, setTrends] = useState<Trend[]>([]);
   const [trendId, setTrendId] = useState("");
@@ -63,7 +37,10 @@ export default function ReportForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout>();
+  const paginationRef = useRef<kakao.maps.services.PlacesPagination | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase
@@ -76,25 +53,153 @@ export default function ReportForm() {
       });
   }, []);
 
+  const doSearch = useCallback(async (keyword: string) => {
+    await ensureKakaoLoaded();
+    if (!window.kakao?.maps?.services) return;
+
+    const ps = new kakao.maps.services.Places();
+    ps.keywordSearch(
+      keyword,
+      (result, status, pagination) => {
+        if (status === kakao.maps.services.Status.OK) {
+          setResults(result as PlaceResult[]);
+          paginationRef.current = pagination;
+          setShowResults(true);
+        } else {
+          setResults([]);
+          paginationRef.current = null;
+        }
+      },
+      { size: 15 }
+    );
+  }, []);
+
   useEffect(() => {
     if (selected) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim() || query.length < 2) {
       setResults([]);
+      paginationRef.current = null;
       return;
     }
-    debounceRef.current = setTimeout(async () => {
-      const places = await searchPlaces(query);
-      setResults(places);
-      setShowResults(true);
-    }, 300);
-  }, [query, selected]);
+    debounceRef.current = setTimeout(() => doSearch(query), 300);
+  }, [query, selected, doSearch]);
+
+  const loadMore = useCallback(() => {
+    const pg = paginationRef.current;
+    if (!pg || !pg.hasNextPage || loadingMore) return;
+    setLoadingMore(true);
+
+    const ps = new kakao.maps.services.Places();
+    // nextPage()는 기존 콜백을 다시 호출하므로, 새로 keywordSearch를 하되 pagination.nextPage() 사용
+    pg.nextPage();
+  }, [loadingMore]);
+
+  // pagination.nextPage()가 호출되면 기존 콜백이 다시 실행됨
+  // 그래서 doSearch의 콜백에서 append 로직이 필요 → 리팩토링
+  // 실제로는 nextPage()가 원래 콜백을 재호출하므로, 다른 방식으로 처리
+
+  // 더 단순한 접근: keywordSearch를 감싸서 pagination을 관리
+  const searchWithPagination = useCallback(async (keyword: string, append: boolean = false) => {
+    await ensureKakaoLoaded();
+    if (!window.kakao?.maps?.services) return;
+
+    if (!append) {
+      const ps = new kakao.maps.services.Places();
+      ps.keywordSearch(
+        keyword,
+        (result, status, pagination) => {
+          if (status === kakao.maps.services.Status.OK) {
+            setResults(result as PlaceResult[]);
+            paginationRef.current = pagination;
+            setShowResults(true);
+          } else {
+            setResults([]);
+            paginationRef.current = null;
+          }
+          setLoadingMore(false);
+        },
+        { size: 15 }
+      );
+    }
+  }, []);
+
+  // 드롭다운 스크롤 감지
+  const handleScroll = useCallback(() => {
+    const el = dropdownRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight - scrollTop - clientHeight < 50) {
+      const pg = paginationRef.current;
+      if (pg && pg.hasNextPage && !loadingMore) {
+        setLoadingMore(true);
+        pg.nextPage();
+      }
+    }
+  }, [loadingMore]);
+
+  // nextPage 콜백을 위해 — kakao Places는 nextPage() 호출 시 원래 콜백을 재실행
+  // 그래서 최초 검색 시 콜백에서 append 처리를 해야 함
+  // 이를 위해 ref로 isFirstCall을 관리
+
+  // 전체 재설계: 하나의 콜백에서 첫 호출/추가 호출 구분
+  const isFirstSearchRef = useRef(true);
+
+  const startSearch = useCallback(async (keyword: string) => {
+    await ensureKakaoLoaded();
+    if (!window.kakao?.maps?.services) return;
+
+    isFirstSearchRef.current = true;
+    const ps = new kakao.maps.services.Places();
+    ps.keywordSearch(
+      keyword,
+      (result, status, pagination) => {
+        if (status === kakao.maps.services.Status.OK) {
+          if (isFirstSearchRef.current) {
+            setResults(result as PlaceResult[]);
+            isFirstSearchRef.current = false;
+          } else {
+            setResults((prev) => [...prev, ...(result as PlaceResult[])]);
+          }
+          paginationRef.current = pagination;
+          setShowResults(true);
+        }
+        setLoadingMore(false);
+      },
+      { size: 15 }
+    );
+  }, []);
+
+  // 검색 디바운스
+  useEffect(() => {
+    if (selected) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim() || query.length < 2) {
+      setResults([]);
+      paginationRef.current = null;
+      return;
+    }
+    debounceRef.current = setTimeout(() => startSearch(query), 300);
+  }, [query, selected, startSearch]);
+
+  const handleDropdownScroll = useCallback(() => {
+    const el = dropdownRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
+      const pg = paginationRef.current;
+      if (pg && pg.hasNextPage && !loadingMore) {
+        setLoadingMore(true);
+        pg.nextPage();
+      }
+    }
+  }, [loadingMore]);
 
   const handleSelect = (place: PlaceResult) => {
     setSelected(place);
     setQuery(place.place_name);
     setResults([]);
     setShowResults(false);
+    paginationRef.current = null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -161,22 +266,38 @@ export default function ReportForm() {
         />
 
         {showResults && results.length > 0 && (
-          <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-            {results.map((place, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => handleSelect(place)}
-                className="w-full px-4 py-3 text-left hover:bg-purple-50 transition-colors border-b border-gray-50 last:border-0"
-              >
-                <p className="text-sm font-medium text-gray-900">
-                  {place.place_name}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {place.road_address_name || place.address_name}
-                </p>
-              </button>
-            ))}
+          <div
+            ref={dropdownRef}
+            onScroll={handleDropdownScroll}
+            className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto"
+          >
+            {results.map((place, i) => {
+              const addr = place.road_address_name || place.address_name;
+              const region = addr.split(" ").slice(0, 2).join(" ");
+              return (
+                <button
+                  key={`${place.place_name}-${place.x}-${i}`}
+                  type="button"
+                  onClick={() => handleSelect(place)}
+                  className="w-full px-4 py-3 text-left hover:bg-purple-50 transition-colors border-b border-gray-50 last:border-0"
+                >
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {place.place_name}
+                    </p>
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">
+                      {region}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 truncate">{addr}</p>
+                </button>
+              );
+            })}
+            {loadingMore && (
+              <div className="px-4 py-3 text-center text-xs text-gray-400">
+                검색 중...
+              </div>
+            )}
           </div>
         )}
 
