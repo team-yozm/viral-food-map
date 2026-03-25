@@ -36,7 +36,7 @@ function StarRating({ rating }: { rating: number | null }) {
 
 function getStoreLink(store: Store): string {
   if (store.place_url) return store.place_url;
-  return `https://m.place.naver.com/search/${encodeURIComponent(store.name)}`;
+  return `https://map.naver.com/p/search/${encodeURIComponent(store.name)}`;
 }
 
 export default function StoreList({

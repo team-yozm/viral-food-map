@@ -124,7 +124,7 @@ export default function MapPage() {
                   <p className="text-xs text-gray-400 truncate">{store.address}</p>
                 </div>
                 <a
-                  href={store.place_url || `https://m.place.naver.com/search/${encodeURIComponent(store.name)}`}
+                  href={store.place_url || `https://map.naver.com/p/search/${encodeURIComponent(store.name)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
