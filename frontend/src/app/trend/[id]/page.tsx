@@ -9,6 +9,7 @@ import BottomNav from "@/components/BottomNav";
 import KakaoMap from "@/components/KakaoMap";
 import StoreList from "@/components/StoreList";
 import TrendBadge from "@/components/TrendBadge";
+import ShareButton from "@/components/ShareButton";
 import Link from "next/link";
 
 function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -100,11 +101,16 @@ export default function TrendDetailPage() {
           {trend.description && (
             <p className="text-sm text-gray-500">{trend.description}</p>
           )}
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-400 mt-1 mb-3">
             {trend.detected_at &&
               `${new Date(trend.detected_at).toLocaleDateString("ko-KR")} 감지`}{" "}
             · 판매처 {stores.length}곳
           </p>
+          <ShareButton
+            title={`${trend.name} - 요즘뭐먹`}
+            description={trend.description ?? undefined}
+            imageUrl={trend.image_url ?? undefined}
+          />
         </div>
 
         {(() => {
