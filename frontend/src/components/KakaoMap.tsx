@@ -39,8 +39,28 @@ export default function KakaoMap({
   const openInfoWindowRef = useRef<kakao.maps.InfoWindow | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.kakao?.maps) return;
-    kakao.maps.load(() => setLoaded(true));
+    if (typeof window === "undefined") return;
+
+    const tryLoad = () => {
+      if (window.kakao?.maps) {
+        kakao.maps.load(() => setLoaded(true));
+        return true;
+      }
+      return false;
+    };
+
+    if (tryLoad()) return;
+
+    // SDK가 아직 안 왔으면 폴링 (최대 10초)
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts += 1;
+      if (tryLoad() || attempts >= 40) {
+        clearInterval(interval);
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

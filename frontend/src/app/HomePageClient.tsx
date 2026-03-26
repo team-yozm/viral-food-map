@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import BottomNav from "@/components/BottomNav";
@@ -74,6 +74,15 @@ export default function HomePageClient({
     null
   );
   const [revealOpen, setRevealOpen] = useState(false);
+  const launcherRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (launcherOpen) {
+      requestAnimationFrame(() => {
+        launcherRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [launcherOpen]);
 
   const requestUserLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -321,6 +330,7 @@ export default function HomePageClient({
           </button>
         }
         bottomSlot={
+          <div ref={launcherRef}>
           <YomechuLauncher
             open={launcherOpen}
             locationStatus={locationStatus}
@@ -338,6 +348,7 @@ export default function HomePageClient({
             onRetryLocation={requestUserLocation}
             onUsePresetLocation={handleUsePresetLocation}
           />
+          </div>
         }
       />
       <main className="max-w-lg mx-auto px-4 py-4">
@@ -392,12 +403,20 @@ export default function HomePageClient({
               <p className="mt-1 text-sm leading-relaxed text-amber-800">
                 브라우저 위치 권한을 허용하면 가까운 판매처를 자동으로 정렬해 보여드립니다.
               </p>
-              <Link
-                href="/map"
-                className="mt-3 inline-flex rounded-lg bg-amber-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-950"
-              >
-                지도에서 기준 지역으로 보기
-              </Link>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={requestUserLocation}
+                  className="inline-flex rounded-lg bg-amber-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-950"
+                >
+                  위치 권한 허용하기
+                </button>
+                <Link
+                  href="/map"
+                  className="inline-flex rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                >
+                  지도에서 보기
+                </Link>
+              </div>
             </div>
           </section>
         ) : null}
