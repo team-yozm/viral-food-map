@@ -1,162 +1,57 @@
-"use client";
+import type { Metadata } from "next";
+import TrendDetailPageClient from "./TrendDetailPageClient";
+import { buildMetadata, buildTrendDescription } from "@/lib/seo";
+import { getTrendDetailById } from "@/lib/trends-server";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import type { Trend, Store } from "@/lib/types";
-import Header from "@/components/Header";
-import BottomNav from "@/components/BottomNav";
-import KakaoMap from "@/components/KakaoMap";
-import StoreList from "@/components/StoreList";
-import TrendBadge from "@/components/TrendBadge";
-import ShareButton from "@/components/ShareButton";
-import Link from "next/link";
+export const revalidate = 3600;
 
-function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+interface TrendPageProps {
+  params: {
+    id: string;
+  };
 }
 
-export default function TrendDetailPage() {
-  const { id } = useParams();
-  const [trend, setTrend] = useState<Trend | null>(null);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
-  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+export async function generateMetadata({
+  params,
+}: TrendPageProps): Promise<Metadata> {
+  const trendData = await getTrendDetailById(params.id);
 
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {},
-        { timeout: 5000 }
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!id) return;
-
-    const fetchData = async () => {
-      const [trendRes, storesRes] = await Promise.all([
-        supabase.from("trends").select("*").eq("id", id).single(),
-        supabase
-          .from("stores")
-          .select("*")
-          .eq("trend_id", id)
-          .order("verified", { ascending: false }),
-      ]);
-
-      if (trendRes.data) setTrend(trendRes.data as Trend);
-      if (storesRes.data) setStores(storesRes.data as Store[]);
-      setLoading(false);
-    };
-
-    fetchData();
-  }, [id]);
-
-  if (loading) {
-    return (
-      <>
-        <Header showBack />
-        <main className="max-w-lg mx-auto px-4 py-4">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/2" />
-            <div className="h-64 bg-gray-200 rounded-2xl" />
-            <div className="h-20 bg-gray-200 rounded-xl" />
-          </div>
-        </main>
-        <BottomNav />
-      </>
-    );
+  if (!trendData) {
+    return buildMetadata({
+      title: "트렌드를 찾을 수 없어요",
+      description: "요청한 트렌드 정보를 찾을 수 없습니다.",
+      path: `/trend/${params.id}`,
+      noIndex: true,
+    });
   }
 
-  if (!trend) {
-    return (
-      <>
-        <Header showBack />
-        <main className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
-          <p className="text-4xl mb-3">😅</p>
-          <p>트렌드를 찾을 수 없어요</p>
-        </main>
-        <BottomNav />
-      </>
-    );
-  }
+  return buildMetadata({
+    title: `${trendData.trend.name} 판매처 지도`,
+    description: buildTrendDescription({
+      name: trendData.trend.name,
+      description: trendData.trend.description,
+      storeCount: trendData.trend.store_count,
+      detectedAt: trendData.trend.detected_at,
+    }),
+    path: `/trend/${params.id}`,
+    image: trendData.trend.image_url,
+    keywords: [
+      trendData.trend.name,
+      `${trendData.trend.name} 판매처`,
+      `${trendData.trend.name} 지도`,
+      `${trendData.trend.name} 맛집`,
+    ],
+  });
+}
+
+export default async function TrendDetailPage({ params }: TrendPageProps) {
+  const trendData = await getTrendDetailById(params.id);
 
   return (
-    <>
-      <Header showBack />
-      <main className="max-w-lg mx-auto px-4 py-4 space-y-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-bold text-gray-900">{trend.name}</h2>
-            <TrendBadge status={trend.status} />
-          </div>
-          {trend.description && (
-            <p className="text-sm text-gray-500">{trend.description}</p>
-          )}
-          <p className="text-xs text-gray-400 mt-1 mb-3">
-            {trend.detected_at &&
-              `${new Date(trend.detected_at).toLocaleDateString("ko-KR")} 감지`}{" "}
-            · 판매처 {stores.length}곳
-          </p>
-          <ShareButton
-            title={`${trend.name} - 요즘뭐먹`}
-            description={trend.description ?? undefined}
-            imageUrl={trend.image_url ?? undefined}
-          />
-        </div>
-
-        {(() => {
-          const sortedStores = userLoc
-            ? [...stores].sort((a, b) =>
-                getDistance(userLoc.lat, userLoc.lng, a.lat, a.lng) -
-                getDistance(userLoc.lat, userLoc.lng, b.lat, b.lng)
-              )
-            : stores;
-          const nearestStore = sortedStores[0];
-          const mapCenter = nearestStore
-            ? { lat: nearestStore.lat, lng: nearestStore.lng }
-            : { lat: 37.5665, lng: 126.978 };
-          return (
-            <>
-              <KakaoMap
-                stores={sortedStores}
-                center={mapCenter}
-                level={5}
-                autoFitBounds={false}
-                selectedStoreId={selectedStoreId}
-                onMarkerClick={setSelectedStoreId}
-              />
-
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-gray-900">판매처 목록</h3>
-                  <Link
-                    href={`/report?trend=${id}`}
-                    className="text-xs text-primary font-medium"
-                  >
-                    + 제보하기
-                  </Link>
-                </div>
-                <StoreList
-                  stores={sortedStores}
-                  userLoc={userLoc}
-                  selectedStoreId={selectedStoreId}
-                  onStoreClick={setSelectedStoreId}
-                />
-              </div>
-            </>
-          );
-        })()}
-      </main>
-      <BottomNav />
-    </>
+    <TrendDetailPageClient
+      id={params.id}
+      initialTrend={trendData?.trend ?? null}
+      initialStores={trendData?.stores ?? []}
+    />
   );
 }

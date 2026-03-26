@@ -1,0 +1,132 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import Header from "@/components/Header";
+import BottomNav from "@/components/BottomNav";
+import KakaoMap from "@/components/KakaoMap";
+import StoreList from "@/components/StoreList";
+import TrendBadge from "@/components/TrendBadge";
+import ShareButton from "@/components/ShareButton";
+import type { Trend, Store } from "@/lib/types";
+
+interface TrendDetailPageClientProps {
+  id: string;
+  initialTrend: Trend | null;
+  initialStores: Store[];
+}
+
+function getDistance(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export default function TrendDetailPageClient({
+  id,
+  initialTrend,
+  initialStores,
+}: TrendDetailPageClientProps) {
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {},
+        { timeout: 5000 }
+      );
+    }
+  }, []);
+
+  if (!initialTrend) {
+    return (
+      <>
+        <Header showBack />
+        <main className="max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
+          <p className="text-4xl mb-3">😅</p>
+          <p>트렌드를 찾을 수 없어요</p>
+        </main>
+        <BottomNav />
+      </>
+    );
+  }
+
+  const sortedStores = userLoc
+    ? [...initialStores].sort(
+        (a, b) =>
+          getDistance(userLoc.lat, userLoc.lng, a.lat, a.lng) -
+          getDistance(userLoc.lat, userLoc.lng, b.lat, b.lng)
+      )
+    : initialStores;
+  const nearestStore = sortedStores[0];
+  const mapCenter = nearestStore
+    ? { lat: nearestStore.lat, lng: nearestStore.lng }
+    : { lat: 37.5665, lng: 126.978 };
+
+  return (
+    <>
+      <Header showBack />
+      <main className="max-w-lg mx-auto px-4 py-4 space-y-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-xl font-bold text-gray-900">{initialTrend.name}</h2>
+            <TrendBadge status={initialTrend.status} />
+          </div>
+          {initialTrend.description && (
+            <p className="text-sm text-gray-500">{initialTrend.description}</p>
+          )}
+          <p className="text-xs text-gray-400 mt-1 mb-3">
+            {initialTrend.detected_at &&
+              `${new Date(initialTrend.detected_at).toLocaleDateString("ko-KR")} 감지`}{" "}
+            · 판매처 {sortedStores.length}곳
+          </p>
+          <ShareButton
+            title={`${initialTrend.name} - 요즘뭐먹`}
+            description={initialTrend.description ?? undefined}
+            imageUrl={initialTrend.image_url ?? undefined}
+          />
+        </div>
+
+        <KakaoMap
+          stores={sortedStores}
+          center={mapCenter}
+          level={5}
+          autoFitBounds={false}
+          selectedStoreId={selectedStoreId}
+          onMarkerClick={setSelectedStoreId}
+        />
+
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-gray-900">판매처 목록</h3>
+            <Link href={`/report?trend=${id}`} className="text-xs text-primary font-medium">
+              + 제보하기
+            </Link>
+          </div>
+          <StoreList
+            stores={sortedStores}
+            userLoc={userLoc}
+            selectedStoreId={selectedStoreId}
+            onStoreClick={setSelectedStoreId}
+          />
+        </div>
+      </main>
+      <BottomNav />
+    </>
+  );
+}

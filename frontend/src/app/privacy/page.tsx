@@ -1,5 +1,15 @@
+import type { Metadata } from "next";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { buildMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = buildMetadata({
+  title: "개인정보처리방침",
+  description:
+    "요즘뭐먹 서비스의 개인정보 수집 항목, 이용 목적, 보관 기간과 이용자 권리를 안내합니다.",
+  path: "/privacy",
+  keywords: ["개인정보처리방침", "요즘뭐먹 개인정보"],
+});
 
 export default function PrivacyPage() {
   return (

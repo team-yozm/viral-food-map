@@ -1,5 +1,14 @@
+import type { Metadata } from "next";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { buildMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = buildMetadata({
+  title: "이용약관",
+  description: "요즘뭐먹 서비스 이용 조건과 운영 원칙, 책임 범위를 안내합니다.",
+  path: "/terms",
+  keywords: ["이용약관", "요즘뭐먹 약관"],
+});
 
 export default function TermsPage() {
   return (

@@ -1,14 +1,39 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PageViewTracker from "@/components/PageViewTracker";
+import {
+  NAVER_SITE_VERIFICATION,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
+import { absoluteUrl } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "요즘뭐먹 - 지금 유행하는 음식, 어디서 살까?",
-  description: "바이럴 음식 트렌드를 자동 탐지하고 내 주변 판매처를 찾아주는 서비스",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
   manifest: "/manifest.json",
   icons: {
-    icon: "/icon-192.png",
+    icon: ["/icon-192.png", "/icon-512.png"],
+    shortcut: "/icon-192.png",
     apple: "/icon-192.png",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
 };
 
@@ -24,12 +49,35 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const structuredData = JSON.stringify([
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: absoluteUrl("/logo.png"),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: SITE_NAME,
+      url: SITE_URL,
+      inLanguage: "ko-KR",
+      description: SITE_DESCRIPTION,
+      alternateName: SITE_TITLE,
+    },
+  ]);
+
   return (
     <html lang="ko">
       <head>
         <meta
           name="naver-site-verification"
-          content="3a4eb562b04052e122bc9a198150779ec1be0f7f"
+          content={NAVER_SITE_VERIFICATION}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: structuredData }}
         />
         <script
           async
