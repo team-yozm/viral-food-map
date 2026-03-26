@@ -21,9 +21,18 @@ import type {
   NearbyTrendStore,
   Trend,
   YomechuCategorySlug,
+  YomechuLocationPreset,
   YomechuPlace,
+  YomechuResultCount,
   YomechuSpinResponse,
 } from "@/lib/types";
+
+interface YomechuBaseLocation {
+  lat: number;
+  lng: number;
+  label: string;
+  source: "device" | "preset";
+}
 
 interface HomePageClientProps {
   initialTrends: Trend[];
@@ -51,11 +60,14 @@ export default function HomePageClient({
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(
     null
   );
+  const [yomechuBaseLocation, setYomechuBaseLocation] =
+    useState<YomechuBaseLocation | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
   const [sessionId, setSessionId] = useState("");
   const [selectedRadius, setSelectedRadius] = useState(1000);
   const [selectedCategory, setSelectedCategory] =
     useState<YomechuCategorySlug>("all");
+  const [selectedCount, setSelectedCount] = useState<YomechuResultCount>(3);
   const [yomechuLoading, setYomechuLoading] = useState(false);
   const [yomechuError, setYomechuError] = useState<string | null>(null);
   const [yomechuResult, setYomechuResult] = useState<YomechuSpinResponse | null>(
@@ -66,17 +78,33 @@ export default function HomePageClient({
   const requestUserLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationStatus("unsupported");
+      setYomechuBaseLocation((current) =>
+        current?.source === "preset" ? current : null
+      );
       return;
     }
 
     setLocationStatus("loading");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const nextLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        setUserLoc(nextLocation);
+        setYomechuBaseLocation({
+          ...nextLocation,
+          label: "현재 위치",
+          source: "device",
+        });
         setLocationStatus("granted");
       },
       () => {
         setUserLoc(null);
+        setYomechuBaseLocation((current) =>
+          current?.source === "preset" ? current : null
+        );
         setLocationStatus("denied");
       },
       {
@@ -87,6 +115,16 @@ export default function HomePageClient({
     );
   }, []);
 
+  const handleUsePresetLocation = useCallback((preset: YomechuLocationPreset) => {
+    setYomechuBaseLocation({
+      lat: preset.lat,
+      lng: preset.lng,
+      label: preset.label,
+      source: "preset",
+    });
+    setYomechuError(null);
+  }, []);
+
   const fetchTrends = useCallback(async () => {
     const { data } = await supabase
       .from("trends")
@@ -95,10 +133,12 @@ export default function HomePageClient({
       .order("peak_score", { ascending: false });
 
     if (data) {
-      const mapped = data.map((trend: Trend & { stores?: { count: number }[] | null }) => ({
-        ...trend,
-        store_count: trend.stores?.[0]?.count || 0,
-      }));
+      const mapped = data.map(
+        (trend: Trend & { stores?: { count: number }[] | null }) => ({
+          ...trend,
+          store_count: trend.stores?.[0]?.count || 0,
+        })
+      );
       setTrends(mapped);
     }
     setLoading(false);
@@ -163,8 +203,10 @@ export default function HomePageClient({
     locationStatus === "denied" || locationStatus === "unsupported";
 
   const spinYomechu = useCallback(async () => {
-    if (!userLoc || !sessionId) {
-      setYomechuError("현재 위치를 확인한 뒤 다시 시도해 주세요.");
+    if (!yomechuBaseLocation || !sessionId) {
+      setYomechuError(
+        "현재 위치를 확인하거나 기준 지역을 선택한 뒤 다시 시도해 주세요."
+      );
       setRevealOpen(true);
       return;
     }
@@ -177,10 +219,11 @@ export default function HomePageClient({
 
     try {
       const result = await fetchYomechuSpin({
-        lat: userLoc.lat,
-        lng: userLoc.lng,
+        lat: yomechuBaseLocation.lat,
+        lng: yomechuBaseLocation.lng,
         radius_m: selectedRadius,
         category_slug: selectedCategory,
+        result_count: selectedCount,
         session_id: sessionId,
       });
       setYomechuResult(result);
@@ -193,7 +236,13 @@ export default function HomePageClient({
     } finally {
       setYomechuLoading(false);
     }
-  }, [selectedCategory, selectedRadius, sessionId, userLoc]);
+  }, [
+    selectedCategory,
+    selectedCount,
+    selectedRadius,
+    sessionId,
+    yomechuBaseLocation,
+  ]);
 
   const handleCloseReveal = useCallback(() => {
     if (yomechuResult?.spin_id && sessionId) {
@@ -275,14 +324,19 @@ export default function HomePageClient({
           <YomechuLauncher
             open={launcherOpen}
             locationStatus={locationStatus}
+            locationLabel={yomechuBaseLocation?.label ?? null}
+            hasBaseLocation={Boolean(yomechuBaseLocation)}
             selectedRadius={selectedRadius}
             selectedCategory={selectedCategory}
+            selectedCount={selectedCount}
             isSubmitting={yomechuLoading}
             error={yomechuError}
             onRadiusChange={setSelectedRadius}
             onCategoryChange={setSelectedCategory}
+            onCountChange={setSelectedCount}
             onSpin={spinYomechu}
             onRetryLocation={requestUserLocation}
+            onUsePresetLocation={handleUsePresetLocation}
           />
         }
       />
@@ -319,17 +373,17 @@ export default function HomePageClient({
                 판매처 제보
               </Link>
             </div>
-            {lastUpdatedLabel && (
+            {lastUpdatedLabel ? (
               <p className="mt-4 text-xs text-white/80">
                 최근 트렌드 업데이트: {lastUpdatedLabel}
               </p>
-            )}
+            ) : null}
           </div>
         </section>
 
         <InstallPrompt />
 
-        {showLocationNotice && (
+        {showLocationNotice ? (
           <section className="mb-6">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
               <p className="text-sm font-semibold text-amber-900">
@@ -346,11 +400,11 @@ export default function HomePageClient({
               </Link>
             </div>
           </section>
-        )}
+        ) : null}
 
-        {nearbyStores.length > 0 && (
+        {nearbyStores.length > 0 ? (
           <section className="mb-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">📍 내 근처 판매처</h3>
               <Link href="/map" className="text-xs text-primary font-medium">
                 지도에서 보기
@@ -387,14 +441,12 @@ export default function HomePageClient({
               ))}
             </div>
           </section>
-        )}
+        ) : null}
 
         <section>
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex items-center justify-between">
             <h3 className="font-bold text-gray-900">트렌드 목록</h3>
-            <span className="text-xs text-gray-400">
-              {trends.length}개 트렌드
-            </span>
+            <span className="text-xs text-gray-400">{trends.length}개 트렌드</span>
           </div>
 
           {loading ? (

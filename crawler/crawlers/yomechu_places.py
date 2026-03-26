@@ -31,21 +31,9 @@ class YomechuNoResultsError(RuntimeError):
 
 
 CATEGORY_CONFIG = {
-    "all": {
-        "label": "전체",
-        "group_code": "FD6",
-        "tokens": [],
-    },
-    "korean": {
-        "label": "한식",
-        "group_code": "FD6",
-        "tokens": ["한식"],
-    },
-    "chinese": {
-        "label": "중식",
-        "group_code": "FD6",
-        "tokens": ["중식", "중국식"],
-    },
+    "all": {"label": "전체", "group_code": "FD6", "tokens": []},
+    "korean": {"label": "한식", "group_code": "FD6", "tokens": ["한식"]},
+    "chinese": {"label": "중식", "group_code": "FD6", "tokens": ["중식", "중국식"]},
     "japanese": {
         "label": "일식",
         "group_code": "FD6",
@@ -56,31 +44,15 @@ CATEGORY_CONFIG = {
         "group_code": "FD6",
         "tokens": ["양식", "이탈리안", "파스타", "스테이크", "햄버거"],
     },
-    "snack": {
-        "label": "분식",
-        "group_code": "FD6",
-        "tokens": ["분식", "떡볶이", "김밥"],
-    },
-    "chicken": {
-        "label": "치킨",
-        "group_code": "FD6",
-        "tokens": ["치킨", "닭강정"],
-    },
-    "pizza": {
-        "label": "피자",
-        "group_code": "FD6",
-        "tokens": ["피자"],
-    },
+    "snack": {"label": "분식", "group_code": "FD6", "tokens": ["분식", "떡볶이", "김밥"]},
+    "chicken": {"label": "치킨", "group_code": "FD6", "tokens": ["치킨", "닭강정"]},
+    "pizza": {"label": "피자", "group_code": "FD6", "tokens": ["피자"]},
     "asian": {
         "label": "아시안",
         "group_code": "FD6",
         "tokens": ["베트남", "태국", "인도", "동남아", "아시아"],
     },
-    "cafe-dessert": {
-        "label": "카페/디저트",
-        "group_code": "CE7",
-        "tokens": [],
-    },
+    "cafe-dessert": {"label": "카페/디저트", "group_code": "CE7", "tokens": []},
     "pub": {
         "label": "주점",
         "group_code": "FD6",
@@ -118,8 +90,7 @@ def extract_category_label(category_name: str, fallback_label: str) -> str:
 
 
 def matches_category(category_slug: str, category_name: str) -> bool:
-    config = CATEGORY_CONFIG[category_slug]
-    tokens = config["tokens"]
+    tokens = CATEGORY_CONFIG[category_slug]["tokens"]
 
     if category_slug == "cafe-dessert":
         normalized = category_name.lower()
@@ -309,9 +280,20 @@ def apply_quality_gate(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
     return filtered or candidates
 
 
-def weighted_pick(candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    weights = [max(candidate["quality_score"], 0.01) for candidate in candidates]
-    return random.choices(candidates, weights=weights, k=1)[0]
+def weighted_sample_without_replacement(
+    candidates: list[dict[str, Any]],
+    count: int,
+) -> list[dict[str, Any]]:
+    remaining = candidates.copy()
+    winners: list[dict[str, Any]] = []
+
+    while remaining and len(winners) < count:
+        weights = [max(candidate["quality_score"], 0.01) for candidate in remaining]
+        winner = random.choices(remaining, weights=weights, k=1)[0]
+        winners.append(winner)
+        remaining = [candidate for candidate in remaining if candidate["id"] != winner["id"]]
+
+    return winners
 
 
 def build_reel(candidates: list[dict[str, Any]], winner: dict[str, Any]) -> list[dict[str, Any]]:
@@ -350,6 +332,7 @@ async def find_yomechu_candidates(
     lng: float,
     radius_m: int,
     category_slug: str,
+    result_count: int,
 ) -> tuple[list[dict[str, Any]], bool]:
     config = CATEGORY_CONFIG[category_slug]
     requested = await fetch_category_places(config["group_code"], lat, lng, radius_m)
@@ -360,7 +343,7 @@ async def find_yomechu_candidates(
     ]
 
     used_fallback = False
-    if category_slug != "all" and len(requested) < 3:
+    if category_slug != "all" and len(requested) < result_count:
         requested = await fetch_category_places(
             CATEGORY_CONFIG["all"]["group_code"], lat, lng, radius_m
         )
@@ -421,24 +404,30 @@ async def spin_yomechu(
     lng: float,
     radius_m: int,
     category_slug: str,
+    result_count: int,
     session_id: str | None,
 ) -> dict[str, Any]:
     if category_slug not in CATEGORY_CONFIG:
         raise ValueError(f"Unsupported category: {category_slug}")
+
+    if result_count not in (1, 2, 3, 4, 5):
+        raise ValueError(f"Unsupported result count: {result_count}")
 
     candidates, used_fallback = await find_yomechu_candidates(
         lat=lat,
         lng=lng,
         radius_m=radius_m,
         category_slug=category_slug,
+        result_count=result_count,
     )
 
     if not candidates:
         raise YomechuNoResultsError("추천 후보가 없습니다.")
 
     pool = candidates[: min(len(candidates), 15)]
-    winner = weighted_pick(pool)
-    reel = build_reel(pool, winner)
+    winners = weighted_sample_without_replacement(pool, result_count)
+    primary_winner = winners[0]
+    reel = build_reel(pool, primary_winner)
 
     spin_row = insert_yomechu_spin(
         {
@@ -449,7 +438,7 @@ async def spin_yomechu(
             "category_slug": category_slug,
             "pool_size": len(candidates),
             "used_fallback": used_fallback,
-            "winner_place_id": winner["id"],
+            "winner_place_id": primary_winner["id"],
             "reel_place_ids": [item["id"] for item in reel],
         }
     )
@@ -458,8 +447,10 @@ async def spin_yomechu(
         "spin_id": spin_row["id"] if spin_row else None,
         "pool_size": len(candidates),
         "used_fallback": used_fallback,
+        "result_count": len(winners),
         "reel": [build_response_item(item, category_slug) for item in reel],
-        "winner": build_response_item(winner, category_slug),
+        "winner": build_response_item(primary_winner, category_slug),
+        "winners": [build_response_item(item, category_slug) for item in winners],
     }
 
 
@@ -476,8 +467,7 @@ async def refresh_recent_yomechu_ratings() -> dict[str, int]:
             continue
         if (
             last_enriched
-            and last_enriched
-            > now - timedelta(hours=settings.YOMECHU_ENRICH_INTERVAL_HOURS)
+            and last_enriched > now - timedelta(hours=settings.YOMECHU_ENRICH_INTERVAL_HOURS)
         ):
             continue
         eligible_rows.append(row)

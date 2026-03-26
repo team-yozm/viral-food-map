@@ -16,6 +16,7 @@ class SpinRequest(BaseModel):
     lng: float = Field(..., ge=-180, le=180)
     radius_m: int = Field(..., ge=100, le=3000)
     category_slug: str = Field(..., min_length=1)
+    result_count: Literal[1, 2, 3, 4, 5] = 1
     session_id: str | None = Field(default=None, max_length=120)
 
 
@@ -38,6 +39,7 @@ async def create_spin(payload: SpinRequest):
             lng=payload.lng,
             radius_m=payload.radius_m,
             category_slug=payload.category_slug,
+            result_count=payload.result_count,
             session_id=payload.session_id,
         )
     except YomechuNoResultsError as exc:

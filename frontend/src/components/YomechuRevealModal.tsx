@@ -21,19 +21,69 @@ type RevealPhase = "idle" | "fast" | "slow" | "winner";
 
 function getPhaseCopy(phase: RevealPhase, isLoading: boolean) {
   if (isLoading) {
-    return "근처 후보를 뒤섞는 중";
+    return "근처 후보를 정리하는 중입니다.";
   }
 
   switch (phase) {
     case "fast":
-      return "후보를 빠르게 훑는 중";
+      return "후보를 빠르게 훑는 중입니다.";
     case "slow":
-      return "마지막 한 곳을 좁히는 중";
+      return "마지막 추천 결과를 좁히는 중입니다.";
     case "winner":
-      return "오늘의 한 끼가 결정됐어요";
+      return "오늘 갈 곳을 정리했습니다.";
     default:
-      return "후보를 준비하고 있어요";
+      return "추천 후보를 준비하고 있습니다.";
   }
+}
+
+function ResultRow({
+  place,
+  index,
+  onOpenPlace,
+}: {
+  place: YomechuPlace;
+  index: number;
+  onOpenPlace: (place: YomechuPlace) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenPlace(place)}
+      className="w-full rounded-2xl border border-white/10 bg-white/7 p-3 text-left transition-colors hover:bg-white/12"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 text-xs font-bold text-white">
+          {index + 1}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="break-keep text-sm font-semibold text-white">{place.name}</p>
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75">
+              {formatDistanceMeters(place.distance_m)}
+            </span>
+          </div>
+          <p className="mt-1 break-keep text-xs leading-5 text-white/60">
+            {place.address}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="rounded-full bg-primary/18 px-2.5 py-1 text-[11px] font-semibold text-white">
+              {place.category_label}
+            </span>
+            {place.rating ? (
+              <span className="rounded-full bg-amber-300/18 px-2.5 py-1 text-[11px] font-semibold text-amber-100">
+                평점 {place.rating.toFixed(1)}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/75">
+          지도 보기
+        </span>
+      </div>
+    </button>
+  );
 }
 
 export default function YomechuRevealModal({
@@ -46,16 +96,37 @@ export default function YomechuRevealModal({
   onReroll,
   onOpenPlace,
 }: YomechuRevealModalProps) {
-  const reel = useMemo(() => {
-    if (!result) return [];
-    return result.reel.length > 0 ? result.reel : [result.winner];
+  const winners = useMemo(() => {
+    if (!result) {
+      return [];
+    }
+
+    if (Array.isArray(result.winners) && result.winners.length > 0) {
+      return result.winners;
+    }
+
+    return [result.winner];
   }, [result]);
+
+  const primaryWinner = winners[0] ?? null;
+
+  const reel = useMemo(() => {
+    if (!result) {
+      return [];
+    }
+
+    if (result.reel.length > 0) {
+      return result.reel;
+    }
+
+    return primaryWinner ? [primaryWinner] : [];
+  }, [primaryWinner, result]);
 
   const [phase, setPhase] = useState<RevealPhase>("idle");
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    if (!isOpen || !result || reel.length === 0) {
+    if (!isOpen || !primaryWinner || reel.length === 0) {
       setPhase("idle");
       setCurrentIndex(0);
       return;
@@ -68,7 +139,7 @@ export default function YomechuRevealModal({
     setPhase("fast");
     setCurrentIndex(0);
 
-    for (let i = 0; i < 12; i += 1) {
+    for (let index = 0; index < 12; index += 1) {
       elapsed += 80;
       timeouts.push(
         setTimeout(() => {
@@ -79,8 +150,7 @@ export default function YomechuRevealModal({
       );
     }
 
-    const slowIntervals = [160, 200, 240, 300, 360, 420];
-    slowIntervals.forEach((delay) => {
+    for (const delay of [160, 200, 240, 300, 360, 420]) {
       elapsed += delay;
       timeouts.push(
         setTimeout(() => {
@@ -89,7 +159,7 @@ export default function YomechuRevealModal({
           frame += 1;
         }, elapsed)
       );
-    });
+    }
 
     elapsed += 300;
     timeouts.push(
@@ -102,10 +172,9 @@ export default function YomechuRevealModal({
     return () => {
       timeouts.forEach(clearTimeout);
     };
-  }, [isOpen, reel, result]);
+  }, [isOpen, primaryWinner, reel]);
 
-  const activePlace = reel[currentIndex] ?? result?.winner ?? null;
-  const winner = result?.winner ?? null;
+  const activePlace = reel[currentIndex] ?? primaryWinner;
 
   return (
     <AnimatePresence>
@@ -121,9 +190,9 @@ export default function YomechuRevealModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ duration: 0.24, ease: "easeOut" }}
-            className="relative w-full max-w-md overflow-hidden rounded-[32px] border border-white/20 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_35%),linear-gradient(160deg,_#111827_0%,_#160f2d_55%,_#10203c_100%)] p-5 text-white shadow-[0_30px_80px_rgba(17,24,39,0.55)]"
+            className="relative w-full max-w-md overflow-hidden rounded-[32px] border border-white/20 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_35%),linear-gradient(160deg,_#111827_0%,_#160f2d_55%,_#10203c_100%)] p-5 pt-16 text-white shadow-[0_30px_80px_rgba(17,24,39,0.55)]"
           >
-            <div className="absolute left-4 right-4 top-4 flex items-center justify-between gap-2">
+            <div className="absolute left-4 right-4 top-4 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={onBack}
@@ -141,19 +210,26 @@ export default function YomechuRevealModal({
             </div>
 
             <div className="mb-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/55">
-                YOMECHU REVEAL
-              </p>
-              <h3 className="mt-2 text-2xl font-black tracking-[-0.05em] text-white">
-                어디 갈지 딱 정해드릴게요
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/55">
+                  YOMECHU REVEAL
+                </p>
+                {result ? (
+                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/75">
+                    추천 {result.result_count || winners.length}곳
+                  </span>
+                ) : null}
+              </div>
+              <h3 className="mt-2 break-keep text-2xl font-black tracking-[-0.05em] text-white">
+                오늘 갈 곳을 정리해 드릴게요
               </h3>
-              <p className="mt-1 text-sm text-white/68">
+              <p className="mt-1 break-keep text-sm leading-6 text-white/68">
                 {getPhaseCopy(phase, isLoading)}
               </p>
             </div>
 
             {error ? (
-              <div className="rounded-3xl border border-red-300/40 bg-red-400/10 px-4 py-5 text-sm text-red-100">
+              <div className="rounded-3xl border border-red-300/40 bg-red-400/10 px-4 py-5 text-sm leading-6 text-red-100">
                 {error}
               </div>
             ) : isLoading ? (
@@ -166,13 +242,13 @@ export default function YomechuRevealModal({
             ) : activePlace ? (
               <>
                 <div className="rounded-[28px] border border-white/10 bg-white/7 p-4">
-                  <div className="mb-3 flex items-center justify-between">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/75">
                       {phase === "winner" ? "Winner" : "Shuffle"}
                     </span>
                     {result?.used_fallback ? (
                       <span className="rounded-full bg-amber-300/18 px-2.5 py-1 text-[10px] font-semibold text-amber-100">
-                        업종 결과가 적어 전체 후보로 확장됨
+                        업종 후보가 적어서 전체 후보까지 확장했습니다
                       </span>
                     ) : null}
                   </div>
@@ -193,10 +269,10 @@ export default function YomechuRevealModal({
                       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
                         {activePlace.category_label}
                       </p>
-                      <h4 className="mt-2 text-[30px] font-black tracking-[-0.05em] text-white">
+                      <h4 className="mt-2 break-keep text-[28px] font-black tracking-[-0.05em] text-white sm:text-[30px]">
                         {activePlace.name}
                       </h4>
-                      <p className="mt-2 text-sm leading-6 text-white/70">
+                      <p className="mt-2 break-keep text-sm leading-6 text-white/70">
                         {activePlace.address}
                       </p>
 
@@ -222,12 +298,30 @@ export default function YomechuRevealModal({
                   </AnimatePresence>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between text-xs text-white/55">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-white/55">
                   <span>후보 {result?.pool_size ?? 0}곳</span>
-                  <span>{phase === "winner" ? "결정 완료" : "셔플 중"}</span>
+                  <span>{phase === "winner" ? "추천 정리 완료" : "후보를 섞는 중"}</span>
                 </div>
 
-                {phase === "winner" && winner ? (
+                {phase === "winner" && winners.length > 1 ? (
+                  <div className="mt-5">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-white/55">
+                      추천 리스트 · {winners.length}곳
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {winners.map((place, index) => (
+                        <ResultRow
+                          key={`${place.place_id}-${index}`}
+                          place={place}
+                          index={index}
+                          onOpenPlace={onOpenPlace}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {phase === "winner" && primaryWinner ? (
                   <motion.div
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -235,17 +329,17 @@ export default function YomechuRevealModal({
                   >
                     <button
                       type="button"
-                      onClick={() => onOpenPlace(winner)}
+                      onClick={() => onOpenPlace(primaryWinner)}
                       className="w-full rounded-2xl bg-gradient-to-r from-primary via-fuchsia-500 to-secondary px-4 py-3 text-sm font-black tracking-[0.02em] text-white shadow-[0_16px_32px_rgba(155,125,212,0.28)]"
                     >
-                      지도에서 보기
+                      {winners.length > 1 ? "1순위 지도에서 보기" : "지도에서 보기"}
                     </button>
                     <button
                       type="button"
                       onClick={onReroll}
                       className="w-full rounded-2xl border border-white/14 bg-white/8 px-4 py-3 text-sm font-semibold text-white/82 transition-colors hover:bg-white/12"
                     >
-                      다시 돌리기
+                      다시 추천받기
                     </button>
                   </motion.div>
                 ) : null}
