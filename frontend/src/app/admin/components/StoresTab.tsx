@@ -62,7 +62,8 @@ export default function StoresTab() {
     const { data } = await supabase
       .from("stores")
       .select("*, trends(name)")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(0, 9999);
     if (data) setStores(data as StoreRow[]);
     setLoading(false);
   };

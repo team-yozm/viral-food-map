@@ -48,7 +48,7 @@ export default function MapPage() {
     if (!mapBounds) return;
     let query = supabase
       .from("stores")
-      .select("*, trends(name)")
+      .select("id, name, address, lat, lng, phone, place_url, rating, verified, trend_id, trends(name)")
       .gte("lat", mapBounds.sw.lat)
       .lte("lat", mapBounds.ne.lat)
       .gte("lng", mapBounds.sw.lng)
