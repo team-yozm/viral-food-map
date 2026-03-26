@@ -111,12 +111,22 @@ declare namespace kakao.maps {
         addr: string,
         callback: (result: any[], status: any) => void
       ): void;
+      coord2Address(
+        x: number,
+        y: number,
+        callback: (result: any[], status: any) => void
+      ): void;
     }
     class Places {
       keywordSearch(
         keyword: string,
         callback: (result: any[], status: any, pagination: PlacesPagination) => void,
-        options?: { size?: number; category_group_code?: string }
+        options?: {
+          size?: number;
+          category_group_code?: string;
+          x?: number;
+          y?: number;
+        }
       ): void;
     }
     interface PlacesPagination {

@@ -66,11 +66,10 @@ function getLocationStatusLabel(
 function getLocationDescription(
   status: LocationStatus,
   source: "device" | "preset" | "manual" | null,
-  locationLabel: string | null,
   hasBaseLocation: boolean
 ) {
   if (source === "device") {
-    return "현재 위치를 기본으로 사용하고 있습니다. 필요하면 위치 지정하기로 바꿀 수 있습니다.";
+    return "현재 위치를 기본 기준으로 사용 중입니다. 필요하면 위치 지정하기로 바꿀 수 있습니다.";
   }
 
   if (hasBaseLocation) {
@@ -85,10 +84,31 @@ function getLocationDescription(
     case "unsupported":
       return "이 브라우저에서는 위치 정보를 읽을 수 없습니다. 위치 지정하기로 기준 위치를 정해 주세요.";
     default:
-      return locationLabel
-        ? `${locationLabel} 기준으로 추천합니다.`
-        : "현재 위치를 기본으로 사용합니다. 필요하면 위치 지정하기로 바꿀 수 있습니다.";
+      return "현재 위치를 기본으로 사용합니다. 필요하면 위치 지정하기로 바꿀 수 있습니다.";
   }
+}
+
+function getLocationLine(
+  source: "device" | "preset" | "manual" | null,
+  locationLabel: string | null
+) {
+  if (!locationLabel) {
+    return "기준 위치가 아직 지정되지 않았습니다.";
+  }
+
+  if (source === "device") {
+    if (locationLabel === "현재 위치") {
+      return "기준 위치: 현재 위치";
+    }
+
+    return `기준 위치: 현재 위치 · ${locationLabel}`;
+  }
+
+  if (locationLabel === "선택 위치") {
+    return "기준 위치: 선택 위치";
+  }
+
+  return `기준 위치: 선택 위치 · ${locationLabel}`;
 }
 
 export default function YomechuLauncher({
@@ -120,9 +140,9 @@ export default function YomechuLauncher({
   const statusDescription = getLocationDescription(
     locationStatus,
     locationSource,
-    locationLabel,
     hasBaseLocation
   );
+  const locationLine = getLocationLine(locationSource, locationLabel);
 
   return (
     <AnimatePresence initial={false}>
@@ -179,9 +199,7 @@ export default function YomechuLauncher({
                   </button>
                 </div>
                 <p className="mt-2 break-keep text-xs leading-5 text-gray-500">
-                  {locationLabel
-                    ? `기준 위치: ${locationLabel}`
-                    : "기준 위치를 지정하면 원하는 지역으로 바로 추천받을 수 있습니다."}
+                  {locationLine}
                 </p>
               </div>
 

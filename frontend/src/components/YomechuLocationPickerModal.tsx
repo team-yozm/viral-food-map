@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-const KAKAO_MAPS_SCRIPT_ID = "yomechu-kakao-sdk-maps";
+import {
+  ensureKakaoMapsLoaded,
+  getAddressLabelFromCoords,
+} from "@/lib/kakao-loader";
 
 type Coordinates = {
   lat: number;
@@ -31,83 +34,6 @@ interface YomechuLocationPickerModalProps {
   onConfirm: (selection: LocationSelection) => void;
 }
 
-let kakaoMapsPromise: Promise<void> | null = null;
-
-function loadExternalScript(id: string, src: string) {
-  return new Promise<void>((resolve, reject) => {
-    const existingScript = document.getElementById(id) as HTMLScriptElement | null;
-    if (existingScript) {
-      if (existingScript.dataset.loaded === "true") {
-        resolve();
-        return;
-      }
-
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener(
-        "error",
-        () => reject(new Error(`Failed to load ${id}`)),
-        { once: true }
-      );
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = id;
-    script.src = src;
-    script.async = true;
-    script.addEventListener(
-      "load",
-      () => {
-        script.dataset.loaded = "true";
-        resolve();
-      },
-      { once: true }
-    );
-    script.addEventListener(
-      "error",
-      () => reject(new Error(`Failed to load ${id}`)),
-      { once: true }
-    );
-    document.head.appendChild(script);
-  });
-}
-
-function ensureKakaoMapsLoaded() {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Window is not available."));
-  }
-
-  if (window.kakao?.maps) {
-    return new Promise<void>((resolve) => {
-      kakao.maps.load(() => resolve());
-    });
-  }
-
-  if (kakaoMapsPromise) {
-    return kakaoMapsPromise;
-  }
-
-  const kakaoMapKey = process.env.NEXT_PUBLIC_KAKAO_MAP_KEY;
-  if (!kakaoMapKey) {
-    return Promise.reject(new Error("Kakao Map key is missing."));
-  }
-
-  const mapsUrl = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoMapKey}&autoload=false&libraries=services,clusterer`;
-
-  kakaoMapsPromise = (async () => {
-    await loadExternalScript(KAKAO_MAPS_SCRIPT_ID, mapsUrl);
-
-    await new Promise<void>((resolve) => {
-      kakao.maps.load(() => resolve());
-    });
-  })().catch((error) => {
-    kakaoMapsPromise = null;
-    throw error;
-  });
-
-  return kakaoMapsPromise;
-}
-
 export default function YomechuLocationPickerModal({
   isOpen,
   initialCenter,
@@ -119,6 +45,7 @@ export default function YomechuLocationPickerModal({
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const markerRef = useRef<kakao.maps.Marker | null>(null);
   const placesRef = useRef<kakao.maps.services.Places | null>(null);
+  const selectionRequestIdRef = useRef(0);
 
   const [selectedCoords, setSelectedCoords] = useState<Coordinates>(initialCenter);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(initialLabel ?? null);
@@ -129,32 +56,45 @@ export default function YomechuLocationPickerModal({
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchPlaceResult[]>([]);
 
-  const coordinateLabel = useMemo(
-    () => `${selectedCoords.lat.toFixed(5)}, ${selectedCoords.lng.toFixed(5)}`,
-    [selectedCoords]
-  );
+  const moveMarker = useCallback((coords: Coordinates) => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
 
-  const moveToSelection = useCallback(
-    (coords: Coordinates, label?: string | null) => {
-      const map = mapRef.current;
-      const nextLabel = label ?? null;
+    const latLng = new kakao.maps.LatLng(coords.lat, coords.lng);
+    markerRef.current?.setMap(null);
+    markerRef.current = new kakao.maps.Marker({
+      position: latLng,
+      map,
+    });
+    map.panTo(latLng);
+  }, []);
+
+  const applySelection = useCallback(
+    async (coords: Coordinates, label: string | null) => {
+      const requestId = Date.now();
+      selectionRequestIdRef.current = requestId;
 
       setSelectedCoords(coords);
-      setSelectedLabel(nextLabel);
+      setSelectedLabel(label ?? "주소 확인 중");
+      moveMarker(coords);
 
-      if (!map) {
+      if (label) {
         return;
       }
 
-      const latLng = new kakao.maps.LatLng(coords.lat, coords.lng);
-      markerRef.current?.setMap(null);
-      markerRef.current = new kakao.maps.Marker({
-        position: latLng,
-        map,
-      });
-      map.panTo(latLng);
+      const resolvedLabel = await getAddressLabelFromCoords(coords.lat, coords.lng).catch(
+        () => null
+      );
+
+      if (selectionRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setSelectedLabel(resolvedLabel ?? "선택 위치");
     },
-    []
+    [moveMarker]
   );
 
   useEffect(() => {
@@ -251,7 +191,7 @@ export default function YomechuLocationPickerModal({
               return;
             }
 
-            moveToSelection(
+            void applySelection(
               {
                 lat: latLng.getLat(),
                 lng: latLng.getLng(),
@@ -262,9 +202,7 @@ export default function YomechuLocationPickerModal({
         );
       } catch (nextError) {
         setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "지도를 불러오지 못했습니다."
+          nextError instanceof Error ? nextError.message : "지도를 불러오지 못했습니다."
         );
       } finally {
         if (!disposed) {
@@ -282,7 +220,7 @@ export default function YomechuLocationPickerModal({
       mapRef.current = null;
       placesRef.current = null;
     };
-  }, [initialCenter, isOpen, moveToSelection]);
+  }, [applySelection, initialCenter, isOpen]);
 
   const handleSearch = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -310,15 +248,6 @@ export default function YomechuLocationPickerModal({
         placesRef.current = places;
 
         const center = mapRef.current?.getCenter();
-        const searchOptions = (
-          center
-            ? {
-                x: center.getLng(),
-                y: center.getLat(),
-                size: 8,
-              }
-            : { size: 8 }
-        ) as any;
         places.keywordSearch(
           keyword,
           (result, status) => {
@@ -335,7 +264,13 @@ export default function YomechuLocationPickerModal({
 
             setSearchLoading(false);
           },
-          searchOptions
+          center
+            ? {
+                x: center.getLng(),
+                y: center.getLat(),
+                size: 8,
+              }
+            : { size: 8 }
         );
       } catch (nextError) {
         setSearchLoading(false);
@@ -351,19 +286,28 @@ export default function YomechuLocationPickerModal({
 
   const handleSelectSearchResult = useCallback(
     (place: SearchPlaceResult) => {
+      const address = place.road_address_name || place.address_name;
       const nextCoords = {
         lat: Number(place.y),
         lng: Number(place.x),
       };
 
-      moveToSelection(nextCoords, place.place_name);
+      void applySelection(nextCoords, address || place.place_name);
       setQuery(place.place_name);
       setSearchResults([]);
       setSearchMessage(null);
       mapRef.current?.setLevel(3);
     },
-    [moveToSelection]
+    [applySelection]
   );
+
+  const handleConfirm = useCallback(() => {
+    onConfirm({
+      lat: selectedCoords.lat,
+      lng: selectedCoords.lng,
+      label: selectedLabel ?? "선택 위치",
+    });
+  }, [onConfirm, selectedCoords, selectedLabel]);
 
   return (
     <AnimatePresence>
@@ -401,9 +345,13 @@ export default function YomechuLocationPickerModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 transition-colors hover:border-primary hover:text-primary"
+                aria-label="닫기"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition-colors hover:border-primary hover:text-primary"
               >
-                닫기
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 6l12 12" />
+                  <path d="M18 6l-12 12" />
+                </svg>
               </button>
             </div>
 
@@ -460,15 +408,11 @@ export default function YomechuLocationPickerModal({
               <div ref={mapElementRef} className="h-72 w-full" />
             </div>
 
-            <div className="mt-3 rounded-2xl bg-gray-50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
-                SELECTED
-              </p>
-              <p className="mt-1 break-keep text-sm font-semibold text-gray-900">
-                {selectedLabel ?? "선택 위치"}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">{coordinateLabel}</p>
-            </div>
+            <p className="mt-3 break-keep text-sm text-gray-600">
+              {selectedLabel
+                ? `선택 위치: ${selectedLabel}`
+                : "지도를 누르거나 검색 결과를 선택해 주세요."}
+            </p>
 
             {loading ? (
               <p className="mt-3 text-sm text-gray-500">지도를 불러오는 중입니다.</p>
@@ -490,13 +434,7 @@ export default function YomechuLocationPickerModal({
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  onConfirm({
-                    lat: selectedCoords.lat,
-                    lng: selectedCoords.lng,
-                    label: selectedLabel ?? "선택 위치",
-                  })
-                }
+                onClick={handleConfirm}
                 disabled={loading}
                 className="flex-1 rounded-2xl bg-gradient-to-r from-primary via-fuchsia-500 to-secondary px-4 py-3 text-sm font-black tracking-[0.02em] text-white shadow-[0_16px_32px_rgba(155,125,212,0.22)] disabled:cursor-not-allowed disabled:opacity-50"
               >

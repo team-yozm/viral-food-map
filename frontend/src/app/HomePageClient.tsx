@@ -16,6 +16,7 @@ import {
   formatDistanceMeters,
   sendYomechuFeedback,
 } from "@/lib/crawler";
+import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
 import { supabase } from "@/lib/supabase";
 import type {
   LocationStatus,
@@ -121,6 +122,51 @@ export default function HomePageClient({
     }
   }, [launcherOpen]);
 
+  const updateBaseLocationLabel = useCallback(
+    (
+      source: YomechuBaseLocation["source"],
+      coords: { lat: number; lng: number },
+      fallbackLabel: string
+    ) => {
+      void getAddressLabelFromCoords(coords.lat, coords.lng)
+        .then((address) => {
+          setYomechuBaseLocation((current) => {
+            if (
+              !current ||
+              current.source !== source ||
+              current.lat !== coords.lat ||
+              current.lng !== coords.lng
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              label: address ?? fallbackLabel,
+            };
+          });
+        })
+        .catch(() => {
+          setYomechuBaseLocation((current) => {
+            if (
+              !current ||
+              current.source !== source ||
+              current.lat !== coords.lat ||
+              current.lng !== coords.lng
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              label: fallbackLabel,
+            };
+          });
+        });
+    },
+    []
+  );
+
   const requestUserLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationStatus("unsupported");
@@ -145,6 +191,7 @@ export default function HomePageClient({
           source: "device",
         });
         setLocationStatus("granted");
+        updateBaseLocationLabel("device", nextLocation, "현재 위치");
       },
       () => {
         setUserLoc(null);
@@ -159,7 +206,7 @@ export default function HomePageClient({
         maximumAge: 0,
       }
     );
-  }, []);
+  }, [updateBaseLocationLabel]);
 
   const handleUsePresetLocation = useCallback((preset: YomechuLocationPreset) => {
     setYomechuBaseLocation({
@@ -169,7 +216,12 @@ export default function HomePageClient({
       source: "preset",
     });
     setYomechuError(null);
-  }, []);
+    updateBaseLocationLabel(
+      "preset",
+      { lat: preset.lat, lng: preset.lng },
+      preset.label
+    );
+  }, [updateBaseLocationLabel]);
 
   const handleConfirmManualLocation = useCallback(
     (selection: { lat: number; lng: number; label: string }) => {
