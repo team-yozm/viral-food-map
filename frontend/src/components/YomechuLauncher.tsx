@@ -94,7 +94,7 @@ export default function YomechuLauncher({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
-          className="border-t border-gray-100 bg-[radial-gradient(circle_at_top,_rgba(155,125,212,0.14),_transparent_55%),linear-gradient(180deg,_#fff_0%,_#faf7ff_100%)]"
+          className="border-t border-gray-100 bg-[radial-gradient(circle_at_top,_rgba(155,125,212,0.14),_transparent_55%),linear-gradient(180deg,_#fff_0%,_#faf7ff_100%)] max-h-[calc(100vh-120px)] overflow-y-auto"
         >
           <div className="mx-auto max-w-lg px-4 pb-4">
             <div className="rounded-[28px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_40px_rgba(155,125,212,0.18)]">
