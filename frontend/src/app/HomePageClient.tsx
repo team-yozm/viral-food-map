@@ -172,11 +172,11 @@ export default function HomePageClient({
   }, []);
 
   const handleConfirmManualLocation = useCallback(
-    (coords: { lat: number; lng: number }) => {
+    (selection: { lat: number; lng: number; label: string }) => {
       setYomechuBaseLocation({
-        lat: coords.lat,
-        lng: coords.lng,
-        label: "직접 지정 위치",
+        lat: selection.lat,
+        lng: selection.lng,
+        label: selection.label,
         source: "manual",
       });
       setYomechuError(null);
@@ -186,13 +186,19 @@ export default function HomePageClient({
   );
 
   const fetchTrends = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("trends")
       .select("*, stores(count)")
       .in("status", ["rising", "active"])
       .order("peak_score", { ascending: false });
 
-    if (data) {
+    if (error || !data) {
+      // 에러 시 기존 데이터 유지, 빈 화면 방지
+      setLoading(false);
+      return;
+    }
+
+    if (data.length > 0) {
       const mapped = data.map(
         (trend: Trend & { stores?: { count: number }[] | null }) => ({
           ...trend,
@@ -390,6 +396,7 @@ export default function HomePageClient({
           <YomechuLauncher
             open={launcherOpen}
             locationStatus={locationStatus}
+            locationSource={yomechuBaseLocation?.source ?? null}
             locationLabel={yomechuBaseLocation?.label ?? null}
             hasBaseLocation={Boolean(yomechuBaseLocation)}
             selectedRadius={selectedRadius}
@@ -580,6 +587,7 @@ export default function HomePageClient({
       <YomechuLocationPickerModal
         isOpen={locationPickerOpen}
         initialCenter={locationPickerInitialCenter}
+        initialLabel={yomechuBaseLocation?.label ?? null}
         onClose={() => setLocationPickerOpen(false)}
         onConfirm={handleConfirmManualLocation}
       />
