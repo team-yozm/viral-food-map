@@ -602,13 +602,8 @@ export default function HomePageClient({
           </section>
         ) : null}
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-bold text-gray-900">트렌드 목록</h3>
-            <span className="text-xs text-gray-400">{trends.length}개 트렌드</span>
-          </div>
-
-          {loading ? (
+        {loading ? (
+          <section>
             <div className="flex flex-col gap-8">
               {[1, 2, 3].map((index) => (
                 <div
@@ -617,7 +612,9 @@ export default function HomePageClient({
                 />
               ))}
             </div>
-          ) : trends.length === 0 ? (
+          </section>
+        ) : trends.length === 0 ? (
+          <section>
             <div className="text-center py-14 text-gray-400">
               <p className="text-5xl mb-4">🍽️</p>
               <p className="font-semibold text-gray-600 text-base">
@@ -627,14 +624,46 @@ export default function HomePageClient({
                 크롤러가 SNS를 샅샅이 뒤지고 있어요 🔍
               </p>
             </div>
-          ) : (
-            <div className="flex flex-col gap-8">
-              {trends.map((trend) => (
-                <TrendCard key={trend.id} trend={trend} />
-              ))}
-            </div>
-          )}
-        </section>
+          </section>
+        ) : (
+          <>
+            {trends.filter((t) => t.type === "viral").length > 0 && (
+              <section className="mb-8">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900">🔥 지금 뜨는 트렌드</h3>
+                  <span className="text-xs text-gray-400">
+                    {trends.filter((t) => t.type === "viral").length}개
+                  </span>
+                </div>
+                <div className="flex flex-col gap-8">
+                  {trends
+                    .filter((t) => t.type === "viral")
+                    .map((trend) => (
+                      <TrendCard key={trend.id} trend={trend} />
+                    ))}
+                </div>
+              </section>
+            )}
+
+            {trends.filter((t) => t.type === "steady").length > 0 && (
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900">🏅 스테디셀러</h3>
+                  <span className="text-xs text-gray-400">
+                    {trends.filter((t) => t.type === "steady").length}개
+                  </span>
+                </div>
+                <div className="flex flex-col gap-8">
+                  {trends
+                    .filter((t) => t.type === "steady")
+                    .map((trend) => (
+                      <TrendCard key={trend.id} trend={trend} />
+                    ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
         <Footer />
       </main>
       <YomechuLocationPickerModal

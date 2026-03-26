@@ -3,6 +3,7 @@ export interface Trend {
   name: string;
   category: string;
   status: "rising" | "active" | "declining" | "inactive";
+  type: "viral" | "steady";
   detected_at: string;
   peak_score: number;
   search_volume_data: Record<string, number>;
