@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import KakaoMap, { type MapBounds } from "@/components/KakaoMap";
+import { openExternalUrl, openInstagramTag } from "@/lib/external-links";
 import { supabase } from "@/lib/supabase";
 import type { Store, Trend } from "@/lib/types";
 
@@ -214,7 +215,14 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                       }
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openExternalUrl(
+                          store.place_url ||
+                            `https://map.naver.com/p/search/${encodeURIComponent(store.name)}`
+                        );
+                      }}
                       className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-green-600 transition-colors"
                     >
                       네이버
@@ -225,7 +233,11 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openInstagramTag(store.name);
+                      }}
                       className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:opacity-90 transition-opacity"
                     >
                       인스타

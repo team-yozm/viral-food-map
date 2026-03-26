@@ -16,6 +16,7 @@ import {
   formatDistanceMeters,
   sendYomechuFeedback,
 } from "@/lib/crawler";
+import { openExternalUrl } from "@/lib/external-links";
 import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
 import { supabase } from "@/lib/supabase";
 import type {
@@ -421,7 +422,7 @@ export default function HomePageClient({
         });
       }
 
-      window.open(place.place_url, "_blank", "noopener,noreferrer");
+      openExternalUrl(place.place_url);
     },
     [sessionId, yomechuResult]
   );

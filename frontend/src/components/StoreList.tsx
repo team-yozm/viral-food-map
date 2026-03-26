@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { openExternalUrl, openInstagramTag } from "@/lib/external-links";
 import type { Store } from "@/lib/types";
 
 interface StoreListProps {
@@ -111,7 +112,11 @@ export default function StoreList({
               href={getStoreLink(store)}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openExternalUrl(getStoreLink(store));
+              }}
               className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-green-600 transition-colors"
             >
               네이버
@@ -119,11 +124,7 @@ export default function StoreList({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                const tag = encodeURIComponent(store.name.replace(/\s/g, ""));
-                window.location.href = `instagram://tag?name=${tag}`;
-                setTimeout(() => {
-                  window.open(`https://www.instagram.com/explore/tags/${tag}`, "_blank");
-                }, 1500);
+                openInstagramTag(store.name);
               }}
               className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:opacity-90 transition-opacity"
             >
