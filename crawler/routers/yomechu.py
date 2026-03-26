@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from crawlers.yomechu_places import CATEGORY_CONFIG, YomechuNoResultsError, spin_yomechu
-from database import insert_yomechu_feedback
 
 router = APIRouter(prefix="/api/yomechu", tags=["yomechu"])
 
@@ -20,7 +19,7 @@ class SpinRequest(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    spin_id: str
+    spin_id: str | None = None
     place_id: str | None = None
     session_id: str | None = Field(default=None, max_length=120)
     event_type: Literal["reroll", "open", "close"]
@@ -48,5 +47,5 @@ async def create_spin(payload: SpinRequest):
 
 @router.post("/feedback")
 async def create_feedback(payload: FeedbackRequest):
-    row = insert_yomechu_feedback(payload.model_dump())
-    return {"ok": True, "feedback_id": row["id"] if row else None}
+    del payload
+    return {"ok": True}

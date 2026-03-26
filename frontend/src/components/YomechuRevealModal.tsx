@@ -100,7 +100,7 @@ export default function YomechuRevealModal({
     return () => {
       timeouts.forEach(clearTimeout);
     };
-  }, [isOpen, result, reel]);
+  }, [isOpen, reel, result]);
 
   const activePlace = reel[currentIndex] ?? result?.winner ?? null;
   const winner = result?.winner ?? null;

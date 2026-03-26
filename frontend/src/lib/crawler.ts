@@ -30,10 +30,6 @@ export const YOMECHU_CATEGORY_OPTIONS: YomechuOption<YomechuCategorySlug>[] = [
   { label: "주점", value: "pub" },
 ];
 
-export function getCrawlerBaseUrl() {
-  return CRAWLER_BASE_URL;
-}
-
 export function formatDistanceMeters(distanceM: number) {
   if (distanceM < 1000) {
     return `${distanceM}m`;
