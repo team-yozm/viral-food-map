@@ -7,7 +7,7 @@ type NextFetchInit = RequestInit & {
 };
 
 export function createServerSupabaseClient(
-  revalidateSeconds = 3600
+  revalidateSeconds = 300
 ): SupabaseClient | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

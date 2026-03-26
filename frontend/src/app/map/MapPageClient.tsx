@@ -12,6 +12,7 @@ interface MapPageClientProps {
 }
 
 export default function MapPageClient({ initialTrends }: MapPageClientProps) {
+  const [trends, setTrends] = useState<Trend[]>(initialTrends);
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedTrendId, setSelectedTrendId] = useState<string | "all">("all");
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -45,9 +46,25 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     );
   }, []);
 
+  const fetchTrends = useCallback(async () => {
+    const { data } = await supabase
+      .from("trends")
+      .select("*")
+      .in("status", ["rising", "active"])
+      .order("peak_score", { ascending: false });
+
+    if (data) {
+      setTrends(data as Trend[]);
+    }
+  }, []);
+
   useEffect(() => {
     requestLocation();
   }, [requestLocation]);
+
+  useEffect(() => {
+    void fetchTrends();
+  }, [fetchTrends]);
 
   useEffect(() => {
     if (!mapBounds) return;
@@ -96,7 +113,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
             >
               전체
             </button>
-          {initialTrends.map((trend) => (
+          {trends.map((trend) => (
             <button
               key={trend.id}
               onClick={() => setSelectedTrendId(trend.id)}

@@ -1,17 +1,24 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import threading
+
 from apscheduler.schedulers.background import BackgroundScheduler
-from detector.trend_detector import detect_trends
+
+from config import settings
+from crawlers.yomechu_places import refresh_recent_yomechu_ratings
 from detector.keyword_discoverer import discover_keywords
 from detector.store_updater import refresh_stores_for_active_trends
-from config import settings
+from detector.trend_detector import detect_trends
 from error_reporting import report_exception_to_discord
 from notifications import send_discord_message
 
 logger = logging.getLogger(__name__)
+
 scheduler = BackgroundScheduler()
 store_update_lock = threading.Lock()
+yomechu_enrich_lock = threading.Lock()
 
 TREND_LABELS = {
     "keywords": "모니터링 키워드",
@@ -23,10 +30,10 @@ TREND_LABELS = {
 }
 
 DISCOVERY_LABELS = {
-    "queries": "메타 쿼리",
-    "collected_posts": "수집 블로그",
+    "queries": "탐색 쿼리",
+    "collected_posts": "수집 포스트",
     "new_keywords": "신규 키워드",
-    "keywords": "발견 키워드",
+    "keywords": "발굴 키워드",
 }
 
 STORE_UPDATE_LABELS = {
@@ -36,15 +43,21 @@ STORE_UPDATE_LABELS = {
     "changed_trends": "추가 발생 트렌드",
 }
 
+YOMECHU_LABELS = {
+    "scanned": "검사 장소",
+    "updated": "평점 갱신",
+}
+
 JOB_LABELS = {
-    "트렌드 탐지": TREND_LABELS,
+    "트렌드 감지": TREND_LABELS,
     "키워드 발굴": DISCOVERY_LABELS,
     "판매처 갱신": STORE_UPDATE_LABELS,
+    "요메추 보강": YOMECHU_LABELS,
 }
 
 
 def _format_summary_lines(summary: dict, labels: dict[str, str]) -> list[str]:
-    lines = []
+    lines: list[str] = []
     for key, label in labels.items():
         value = summary.get(key)
         if value in (None, "", [], {}):
@@ -67,8 +80,7 @@ def _build_job_message(
     lines = [f"[{job_name} {status}]", f"트리거: {trigger}"]
 
     if summary:
-        labels = JOB_LABELS.get(job_name, {})
-        lines.extend(_format_summary_lines(summary, labels))
+        lines.extend(_format_summary_lines(summary, JOB_LABELS.get(job_name, {})))
 
     if error is not None:
         lines.append(f"오류: {error.__class__.__name__}: {error}")
@@ -77,8 +89,8 @@ def _build_job_message(
 
 
 async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
-    job_name = "트렌드 탐지"
-    logger.info(f"{trigger} 트리거: {job_name} 시작")
+    job_name = "트렌드 감지"
+    logger.info("%s 트리거 %s 시작", trigger, job_name)
     await send_discord_message(_build_job_message(job_name, trigger, "시작"))
 
     try:
@@ -88,7 +100,7 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
         )
         return summary
     except Exception as exc:
-        logger.exception(f"{trigger} 트리거: {job_name} 실패")
+        logger.exception("%s 트리거 %s 실패", trigger, job_name)
         await report_exception_to_discord(
             f"{job_name} 실패",
             exc,
@@ -99,7 +111,7 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
 
 async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:
     job_name = "키워드 발굴"
-    logger.info(f"{trigger} 트리거: {job_name} 시작")
+    logger.info("%s 트리거 %s 시작", trigger, job_name)
     await send_discord_message(_build_job_message(job_name, trigger, "시작"))
 
     try:
@@ -109,7 +121,7 @@ async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:
         )
         return summary
     except Exception as exc:
-        logger.exception(f"{trigger} 트리거: {job_name} 실패")
+        logger.exception("%s 트리거 %s 실패", trigger, job_name)
         await report_exception_to_discord(
             f"{job_name} 실패",
             exc,
@@ -121,7 +133,7 @@ async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:
 async def run_store_update_job(trigger: str = "scheduler") -> dict:
     job_name = "판매처 갱신"
     if not store_update_lock.acquire(blocking=False):
-        logger.warning(f"{trigger} 트리거: {job_name} 스킵 (이전 실행 중)")
+        logger.warning("%s 트리거 %s 스킵: 이전 작업이 아직 실행 중", trigger, job_name)
         return {
             "target_trends": 0,
             "processed_trends": 0,
@@ -130,7 +142,7 @@ async def run_store_update_job(trigger: str = "scheduler") -> dict:
             "skipped": True,
         }
 
-    logger.info(f"{trigger} 트리거: {job_name} 시작")
+    logger.info("%s 트리거 %s 시작", trigger, job_name)
 
     try:
         summary = await refresh_stores_for_active_trends()
@@ -140,7 +152,7 @@ async def run_store_update_job(trigger: str = "scheduler") -> dict:
             )
         return summary
     except Exception as exc:
-        logger.exception(f"{trigger} 트리거: {job_name} 실패")
+        logger.exception("%s 트리거 %s 실패", trigger, job_name)
         await report_exception_to_discord(
             f"{job_name} 실패",
             exc,
@@ -151,26 +163,53 @@ async def run_store_update_job(trigger: str = "scheduler") -> dict:
         store_update_lock.release()
 
 
+async def run_yomechu_enrichment_job(trigger: str = "scheduler") -> dict:
+    job_name = "요메추 보강"
+    if not yomechu_enrich_lock.acquire(blocking=False):
+        logger.warning("%s 트리거 %s 스킵: 이전 작업이 아직 실행 중", trigger, job_name)
+        return {"scanned": 0, "updated": 0, "skipped": True}
+
+    logger.info("%s 트리거 %s 시작", trigger, job_name)
+    try:
+        summary = await refresh_recent_yomechu_ratings()
+        if summary.get("updated", 0) > 0:
+            await send_discord_message(
+                _build_job_message(job_name, trigger, "완료", summary=summary)
+            )
+        return summary
+    except Exception as exc:
+        logger.exception("%s 트리거 %s 실패", trigger, job_name)
+        await report_exception_to_discord(
+            f"{job_name} 실패",
+            exc,
+            details={"트리거": trigger},
+        )
+        raise
+    finally:
+        yomechu_enrich_lock.release()
+
+
 def run_trend_detection():
-    """트렌드 탐지 작업 실행"""
-    logger.info("스케줄: 트렌드 탐지 시작")
+    logger.info("스케줄러 트렌드 감지 시작")
     asyncio.run(run_trend_detection_job())
 
 
 def run_keyword_discovery():
-    """키워드 자동 발굴 작업 실행"""
-    logger.info("스케줄: 키워드 발굴 시작")
+    logger.info("스케줄러 키워드 발굴 시작")
     asyncio.run(run_keyword_discovery_job())
 
 
 def run_store_update():
-    """판매처 갱신 작업 실행"""
-    logger.info("스케줄: 판매처 갱신 시작")
+    logger.info("스케줄러 판매처 갱신 시작")
     asyncio.run(run_store_update_job())
 
 
+def run_yomechu_enrichment():
+    logger.info("스케줄러 요메추 평점 보강 시작")
+    asyncio.run(run_yomechu_enrichment_job())
+
+
 def start_scheduler():
-    """스케줄러 시작"""
     scheduler.add_job(
         run_trend_detection,
         "interval",
@@ -178,7 +217,6 @@ def start_scheduler():
         id="trend_detection",
         replace_existing=True,
     )
-
     scheduler.add_job(
         run_keyword_discovery,
         "interval",
@@ -188,7 +226,6 @@ def start_scheduler():
         max_instances=1,
         coalesce=True,
     )
-
     scheduler.add_job(
         run_store_update,
         "interval",
@@ -198,17 +235,26 @@ def start_scheduler():
         max_instances=1,
         coalesce=True,
     )
-
+    scheduler.add_job(
+        run_yomechu_enrichment,
+        "interval",
+        hours=settings.YOMECHU_ENRICH_INTERVAL_HOURS,
+        id="yomechu_enrichment",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     logger.info(
-        f"스케줄러 시작: 트렌드 탐지 {settings.CRAWL_INTERVAL_MINUTES}분, "
-        f"판매처 갱신 {settings.STORE_UPDATE_INTERVAL_MINUTES}분, "
-        f"키워드 발굴 {settings.DISCOVERY_INTERVAL_HOURS}시간 간격"
+        "스케줄러 시작: 트렌드 감지 %s분 / 판매처 갱신 %s분 / 키워드 발굴 %s시간 / 요메추 보강 %s시간",
+        settings.CRAWL_INTERVAL_MINUTES,
+        settings.STORE_UPDATE_INTERVAL_MINUTES,
+        settings.DISCOVERY_INTERVAL_HOURS,
+        settings.YOMECHU_ENRICH_INTERVAL_HOURS,
     )
 
 
 def stop_scheduler():
-    """스케줄러 중지"""
     if not scheduler.running:
         return
     scheduler.shutdown()

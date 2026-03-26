@@ -39,6 +39,20 @@ def get_all_keywords():
     )
 
 
+def get_trends_by_names(names: list[str]):
+    if not names:
+        return []
+    return (
+        get_client()
+        .table("trends")
+        .select("id,name,category,description,image_url")
+        .in_("name", names)
+        .execute()
+        .data
+        or []
+    )
+
+
 def upsert_trend(trend_data: dict):
     return get_client().table("trends").upsert(trend_data).execute()
 
