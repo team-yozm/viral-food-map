@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import logging
 import random
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 
 from config import settings
-from database import get_store_trend_lookup
+from crawlers.store_finder import fetch_naver_rating
+from database import (
+    get_store_trend_lookup,
+    get_yomechu_places_by_external_ids,
+    insert_yomechu_spin,
+    list_recent_yomechu_places,
+    update_yomechu_place,
+    upsert_yomechu_places,
+)
+
+logger = logging.getLogger(__name__)
 
 KAKAO_CATEGORY_URL = "https://dapi.kakao.com/v2/local/search/category.json"
 PAGE_SIZE = 15
@@ -19,9 +31,21 @@ class YomechuNoResultsError(RuntimeError):
 
 
 CATEGORY_CONFIG = {
-    "all": {"label": "전체", "group_code": "FD6", "tokens": []},
-    "korean": {"label": "한식", "group_code": "FD6", "tokens": ["한식"]},
-    "chinese": {"label": "중식", "group_code": "FD6", "tokens": ["중식", "중국식"]},
+    "all": {
+        "label": "전체",
+        "group_code": "FD6",
+        "tokens": [],
+    },
+    "korean": {
+        "label": "한식",
+        "group_code": "FD6",
+        "tokens": ["한식"],
+    },
+    "chinese": {
+        "label": "중식",
+        "group_code": "FD6",
+        "tokens": ["중식", "중국식"],
+    },
     "japanese": {
         "label": "일식",
         "group_code": "FD6",
@@ -32,15 +56,31 @@ CATEGORY_CONFIG = {
         "group_code": "FD6",
         "tokens": ["양식", "이탈리안", "파스타", "스테이크", "햄버거"],
     },
-    "snack": {"label": "분식", "group_code": "FD6", "tokens": ["분식", "떡볶이", "김밥"]},
-    "chicken": {"label": "치킨", "group_code": "FD6", "tokens": ["치킨", "닭강정"]},
-    "pizza": {"label": "피자", "group_code": "FD6", "tokens": ["피자"]},
+    "snack": {
+        "label": "분식",
+        "group_code": "FD6",
+        "tokens": ["분식", "떡볶이", "김밥"],
+    },
+    "chicken": {
+        "label": "치킨",
+        "group_code": "FD6",
+        "tokens": ["치킨", "닭강정"],
+    },
+    "pizza": {
+        "label": "피자",
+        "group_code": "FD6",
+        "tokens": ["피자"],
+    },
     "asian": {
         "label": "아시안",
         "group_code": "FD6",
         "tokens": ["베트남", "태국", "인도", "동남아", "아시아"],
     },
-    "cafe-dessert": {"label": "카페/디저트", "group_code": "CE7", "tokens": []},
+    "cafe-dessert": {
+        "label": "카페/디저트",
+        "group_code": "CE7",
+        "tokens": [],
+    },
     "pub": {
         "label": "주점",
         "group_code": "FD6",
@@ -48,9 +88,26 @@ CATEGORY_CONFIG = {
     },
 }
 
+_trend_lookup_cache: dict[str, Any] = {"expires_at": None, "data": None}
+
 
 def normalize_text(value: str) -> str:
     return re.sub(r"[^0-9a-z가-힣]", "", value.lower())
+
+
+def parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def extract_category_label(category_name: str, fallback_label: str) -> str:
@@ -78,6 +135,24 @@ def matches_category(category_slug: str, category_name: str) -> bool:
     return any(token.lower() in normalized for token in tokens)
 
 
+def infer_category_slug(category_name: str) -> str:
+    for category_slug in [
+        "cafe-dessert",
+        "pub",
+        "chicken",
+        "pizza",
+        "snack",
+        "korean",
+        "chinese",
+        "japanese",
+        "western",
+        "asian",
+    ]:
+        if matches_category(category_slug, category_name):
+            return category_slug
+    return "all"
+
+
 def build_trend_lookup() -> dict[tuple[str, str], list[str]]:
     lookup: dict[tuple[str, str], set[str]] = {}
 
@@ -94,6 +169,18 @@ def build_trend_lookup() -> dict[tuple[str, str], list[str]]:
         lookup[key].add(trend_name)
 
     return {key: sorted(value) for key, value in lookup.items()}
+
+
+def get_trend_lookup() -> dict[tuple[str, str], list[str]]:
+    now = datetime.now(timezone.utc)
+    expires_at = _trend_lookup_cache["expires_at"]
+    if expires_at and expires_at > now and _trend_lookup_cache["data"] is not None:
+        return _trend_lookup_cache["data"]
+
+    data = build_trend_lookup()
+    _trend_lookup_cache["data"] = data
+    _trend_lookup_cache["expires_at"] = now + timedelta(minutes=5)
+    return data
 
 
 async def fetch_category_places(
@@ -138,31 +225,108 @@ async def fetch_category_places(
     return results
 
 
-def distance_weight(distance_m: int, radius_m: int) -> float:
+def merge_live_place(
+    doc: dict[str, Any],
+    trend_lookup: dict[tuple[str, str], list[str]],
+    existing_place: dict[str, Any] | None,
+) -> dict[str, Any]:
+    address = doc.get("road_address_name") or doc.get("address_name") or ""
+    key = (normalize_text(doc.get("place_name", "")), normalize_text(address))
+    existing_trends = existing_place.get("trend_names", []) if existing_place else []
+    trend_names = trend_lookup.get(key, existing_trends)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "external_place_id": str(doc["id"]),
+        "name": doc["place_name"],
+        "address": address,
+        "lat": float(doc["y"]),
+        "lng": float(doc["x"]),
+        "phone": doc.get("phone") or None,
+        "place_url": doc.get("place_url") or None,
+        "category_name": doc.get("category_name") or CATEGORY_CONFIG["all"]["label"],
+        "category_slug": infer_category_slug(doc.get("category_name") or ""),
+        "rating": existing_place.get("rating") if existing_place else None,
+        "quality_score": existing_place.get("quality_score") if existing_place else None,
+        "trend_names": trend_names,
+        "raw_payload": doc,
+        "first_seen_at": existing_place.get("first_seen_at") if existing_place else now_iso,
+        "last_seen_at": now_iso,
+        "last_enriched_at": existing_place.get("last_enriched_at") if existing_place else None,
+    }
+
+
+def distance_score(distance_m: int, radius_m: int) -> float:
     if radius_m <= 0:
         return 1.0
-    return max(0.15, 1 - min(distance_m / radius_m, 1.0))
+    return max(0.0, 1 - min(distance_m / radius_m, 1))
 
 
-def weighted_pick(candidates: list[dict[str, Any]], radius_m: int) -> dict[str, Any]:
-    weights = []
-    for candidate in candidates:
-        base = distance_weight(candidate["distance_m"], radius_m)
-        trend_bonus = 0.2 if candidate.get("trend_names") else 0
-        weights.append(base + trend_bonus)
+def rating_score(rating: float | None) -> float:
+    if rating is None:
+        return 0.45
+    return max(0.0, min(rating / 5, 1.0))
+
+
+def recency_score(last_enriched_at: str | None, last_seen_at: str | None) -> float:
+    reference = parse_iso_datetime(last_enriched_at) or parse_iso_datetime(last_seen_at)
+    if reference is None:
+        return 0.6
+
+    age = datetime.now(timezone.utc) - reference
+    normalized = min(age.total_seconds() / (7 * 24 * 3600), 1.0)
+    return max(0.2, 1 - normalized)
+
+
+def compute_quality_score(place: dict[str, Any], radius_m: int) -> float:
+    distance_component = distance_score(place["distance_m"], radius_m) * 45
+    rating_component = rating_score(place.get("rating")) * 35
+    trend_component = (1 if place.get("trend_names") else 0) * 10
+    recency_component = recency_score(
+        place.get("last_enriched_at"),
+        place.get("last_seen_at"),
+    ) * 5
+    jitter_component = random.random() * 5
+    return round(
+        distance_component
+        + rating_component
+        + trend_component
+        + recency_component
+        + jitter_component,
+        3,
+    )
+
+
+def apply_quality_gate(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(candidates) < 10:
+        return candidates
+
+    filtered = [
+        candidate
+        for candidate in candidates
+        if candidate.get("rating") is not None or candidate.get("trend_names")
+    ]
+    return filtered or candidates
+
+
+def weighted_pick(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    weights = [max(candidate["quality_score"], 0.01) for candidate in candidates]
     return random.choices(candidates, weights=weights, k=1)[0]
 
 
 def build_reel(candidates: list[dict[str, Any]], winner: dict[str, Any]) -> list[dict[str, Any]]:
+    if not candidates:
+        return [winner]
+
     pool = candidates[: min(len(candidates), 8)]
-    reel = [random.choice(pool) for _ in range(11)] if pool else [winner]
+    reel = [random.choice(pool) for _ in range(11)]
     reel.append(winner)
     return reel
 
 
 def build_response_item(place: dict[str, Any], requested_slug: str) -> dict[str, Any]:
     return {
-        "place_id": place["place_id"],
+        "place_id": place["id"],
         "name": place["name"],
         "address": place["address"],
         "category_label": extract_category_label(
@@ -170,11 +334,15 @@ def build_response_item(place: dict[str, Any], requested_slug: str) -> dict[str,
             CATEGORY_CONFIG[requested_slug]["label"],
         ),
         "distance_m": place["distance_m"],
-        "rating": place.get("rating"),
+        "rating": float(place["rating"]) if place.get("rating") is not None else None,
         "trend_names": place.get("trend_names", []),
         "place_url": place.get("place_url")
         or f"https://map.kakao.com/link/search/{place['name']}",
     }
+
+
+def to_place_row(place: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in place.items() if key != "distance_m"}
 
 
 async def find_yomechu_candidates(
@@ -186,7 +354,9 @@ async def find_yomechu_candidates(
     config = CATEGORY_CONFIG[category_slug]
     requested = await fetch_category_places(config["group_code"], lat, lng, radius_m)
     requested = [
-        doc for doc in requested if matches_category(category_slug, doc.get("category_name", ""))
+        doc
+        for doc in requested
+        if matches_category(category_slug, doc.get("category_name", ""))
     ]
 
     used_fallback = False
@@ -199,27 +369,51 @@ async def find_yomechu_candidates(
     if not requested:
         raise YomechuNoResultsError("근처에서 조건에 맞는 매장을 찾지 못했습니다.")
 
-    trend_lookup = build_trend_lookup()
-    candidates: list[dict[str, Any]] = []
+    trend_lookup = get_trend_lookup()
+    external_ids = [str(doc["id"]) for doc in requested]
+    existing_rows = {
+        row["external_place_id"]: row
+        for row in get_yomechu_places_by_external_ids(external_ids)
+    }
 
+    merged_places: list[dict[str, Any]] = []
     for doc in requested:
-        address = doc.get("road_address_name") or doc.get("address_name") or ""
-        key = (normalize_text(doc.get("place_name", "")), normalize_text(address))
+        existing = existing_rows.get(str(doc["id"]))
+        merged = merge_live_place(doc, trend_lookup, existing)
+        merged["distance_m"] = int(doc.get("distance") or 0)
+        merged_places.append(merged)
+
+    merged_places = apply_quality_gate(merged_places)
+    if not merged_places:
+        raise YomechuNoResultsError("추천 후보를 충분히 찾지 못했습니다.")
+
+    for place in merged_places:
+        place["quality_score"] = compute_quality_score(place, radius_m)
+
+    upsert_yomechu_places([to_place_row(place) for place in merged_places])
+    refreshed_rows = {
+        row["external_place_id"]: row
+        for row in get_yomechu_places_by_external_ids(
+            [place["external_place_id"] for place in merged_places]
+        )
+    }
+
+    candidates: list[dict[str, Any]] = []
+    for place in merged_places:
+        refreshed = refreshed_rows.get(place["external_place_id"])
+        if not refreshed:
+            continue
         candidates.append(
             {
-                "place_id": str(doc["id"]),
-                "name": doc["place_name"],
-                "address": address,
-                "category_name": doc.get("category_name") or config["label"],
-                "distance_m": int(doc.get("distance") or 0),
-                "rating": None,
-                "trend_names": trend_lookup.get(key, []),
-                "place_url": doc.get("place_url") or None,
+                **refreshed,
+                "distance_m": place["distance_m"],
+                "quality_score": place["quality_score"],
+                "trend_names": place.get("trend_names", refreshed.get("trend_names", [])),
             }
         )
 
-    candidates.sort(key=lambda item: item["distance_m"])
-    return candidates[: min(len(candidates), 15)], used_fallback
+    candidates.sort(key=lambda item: item["quality_score"], reverse=True)
+    return candidates, used_fallback
 
 
 async def spin_yomechu(
@@ -229,8 +423,6 @@ async def spin_yomechu(
     category_slug: str,
     session_id: str | None,
 ) -> dict[str, Any]:
-    del session_id
-
     if category_slug not in CATEGORY_CONFIG:
         raise ValueError(f"Unsupported category: {category_slug}")
 
@@ -242,15 +434,65 @@ async def spin_yomechu(
     )
 
     if not candidates:
-        raise YomechuNoResultsError("추천할 후보가 없습니다.")
+        raise YomechuNoResultsError("추천 후보가 없습니다.")
 
-    winner = weighted_pick(candidates, radius_m)
-    reel = build_reel(candidates, winner)
+    pool = candidates[: min(len(candidates), 15)]
+    winner = weighted_pick(pool)
+    reel = build_reel(pool, winner)
+
+    spin_row = insert_yomechu_spin(
+        {
+            "session_id": session_id,
+            "lat_rounded": round(lat, 3),
+            "lng_rounded": round(lng, 3),
+            "radius_m": radius_m,
+            "category_slug": category_slug,
+            "pool_size": len(candidates),
+            "used_fallback": used_fallback,
+            "winner_place_id": winner["id"],
+            "reel_place_ids": [item["id"] for item in reel],
+        }
+    )
 
     return {
-        "spin_id": None,
+        "spin_id": spin_row["id"] if spin_row else None,
         "pool_size": len(candidates),
         "used_fallback": used_fallback,
         "reel": [build_response_item(item, category_slug) for item in reel],
         "winner": build_response_item(winner, category_slug),
     }
+
+
+async def refresh_recent_yomechu_ratings() -> dict[str, int]:
+    now = datetime.now(timezone.utc)
+    eligible_rows = []
+    for row in list_recent_yomechu_places(settings.YOMECHU_ENRICH_BATCH_SIZE):
+        last_enriched = parse_iso_datetime(row.get("last_enriched_at"))
+        if (
+            row.get("rating") is not None
+            and last_enriched
+            and last_enriched > now - timedelta(days=1)
+        ):
+            continue
+        if (
+            last_enriched
+            and last_enriched
+            > now - timedelta(hours=settings.YOMECHU_ENRICH_INTERVAL_HOURS)
+        ):
+            continue
+        eligible_rows.append(row)
+
+    updated = 0
+    scanned = 0
+    async with httpx.AsyncClient() as client:
+        for row in eligible_rows[: settings.YOMECHU_ENRICH_BATCH_SIZE]:
+            scanned += 1
+            rating = await fetch_naver_rating(client, row["name"])
+            payload: dict[str, Any] = {"last_enriched_at": now.isoformat()}
+            if rating is not None:
+                payload["rating"] = rating
+                updated += 1
+            update_yomechu_place(row["id"], payload)
+
+    logger.info("요메추 평점 보강 완료: scanned=%s updated=%s", scanned, updated)
+    return {"scanned": scanned, "updated": updated}
