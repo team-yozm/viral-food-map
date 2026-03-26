@@ -129,12 +129,21 @@ export default function DashboardTab() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-  const dailyMax = analytics?.daily_views
-    ? Math.max(...analytics.daily_views.map((d) => d.view_count), 1)
+  const dailyViews = analytics?.daily_views ?? [];
+  const hourlyDistribution = analytics?.hourly_distribution ?? [];
+  const dailyMax = dailyViews.length > 0
+    ? Math.max(...dailyViews.map((d) => d.view_count), 1)
     : 1;
-  const hourlyMax = analytics?.hourly_distribution
-    ? Math.max(...analytics.hourly_distribution.map((h) => h.view_count), 1)
+  const uniqueMax = dailyViews.length > 0
+    ? Math.max(...dailyViews.map((d) => d.unique_count), 1)
     : 1;
+  const hourlyMax = hourlyDistribution.length > 0
+    ? Math.max(...hourlyDistribution.map((h) => h.view_count), 1)
+    : 1;
+  const hourlyDistributionByHour = new Map(
+    hourlyDistribution.map((entry) => [entry.hour, entry.view_count])
+  );
+  const hours = Array.from({ length: 24 }, (_, hour) => hour);
 
   return (
     <div className="flex flex-col gap-6">
@@ -199,46 +208,67 @@ export default function DashboardTab() {
           </div>
 
           {/* 일별 방문 추이 */}
-          {analytics.daily_views && analytics.daily_views.length > 0 && (
+          {dailyViews.length > 0 && (
             <div className="bg-white rounded-xl p-4 border border-gray-100">
               <h3 className="font-semibold text-gray-900 text-sm mb-3">일별 방문 추이 (14일)</h3>
-              <div className="flex items-end gap-1 h-32">
-                {analytics.daily_views.map((day) => {
-                  const heightPercent = (day.view_count / dailyMax) * 100;
-                  return (
-                    <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[10px] text-gray-400">{day.view_count}</span>
-                      <div
-                        className="w-full rounded-t-sm min-h-[2px]"
-                        style={{
-                          height: `${heightPercent}%`,
-                          backgroundColor: "#9B7DD4",
-                        }}
-                      />
-                      <span className="text-[10px] text-gray-400">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-1">
+                    {dailyViews.map((day) => (
+                      <span key={`${day.date}-views-value`} className="flex-1 text-center text-[10px] text-gray-400">
+                        {day.view_count}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-end gap-1 h-24">
+                    {dailyViews.map((day) => {
+                      const heightPercent = (day.view_count / dailyMax) * 100;
+                      return (
+                        <div key={`${day.date}-views-bar`} className="flex-1 h-full flex items-end">
+                          <div
+                            className="w-full rounded-t-sm min-h-[2px]"
+                            style={{
+                              height: `${heightPercent}%`,
+                              backgroundColor: "#9B7DD4",
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-1">
+                    {dailyViews.map((day) => (
+                      <span key={`${day.date}-views-label`} className="flex-1 text-center text-[10px] text-gray-400">
                         {new Date(day.date).getDate()}일
                       </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex items-end gap-1 h-20 mt-4">
-                {analytics.daily_views.map((day) => {
-                  const uniqueMax = Math.max(...analytics.daily_views!.map((d) => d.unique_count), 1);
-                  const heightPercent = (day.unique_count / uniqueMax) * 100;
-                  return (
-                    <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[10px] text-gray-400">{day.unique_count}</span>
-                      <div
-                        className="w-full rounded-t-sm min-h-[2px]"
-                        style={{
-                          height: `${heightPercent}%`,
-                          backgroundColor: "#8BACD8",
-                        }}
-                      />
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-1">
+                    {dailyViews.map((day) => (
+                      <span key={`${day.date}-unique-value`} className="flex-1 text-center text-[10px] text-gray-400">
+                        {day.unique_count}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-end gap-1 h-16">
+                    {dailyViews.map((day) => {
+                      const heightPercent = (day.unique_count / uniqueMax) * 100;
+                      return (
+                        <div key={`${day.date}-unique-bar`} className="flex-1 h-full flex items-end">
+                          <div
+                            className="w-full rounded-t-sm min-h-[2px]"
+                            style={{
+                              height: `${heightPercent}%`,
+                              backgroundColor: "#8BACD8",
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-1">
@@ -254,29 +284,34 @@ export default function DashboardTab() {
           )}
 
           {/* 시간대별 방문 분포 */}
-          {analytics.hourly_distribution && analytics.hourly_distribution.length > 0 && (
+          {hourlyDistribution.length > 0 && (
             <div className="bg-white rounded-xl p-4 border border-gray-100">
               <h3 className="font-semibold text-gray-900 text-sm mb-3">시간대별 방문 분포 (최근 7일)</h3>
-              <div className="flex items-end gap-[2px] h-24">
-                {Array.from({ length: 24 }, (_, hour) => {
-                  const data = analytics.hourly_distribution!.find((h) => h.hour === hour);
-                  const count = data?.view_count || 0;
-                  const heightPercent = (count / hourlyMax) * 100;
-                  return (
-                    <div key={hour} className="flex-1 flex flex-col items-center gap-1">
-                      <div
-                        className="w-full rounded-t-sm min-h-[2px]"
-                        style={{
-                          height: `${heightPercent}%`,
-                          backgroundColor: count > 0 ? "#9B7DD4" : "#E5E7EB",
-                        }}
-                      />
-                      {hour % 3 === 0 && (
-                        <span className="text-[9px] text-gray-400">{hour}</span>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-end gap-[2px] h-24">
+                  {hours.map((hour) => {
+                    const count = hourlyDistributionByHour.get(hour) ?? 0;
+                    const heightPercent = (count / hourlyMax) * 100;
+                    return (
+                      <div key={`${hour}-bar`} className="flex-1 h-full flex items-end">
+                        <div
+                          className="w-full rounded-t-sm min-h-[2px]"
+                          style={{
+                            height: `${heightPercent}%`,
+                            backgroundColor: count > 0 ? "#9B7DD4" : "#E5E7EB",
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-[2px]">
+                  {hours.map((hour) => (
+                    <span key={`${hour}-label`} className="flex-1 text-center text-[9px] text-gray-400">
+                      {hour % 3 === 0 ? hour : ""}
+                    </span>
+                  ))}
+                </div>
               </div>
               <p className="text-[10px] text-gray-400 mt-1 text-right">시 (0~23)</p>
             </div>
