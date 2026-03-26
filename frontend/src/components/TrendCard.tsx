@@ -47,18 +47,16 @@ export default function TrendCard({ trend }: TrendCardProps) {
           </div>
         )}
         <div className="px-4 py-3">
-          {trend.description && (
-            <p className="text-sm text-gray-500 mb-2 line-clamp-2">
-              {trend.description}
-            </p>
-          )}
+          <p className="text-sm text-gray-400 mb-2 line-clamp-2">
+            {trend.description || "곧 설명이 추가됩니다"}
+          </p>
           <div className="flex items-center justify-between text-xs text-gray-400">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
               판매처 {trend.store_count || 0}곳
             </span>
             <div className="flex items-center gap-1.5">
-              <span>인기도</span>
+              <span title="네이버·SNS 검색량을 기반으로 매주 업데이트됩니다">인기도 ⓘ</span>
               <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-primary"

@@ -123,9 +123,9 @@ export default function TrendDetailPageClient({
             <h2 className="text-xl font-bold text-gray-900">{initialTrend.name}</h2>
             <TrendBadge status={initialTrend.status} />
           </div>
-          {initialTrend.description && (
-            <p className="text-sm text-gray-500">{initialTrend.description}</p>
-          )}
+          <p className="text-sm text-gray-500">
+            {initialTrend.description || "이 트렌드는 최근 감지되어 상세 정보를 준비 중입니다. 판매처를 알고 계시면 제보해주세요!"}
+          </p>
           {initialTrend.search_volume_data &&
             Object.keys(initialTrend.search_volume_data).length > 0 && (
               <VolumeChart data={initialTrend.search_volume_data} />
