@@ -1,25 +1,48 @@
-import uuid
 import logging
+import uuid
 from datetime import datetime
 
-from crawlers.naver_datalab import get_search_trend, calculate_acceleration
-from crawlers.naver_search import get_blog_mention_count
-from crawlers.instagram import get_hashtag_post_count
-from crawlers.store_finder import find_stores_nationwide
-from crawlers.image_finder import find_food_image
-from detector.keyword_manager import get_flat_keywords
-from detector.store_updater import build_store_records
-from database import upsert_trend, insert_stores, get_all_keywords
 from config import settings
+from crawlers.image_finder import find_food_image
+from crawlers.instagram import get_hashtag_post_count
+from crawlers.naver_datalab import calculate_acceleration, get_search_trend
+from crawlers.naver_search import get_blog_mention_count
+from crawlers.store_finder import find_stores_nationwide
+from database import (
+    get_all_keywords,
+    get_trends_by_names,
+    insert_stores,
+    upsert_trend,
+)
+from detector.keyword_manager import get_flat_keywords, is_food_specific_keyword
+from detector.store_updater import build_store_records
 
 logger = logging.getLogger(__name__)
+
+
+def score_acceleration(acceleration: float) -> float:
+    if acceleration >= settings.TREND_RISING_ACCELERATION_THRESHOLD:
+        return 20
+    if acceleration >= 50:
+        return 15
+    if acceleration >= settings.TREND_THRESHOLD:
+        return 10
+    return 0
+
+
+def classify_status(score: float, acceleration: float) -> str:
+    if (
+        score >= settings.TREND_RISING_SCORE_THRESHOLD
+        or acceleration >= settings.TREND_RISING_ACCELERATION_THRESHOLD
+    ):
+        return "rising"
+    return "active"
 
 
 async def detect_trends() -> dict:
     """메인 트렌드 탐지 로직"""
     logger.info("=== 트렌드 탐지 시작 ===")
 
-    # 1. 모니터링 키워드 가져오기
     db_keywords = get_all_keywords()
     if db_keywords:
         keywords = [kw["keyword"] for kw in db_keywords]
@@ -37,10 +60,8 @@ async def detect_trends() -> dict:
 
     logger.info(f"모니터링 키워드 {len(keywords)}개")
 
-    # 2. 네이버 데이터랩에서 검색량 추이 조회
     search_data = await get_search_trend(keywords)
 
-    # 3. 검색량 급등 후보 필터링
     candidates = []
     for keyword, data_points in search_data.items():
         acceleration = calculate_acceleration(data_points)
@@ -58,39 +79,30 @@ async def detect_trends() -> dict:
         logger.info("급등 키워드 없음")
         return summary
 
-    # 4. 교차 검증
     confirmed = []
     for candidate in candidates:
-        kw = candidate["keyword"]
+        keyword = candidate["keyword"]
+        if not is_food_specific_keyword(keyword):
+            logger.info(f"일반어 제외: {keyword}")
+            continue
+
         score = 0.0
 
-        # 네이버 블로그 언급량
-        blog_count = await get_blog_mention_count(kw)
+        blog_count = await get_blog_mention_count(keyword)
         if blog_count > 1000:
             score += 30
         elif blog_count > 100:
             score += 15
 
-        # 인스타그램 해시태그
-        ig_count = await get_hashtag_post_count(kw)
+        ig_count = await get_hashtag_post_count(keyword)
         if ig_count is not None:
             if ig_count > 10000:
                 score += 30
             elif ig_count > 1000:
                 score += 15
 
-        # 검색량 가속도 기반 점수
-        acc = candidate["acceleration"]
-        if acc > 500:
-            score += 40
-        elif acc > 300:
-            score += 30
-        elif acc > 200:
-            score += 20
-        elif acc > 100:
-            score += 15
-        elif acc > 30:
-            score += 10
+        acceleration = candidate["acceleration"]
+        score += score_acceleration(acceleration)
 
         candidate["score"] = score
         candidate["blog_count"] = blog_count
@@ -98,55 +110,65 @@ async def detect_trends() -> dict:
 
         if score >= settings.TREND_SCORE_THRESHOLD:
             confirmed.append(candidate)
-            logger.info(f"트렌드 확정: {kw} (점수 {score})")
+            logger.info(f"트렌드 확정: {keyword} (점수 {score})")
         else:
-            logger.info(f"트렌드 미달: {kw} (점수 {score})")
+            logger.info(f"트렌드 미달: {keyword} (점수 {score})")
 
     summary["confirmed"] = len(confirmed)
     summary["confirmed_keywords"] = [trend["keyword"] for trend in confirmed]
 
-    # 5. 확정된 트렌드 저장 + 판매처 수집
-    for trend in confirmed:
-        kw = trend["keyword"]
+    existing_trends = {
+        trend["name"]: trend
+        for trend in get_trends_by_names(summary["confirmed_keywords"])
+        if trend.get("name")
+    }
 
-        # 카테고리 추정
-        db_kw = next(
-            (k for k in (db_keywords or []) if k["keyword"] == kw),
+    for trend in confirmed:
+        keyword = trend["keyword"]
+        existing_trend = existing_trends.get(keyword)
+
+        db_keyword = next(
+            (item for item in (db_keywords or []) if item["keyword"] == keyword),
             None,
         )
-        category = db_kw["category"] if db_kw else "기타"
+        category = (
+            db_keyword["category"]
+            if db_keyword
+            else existing_trend.get("category") if existing_trend else "기타"
+        )
+        trend_id = existing_trend["id"] if existing_trend else str(uuid.uuid4())
+        status = classify_status(trend["score"], trend["acceleration"])
 
         trend_data = {
-            "id": str(uuid.uuid4()),
-            "name": kw,
+            "id": trend_id,
+            "name": keyword,
             "category": category,
-            "status": "rising" if trend["score"] >= 70 else "active",
+            "status": status,
             "detected_at": datetime.now().isoformat(),
             "peak_score": trend["score"],
             "search_volume_data": {
-                p.get("period", ""): p.get("ratio", 0)
-                for p in trend.get("data_points", [])
+                point.get("period", ""): point.get("ratio", 0)
+                for point in trend.get("data_points", [])
             },
-            "description": None,
-            "image_url": None,
+            "description": existing_trend.get("description") if existing_trend else None,
+            "image_url": existing_trend.get("image_url") if existing_trend else None,
         }
 
-        # 대표 이미지 검색
-        image_url = await find_food_image(kw, category=category)
-        if image_url:
-            trend_data["image_url"] = image_url
-            logger.info(f"'{kw}' 대표 이미지 수집 완료")
+        if not trend_data["image_url"]:
+            image_url = await find_food_image(keyword, category=category)
+            if image_url:
+                trend_data["image_url"] = image_url
+                logger.info(f"'{keyword}' 대표 이미지 수집 완료")
 
         upsert_trend(trend_data)
         summary["stored_trends"] += 1
 
-        # 판매처 검색
-        stores = await find_stores_nationwide(kw)
+        stores = await find_stores_nationwide(keyword)
         if stores:
-            store_records = build_store_records(trend_data["id"], stores)
+            store_records = build_store_records(trend_id, stores)
             insert_stores(store_records)
             summary["stored_stores"] += len(store_records)
-            logger.info(f"'{kw}' 판매처 {len(store_records)}개 등록")
+            logger.info(f"'{keyword}' 판매처 {len(store_records)}개 등록")
 
     logger.info(f"=== 트렌드 탐지 완료: {len(confirmed)}개 확정 ===")
     return summary

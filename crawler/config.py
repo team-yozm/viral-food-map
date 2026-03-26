@@ -13,8 +13,14 @@ class Settings:
     KAKAO_REST_API_KEY: str = os.getenv("KAKAO_REST_API_KEY", "")
     DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
 
-    TREND_THRESHOLD: float = float(os.getenv("TREND_THRESHOLD", "30"))
-    TREND_SCORE_THRESHOLD: float = float(os.getenv("TREND_SCORE_THRESHOLD", "50"))
+    TREND_THRESHOLD: float = float(os.getenv("TREND_THRESHOLD", "20"))
+    TREND_SCORE_THRESHOLD: float = float(os.getenv("TREND_SCORE_THRESHOLD", "15"))
+    TREND_RISING_SCORE_THRESHOLD: float = float(
+        os.getenv("TREND_RISING_SCORE_THRESHOLD", "40")
+    )
+    TREND_RISING_ACCELERATION_THRESHOLD: float = float(
+        os.getenv("TREND_RISING_ACCELERATION_THRESHOLD", "100")
+    )
     CRAWL_INTERVAL_MINUTES: int = int(os.getenv("CRAWL_INTERVAL_MINUTES", "30"))
     STORE_UPDATE_INTERVAL_MINUTES: int = int(
         os.getenv("STORE_UPDATE_INTERVAL_MINUTES", "60")
