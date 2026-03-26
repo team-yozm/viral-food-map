@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import TrendBadge from "@/components/TrendBadge";
+import {
+  fetchCrawlerHealth,
+  getCrawlerBaseUrl,
+  triggerTrendDetection,
+} from "@/lib/crawler";
 import type { AnalyticsSummary } from "@/lib/types";
 
 interface TrendSummary {
@@ -27,6 +32,8 @@ interface DashboardStats {
   keywords: { total: number; active: number };
 }
 
+type RequestStatus = "idle" | "loading" | "success" | "error";
+
 function getPageDisplayName(path: string): string {
   if (path === "/") return "홈";
   if (path === "/map") return "지도";
@@ -42,86 +49,115 @@ export default function DashboardTab() {
   const [recentTrends, setRecentTrends] = useState<TrendSummary[]>([]);
   const [recentStores, setRecentStores] = useState<RecentStore[]>([]);
   const [lastDetected, setLastDetected] = useState<string | null>(null);
-  const [crawlStatus, setCrawlStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [crawlStatus, setCrawlStatus] = useState<RequestStatus>("idle");
+  const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<RequestStatus>("idle");
+  const [healthMessage, setHealthMessage] = useState<string | null>(null);
+  const [lastHealthCheckedAt, setLastHealthCheckedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchData = async () => {
+    const [trendsRes, storesRes, storesVerifiedRes, storesUnverifiedRes, reportsRes, keywordsRes, recentRes, recentStoresRes, analyticsRes] =
+      await Promise.all([
+        supabase.from("trends").select("id, status"),
+        supabase.from("stores").select("*", { count: "exact", head: true }),
+        supabase.from("stores").select("*", { count: "exact", head: true }).eq("verified", true),
+        supabase.from("stores").select("*", { count: "exact", head: true }).eq("verified", false),
+        supabase.from("reports").select("id").eq("status", "pending"),
+        supabase.from("keywords").select("id, is_active"),
+        supabase
+          .from("trends")
+          .select("id, name, status, detected_at, stores(count)")
+          .order("detected_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("stores")
+          .select("id, name, created_at, trends(name)")
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase.rpc("get_analytics_summary", { days_back: 14 }),
+      ]);
+
+    const trends = trendsRes.data || [];
+    const keywords = keywordsRes.data || [];
+
+    setStats({
+      trends: {
+        total: trends.length,
+        rising: trends.filter((t) => t.status === "rising").length,
+        active: trends.filter((t) => t.status === "active").length,
+      },
+      stores: {
+        total: storesRes.count || 0,
+        verified: storesVerifiedRes.count || 0,
+        unverified: storesUnverifiedRes.count || 0,
+      },
+      pendingReports: reportsRes.data?.length || 0,
+      keywords: {
+        total: keywords.length,
+        active: keywords.filter((k) => k.is_active).length,
+      },
+    });
+
+    if (analyticsRes.data) {
+      setAnalytics(analyticsRes.data as AnalyticsSummary);
+    }
+
+    const recentData = (recentRes.data as TrendSummary[]) || [];
+    setRecentTrends(recentData);
+    setRecentStores((recentStoresRes.data as unknown as RecentStore[]) || []);
+    if (recentData.length > 0) {
+      setLastDetected(recentData[0].detected_at);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const [trendsRes, storesRes, storesVerifiedRes, storesUnverifiedRes, reportsRes, keywordsRes, recentRes, recentStoresRes, analyticsRes] =
-        await Promise.all([
-          supabase.from("trends").select("id, status"),
-          supabase.from("stores").select("*", { count: "exact", head: true }),
-          supabase.from("stores").select("*", { count: "exact", head: true }).eq("verified", true),
-          supabase.from("stores").select("*", { count: "exact", head: true }).eq("verified", false),
-          supabase.from("reports").select("id").eq("status", "pending"),
-          supabase.from("keywords").select("id, is_active"),
-          supabase
-            .from("trends")
-            .select("id, name, status, detected_at, stores(count)")
-            .order("detected_at", { ascending: false })
-            .limit(5),
-          supabase
-            .from("stores")
-            .select("id, name, created_at, trends(name)")
-            .order("created_at", { ascending: false })
-            .limit(10),
-          supabase.rpc("get_analytics_summary", { days_back: 14 }),
-        ]);
-
-      const trends = trendsRes.data || [];
-      const keywords = keywordsRes.data || [];
-
-      setStats({
-        trends: {
-          total: trends.length,
-          rising: trends.filter((t) => t.status === "rising").length,
-          active: trends.filter((t) => t.status === "active").length,
-        },
-        stores: {
-          total: storesRes.count || 0,
-          verified: storesVerifiedRes.count || 0,
-          unverified: storesUnverifiedRes.count || 0,
-        },
-        pendingReports: reportsRes.data?.length || 0,
-        keywords: {
-          total: keywords.length,
-          active: keywords.filter((k) => k.is_active).length,
-        },
-      });
-
-      if (analyticsRes.data) {
-        setAnalytics(analyticsRes.data as AnalyticsSummary);
-      }
-
-      const recentData = (recentRes.data as TrendSummary[]) || [];
-      setRecentTrends(recentData);
-      setRecentStores((recentStoresRes.data as unknown as RecentStore[]) || []);
-      if (recentData.length > 0) {
-        setLastDetected(recentData[0].detected_at);
-      }
-      setLoading(false);
-    };
-
-    fetchData();
+    void fetchData();
   }, []);
 
   const triggerCrawl = async () => {
-    const apiUrl =
-      process.env.NEXT_PUBLIC_CRAWLER_BASE_URL ||
-      process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getCrawlerBaseUrl();
     if (!apiUrl) return;
 
     setCrawlStatus("loading");
+    setCrawlMessage(null);
     try {
-      const res = await fetch(`${apiUrl}/api/trends/detect`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error("Failed");
+      const result = await triggerTrendDetection();
+      await fetchData();
       setCrawlStatus("success");
+      setCrawlMessage(
+        `${result.summary.confirmed}개 트렌드, ${result.summary.stored_stores}개 판매처를 반영했습니다.`
+      );
       setTimeout(() => setCrawlStatus("idle"), 3000);
-    } catch {
+    } catch (error) {
       setCrawlStatus("error");
+      setCrawlMessage(
+        error instanceof Error ? error.message : "수동 크롤링 실행에 실패했습니다."
+      );
       setTimeout(() => setCrawlStatus("idle"), 5000);
+    }
+  };
+
+  const checkCrawlerStatus = async () => {
+    const apiUrl = getCrawlerBaseUrl();
+    if (!apiUrl) return;
+
+    setHealthStatus("loading");
+    setHealthMessage(null);
+    try {
+      const result = await fetchCrawlerHealth();
+      setHealthStatus("success");
+      setLastHealthCheckedAt(new Date().toISOString());
+      setHealthMessage(`${result.service} ${result.status}`);
+      setTimeout(() => setHealthStatus("idle"), 3000);
+    } catch (error) {
+      setHealthStatus("error");
+      setLastHealthCheckedAt(new Date().toISOString());
+      setHealthMessage(
+        error instanceof Error ? error.message : "크롤러 상태 확인에 실패했습니다."
+      );
+      setTimeout(() => setHealthStatus("idle"), 5000);
     }
   };
 
@@ -129,9 +165,7 @@ export default function DashboardTab() {
     return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
   }
 
-  const apiUrl =
-    process.env.NEXT_PUBLIC_CRAWLER_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = getCrawlerBaseUrl();
 
   const dailyViews = analytics?.daily_views ?? [];
   const hourlyDistribution = analytics?.hourly_distribution ?? [];
@@ -400,8 +434,61 @@ export default function DashboardTab() {
                 마지막 감지: {new Date(lastDetected).toLocaleString("ko-KR")}
               </p>
             )}
+            {crawlMessage && (
+              <p
+                className={`text-xs mt-2 ${
+                  crawlStatus === "error"
+                    ? "text-red-500"
+                    : crawlStatus === "success"
+                      ? "text-green-600"
+                      : "text-gray-500"
+                }`}
+              >
+                {crawlMessage}
+              </p>
+            )}
+            {healthMessage && (
+              <p
+                className={`text-xs mt-2 ${
+                  healthStatus === "error"
+                    ? "text-red-500"
+                    : healthStatus === "success"
+                      ? "text-blue-600"
+                      : "text-gray-500"
+                }`}
+              >
+                {healthMessage}
+              </p>
+            )}
+            {lastHealthCheckedAt && (
+              <p className="text-xs text-gray-400 mt-1">
+                상태 확인: {new Date(lastHealthCheckedAt).toLocaleString("ko-KR")}
+              </p>
+            )}
           </div>
-          <button
+          <div className="flex flex-col gap-2 sm:items-end">
+            <button
+              onClick={checkCrawlerStatus}
+              disabled={!apiUrl || healthStatus === "loading"}
+              className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 ${
+                healthStatus === "success"
+                  ? "bg-blue-500 text-white"
+                  : healthStatus === "error"
+                    ? "bg-red-500 text-white"
+                    : "bg-sky-100 text-sky-700 hover:bg-sky-200"
+              }`}
+            >
+              {healthStatus === "loading"
+                ? "확인 중..."
+                : healthStatus === "success"
+                  ? "상태 정상"
+                  : healthStatus === "error"
+                    ? "확인 실패"
+                    : !apiUrl
+                      ? "API URL 미설정"
+                      : "상태 체크"}
+            </button>
+            <button
             onClick={triggerCrawl}
             disabled={!apiUrl || crawlStatus === "loading"}
             className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 ${
@@ -423,6 +510,7 @@ export default function DashboardTab() {
                     : "크롤링 실행"}
           </button>
         </div>
+      </div>
       </div>
 
       {/* 최근 트렌드 */}

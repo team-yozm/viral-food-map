@@ -20,6 +20,25 @@ function resolveCrawlerBaseUrl() {
 
 const CRAWLER_BASE_URL = resolveCrawlerBaseUrl();
 
+export interface TrendDetectionSummary {
+  keywords: number;
+  candidates: number;
+  confirmed: number;
+  stored_trends: number;
+  stored_stores: number;
+  confirmed_keywords: string[];
+}
+
+export interface TrendDetectionResponse {
+  message: string;
+  summary: TrendDetectionSummary;
+}
+
+export interface CrawlerHealthResponse {
+  status: string;
+  service: string;
+}
+
 export const YOMECHU_RADIUS_OPTIONS: YomechuOption<number>[] = [
   { label: "500m", value: 500 },
   { label: "1km", value: 1000 },
@@ -63,6 +82,43 @@ export function formatDistanceMeters(distanceM: number) {
   }
 
   return `${(distanceM / 1000).toFixed(1)}km`;
+}
+
+export function getCrawlerBaseUrl() {
+  return CRAWLER_BASE_URL;
+}
+
+export async function triggerTrendDetection(): Promise<TrendDetectionResponse> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/api/trends/detect`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const errorBody = await response
+      .json()
+      .catch(() => ({ detail: "수동 크롤링 실행에 실패했습니다." }));
+    throw new Error(errorBody.detail || "수동 크롤링 실행에 실패했습니다.");
+  }
+
+  return response.json();
+}
+
+export async function fetchCrawlerHealth(): Promise<CrawlerHealthResponse> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/health`);
+
+  if (!response.ok) {
+    throw new Error("크롤러 상태 확인에 실패했습니다.");
+  }
+
+  return response.json();
 }
 
 export async function fetchYomechuSpin(payload: {
