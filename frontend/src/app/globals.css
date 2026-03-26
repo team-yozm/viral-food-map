@@ -59,29 +59,14 @@ body {
   animation: slide-up 0.3s ease-out;
 }
 
-/* 커스텀 스크롤바 */
+/* 스크롤바 숨기기 (기능은 유지) */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(155, 125, 212, 0.3);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(155, 125, 212, 0.5);
-}
-
-/* Firefox */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 125, 212, 0.3) transparent;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 @keyframes reel-glow {
