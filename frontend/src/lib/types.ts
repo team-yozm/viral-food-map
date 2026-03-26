@@ -116,3 +116,49 @@ export interface YomechuSpinResponse {
   winner: YomechuPlace;
   winners: YomechuPlace[];
 }
+
+export interface YomechuPlaceRow {
+  id: string;
+  external_place_id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  phone: string | null;
+  place_url: string | null;
+  category_name: string;
+  category_slug: YomechuCategorySlug;
+  rating: number | null;
+  quality_score: number | null;
+  trend_names: string[];
+  raw_payload: Record<string, unknown>;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_enriched_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface YomechuSpinRow {
+  id: string;
+  session_id: string | null;
+  lat_rounded: number;
+  lng_rounded: number;
+  radius_m: number;
+  category_slug: YomechuCategorySlug;
+  pool_size: number;
+  used_fallback: boolean;
+  winner_place_id: string | null;
+  reel_place_ids: string[];
+  created_at: string;
+}
+
+export interface YomechuFeedbackRow {
+  id: string;
+  spin_id: string;
+  place_id: string | null;
+  session_id: string | null;
+  event_type: "reroll" | "open" | "close";
+  payload: Record<string, unknown>;
+  created_at: string;
+}

@@ -8,9 +8,16 @@ import TrendsTab from "./components/TrendsTab";
 import KeywordsTab from "./components/KeywordsTab";
 import ReportsTab from "./components/ReportsTab";
 import StoresTab from "./components/StoresTab";
+import YomechuTab from "./components/YomechuTab";
 import { supabase } from "@/lib/supabase";
 
-type AdminTab = "dashboard" | "trends" | "keywords" | "reports" | "stores";
+type AdminTab =
+  | "dashboard"
+  | "trends"
+  | "keywords"
+  | "reports"
+  | "stores"
+  | "yomechu";
 
 const TABS: { key: AdminTab; label: string }[] = [
   { key: "dashboard", label: "대시보드" },
@@ -18,6 +25,7 @@ const TABS: { key: AdminTab; label: string }[] = [
   { key: "keywords", label: "키워드" },
   { key: "reports", label: "제보 관리" },
   { key: "stores", label: "판매처 관리" },
+  { key: "yomechu", label: "요메추" },
 ];
 
 export default function AdminPageClient() {
@@ -98,6 +106,7 @@ export default function AdminPageClient() {
         {tab === "keywords" && <KeywordsTab />}
         {tab === "reports" && <ReportsTab />}
         {tab === "stores" && <StoresTab />}
+        {tab === "yomechu" && <YomechuTab />}
       </main>
     </div>
   );
