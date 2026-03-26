@@ -1,15 +1,25 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
 from config import settings
 from error_reporting import install_recent_logs_handler, report_exception_to_discord
 from notifications import send_discord_message
-from routers.trends import router as trends_router
 from routers.stores import router as stores_router
-from scheduler.jobs import run_store_update_job, start_scheduler, stop_scheduler
+from routers.trends import router as trends_router
+from routers.yomechu import router as yomechu_router
+from scheduler.jobs import (
+    run_store_update_job,
+    run_yomechu_enrichment_job,
+    start_scheduler,
+    stop_scheduler,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,10 +32,11 @@ logger = logging.getLogger(__name__)
 def _build_startup_message() -> str:
     return "\n".join(
         [
-            "[크롤러 올라옴]",
-            f"트렌드 탐지 주기: {settings.CRAWL_INTERVAL_MINUTES}분",
+            "[크롤러 시작]",
+            f"트렌드 감지 주기: {settings.CRAWL_INTERVAL_MINUTES}분",
             f"판매처 갱신 주기: {settings.STORE_UPDATE_INTERVAL_MINUTES}분",
             f"키워드 발굴 주기: {settings.DISCOVERY_INTERVAL_HOURS}시간",
+            f"요메추 보강 주기: {settings.YOMECHU_ENRICH_INTERVAL_HOURS}시간",
         ]
     )
 
@@ -34,42 +45,51 @@ def _handle_background_task_result(task: asyncio.Task):
     try:
         task.result()
     except asyncio.CancelledError:
-        logger.info("시작 직후 판매처 갱신 작업 취소")
+        logger.info("시작 직후 백그라운드 작업이 취소됨")
     except Exception:
-        logger.exception("시작 직후 판매처 갱신 작업 실패")
+        logger.exception("시작 직후 백그라운드 작업 실패")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("서버 시작")
     startup_store_update: asyncio.Task | None = None
+    startup_yomechu_enrich: asyncio.Task | None = None
 
     try:
         start_scheduler()
         await send_discord_message(_build_startup_message())
+
         startup_store_update = asyncio.create_task(run_store_update_job(trigger="startup"))
         startup_store_update.add_done_callback(_handle_background_task_result)
+
+        startup_yomechu_enrich = asyncio.create_task(
+            run_yomechu_enrichment_job(trigger="startup")
+        )
+        startup_yomechu_enrich.add_done_callback(_handle_background_task_result)
         yield
     except Exception as exc:
-        logger.exception("크롤러 라이프사이클 처리 실패")
-        await report_exception_to_discord("크롤러 라이프사이클 처리 실패", exc)
+        logger.exception("서버 라이프사이클 처리 실패")
+        await report_exception_to_discord("서버 라이프사이클 처리 실패", exc)
         raise
     finally:
         try:
             if startup_store_update and not startup_store_update.done():
                 startup_store_update.cancel()
+            if startup_yomechu_enrich and not startup_yomechu_enrich.done():
+                startup_yomechu_enrich.cancel()
             stop_scheduler()
         except Exception as exc:
-            logger.exception("크롤러 종료 처리 실패")
-            await report_exception_to_discord("크롤러 종료 처리 실패", exc)
+            logger.exception("서버 종료 처리 실패")
+            await report_exception_to_discord("서버 종료 처리 실패", exc)
             raise
         logger.info("서버 종료")
 
 
 app = FastAPI(
     title="요즘뭐먹 API",
-    description="바이럴 음식 트렌드 탐지 크롤러",
-    version="0.1.0",
+    description="바이럴 음식 트렌드와 요메추 추천을 제공하는 백엔드",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -83,6 +103,7 @@ app.add_middleware(
 
 app.include_router(trends_router)
 app.include_router(stores_router)
+app.include_router(yomechu_router)
 
 
 @app.exception_handler(Exception)

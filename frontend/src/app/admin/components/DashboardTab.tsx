@@ -106,7 +106,9 @@ export default function DashboardTab() {
   }, []);
 
   const triggerCrawl = async () => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl =
+      process.env.NEXT_PUBLIC_CRAWLER_BASE_URL ||
+      process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) return;
 
     setCrawlStatus("loading");
@@ -127,7 +129,9 @@ export default function DashboardTab() {
     return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl =
+    process.env.NEXT_PUBLIC_CRAWLER_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL;
 
   const dailyViews = analytics?.daily_views ?? [];
   const hourlyDistribution = analytics?.hourly_distribution ?? [];

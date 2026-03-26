@@ -26,6 +26,11 @@ export interface Store {
   last_updated: string;
 }
 
+export interface NearbyTrendStore extends Store {
+  distance_km: number;
+  trend_name?: string | null;
+}
+
 export interface Report {
   id?: string;
   trend_id: string;
@@ -56,4 +61,48 @@ export interface AnalyticsSummary {
   trend_views: { trend_id: string; trend_name: string; view_count: number }[] | null;
   hourly_distribution: { hour: number; view_count: number }[] | null;
   daily_views: { date: string; view_count: number; unique_count: number }[] | null;
+}
+
+export type LocationStatus =
+  | "idle"
+  | "loading"
+  | "granted"
+  | "denied"
+  | "unsupported";
+
+export type YomechuCategorySlug =
+  | "all"
+  | "korean"
+  | "chinese"
+  | "japanese"
+  | "western"
+  | "snack"
+  | "chicken"
+  | "pizza"
+  | "asian"
+  | "cafe-dessert"
+  | "pub";
+
+export interface YomechuOption<T extends string | number> {
+  label: string;
+  value: T;
+}
+
+export interface YomechuPlace {
+  place_id: string;
+  name: string;
+  address: string;
+  category_label: string;
+  distance_m: number;
+  rating: number | null;
+  trend_names: string[];
+  place_url: string;
+}
+
+export interface YomechuSpinResponse {
+  spin_id: string | null;
+  pool_size: number;
+  used_fallback: boolean;
+  reel: YomechuPlace[];
+  winner: YomechuPlace;
 }
