@@ -339,6 +339,14 @@ def build_response_item(place: dict[str, Any], requested_slug: str) -> dict[str,
     }
 
 
+def to_place_row(place: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in place.items()
+        if key != "distance_m"
+    }
+
+
 async def find_yomechu_candidates(
     lat: float,
     lng: float,
@@ -380,7 +388,7 @@ async def find_yomechu_candidates(
     for place in merged_places:
         place["quality_score"] = compute_quality_score(place, radius_m)
 
-    upsert_yomechu_places(merged_places)
+    upsert_yomechu_places([to_place_row(place) for place in merged_places])
     refreshed_rows = {
         row["external_place_id"]: row
         for row in get_yomechu_places_by_external_ids([place["external_place_id"] for place in merged_places])
