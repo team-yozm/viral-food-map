@@ -68,6 +68,7 @@ crawler/
 - 카카오맵 타입 추가 시 `src/lib/kakao.d.ts`에 선언 필요
 - 제보는 reports 테이블에만 저장, admin 승인 시 stores에 삽입 (즉시 반영 아님)
 - stores 테이블: place_url, rating 컬럼 있음 (nullable)
+- 커밋 메시지는 반드시 한글로 작성
 
 ## 환경변수
 
