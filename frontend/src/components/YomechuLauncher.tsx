@@ -29,6 +29,7 @@ interface YomechuLauncherProps {
   onCategoryChange: (category: YomechuCategorySlug) => void;
   onCountChange: (count: YomechuResultCount) => void;
   onSpin: () => void;
+  onOpenLocationPicker: () => void;
   onRetryLocation: () => void;
   onUsePresetLocation: (preset: YomechuLocationPreset) => void;
 }
@@ -50,11 +51,11 @@ function getLocationCopy(
     case "loading":
       return "현재 위치를 확인하는 중입니다.";
     case "denied":
-      return "위치 권한이 없어 바로 추천할 수 없습니다. 기준 지역을 선택해 계속 진행할 수 있습니다.";
+      return "위치 권한이 없어도 지도에서 직접 위치를 지정해 계속 진행할 수 있습니다.";
     case "unsupported":
-      return "이 브라우저에서는 위치 정보를 사용할 수 없습니다. 아래 기준 지역으로 대신 추천할 수 있습니다.";
+      return "이 브라우저에서는 위치 정보를 사용할 수 없습니다. 지도에서 직접 위치를 지정하거나 빠른 지역을 선택해 주세요.";
     default:
-      return "현재 위치 또는 선택한 기준 지역을 바탕으로 근처 맛집을 추천합니다.";
+      return "현재 위치 또는 직접 지정한 위치를 기준으로 근처 맛집을 추천합니다.";
   }
 }
 
@@ -80,6 +81,7 @@ export default function YomechuLauncher({
   onCategoryChange,
   onCountChange,
   onSpin,
+  onOpenLocationPicker,
   onRetryLocation,
   onUsePresetLocation,
 }: YomechuLauncherProps) {
@@ -94,7 +96,7 @@ export default function YomechuLauncher({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
-          className="border-t border-gray-100 bg-[radial-gradient(circle_at_top,_rgba(155,125,212,0.14),_transparent_55%),linear-gradient(180deg,_#fff_0%,_#faf7ff_100%)] max-h-[calc(100vh-120px)] overflow-y-auto"
+          className="max-h-[calc(100vh-120px)] overflow-y-auto border-t border-gray-100 bg-[radial-gradient(circle_at_top,_rgba(155,125,212,0.14),_transparent_55%),linear-gradient(180deg,_#fff_0%,_#faf7ff_100%)]"
         >
           <div className="mx-auto max-w-lg px-4 pb-4">
             <div className="rounded-[28px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_40px_rgba(155,125,212,0.18)]">
@@ -114,6 +116,15 @@ export default function YomechuLauncher({
                       현재 기준: {locationLabel}
                     </p>
                   ) : null}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={onOpenLocationPicker}
+                      className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary"
+                    >
+                      위치 지정하기
+                    </button>
+                  </div>
                 </div>
 
                 <div className="self-start rounded-2xl bg-primary px-3 py-2 text-white shadow-lg shadow-primary/20">
@@ -199,19 +210,28 @@ export default function YomechuLauncher({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <p className="break-keep text-sm font-semibold text-gray-900">
-                        위치 권한 없이도 사용할 수 있습니다
+                        위치 권한이 없어도 사용할 수 있습니다
                       </p>
                       <p className="mt-1 break-keep text-sm leading-6 text-gray-500">
-                        기준 지역을 하나 고르면 그 주변으로 요메추를 계속 사용할 수 있습니다.
+                        지도에서 직접 지정하거나 빠른 지역을 선택해 요메추 기준 위치를 정하세요.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={onRetryLocation}
-                      className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary"
-                    >
-                      현재 위치 다시 확인
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={onOpenLocationPicker}
+                        className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary"
+                      >
+                        지도에서 위치 지정
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onRetryLocation}
+                        className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary"
+                      >
+                        내 위치 다시 확인
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -253,13 +273,22 @@ export default function YomechuLauncher({
                   {getSpinButtonLabel(selectedCount, isSubmitting)}
                 </button>
                 {!showPresetSection ? (
-                  <button
-                    type="button"
-                    onClick={onRetryLocation}
-                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary sm:w-auto"
-                  >
-                    위치 다시 확인
-                  </button>
+                  <div className="flex w-full gap-2 sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={onOpenLocationPicker}
+                      className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary sm:flex-none"
+                    >
+                      위치 지정
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onRetryLocation}
+                      className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary sm:flex-none"
+                    >
+                      내 위치 갱신
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </div>

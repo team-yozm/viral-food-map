@@ -18,6 +18,49 @@ function resolveCrawlerBaseUrl() {
   return configuredBaseUrl.replace(/\/+$/, "");
 }
 
+function getCrawlerErrorMessage(detail: unknown, fallback: string) {
+  if (Array.isArray(detail)) {
+    const resultCountIssue = detail.find(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        Array.isArray((item as { loc?: unknown[] }).loc) &&
+        (item as { loc: unknown[] }).loc.includes("result_count")
+    );
+
+    if (resultCountIssue) {
+      return "현재 서버에서 선택한 추천 수를 아직 반영 중입니다. 잠시 후 다시 시도해 주세요.";
+    }
+
+    const joined = detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+
+        if (
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as { msg?: unknown }).msg === "string"
+        ) {
+          return (item as { msg: string }).msg;
+        }
+
+        return null;
+      })
+      .filter((item): item is string => Boolean(item))
+      .join(", ");
+
+    return joined || fallback;
+  }
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  return fallback;
+}
+
 const CRAWLER_BASE_URL = resolveCrawlerBaseUrl();
 
 export interface TrendDetectionSummary {
@@ -142,10 +185,12 @@ export async function fetchYomechuSpin(payload: {
   });
 
   if (!response.ok) {
+    const fallbackMessage = "요메추 추천을 불러오지 못했습니다.";
     const errorBody = await response
       .json()
-      .catch(() => ({ detail: "요메추 추천을 가져오지 못했습니다." }));
-    throw new Error(errorBody.detail || "요메추 추천을 가져오지 못했습니다.");
+      .catch(() => ({ detail: fallbackMessage }));
+
+    throw new Error(getCrawlerErrorMessage(errorBody.detail, fallbackMessage));
   }
 
   return response.json();

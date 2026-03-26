@@ -9,6 +9,7 @@ import Header from "@/components/Header";
 import InstallPrompt from "@/components/InstallPrompt";
 import TrendCard from "@/components/TrendCard";
 import YomechuLauncher from "@/components/YomechuLauncher";
+import YomechuLocationPickerModal from "@/components/YomechuLocationPickerModal";
 import YomechuRevealModal from "@/components/YomechuRevealModal";
 import {
   fetchYomechuSpin,
@@ -31,7 +32,7 @@ interface YomechuBaseLocation {
   lat: number;
   lng: number;
   label: string;
-  source: "device" | "preset";
+  source: "device" | "preset" | "manual";
 }
 
 interface GroupedNearbyStore extends NearbyTrendStore {
@@ -112,6 +113,7 @@ export default function HomePageClient({
     null
   );
   const [revealOpen, setRevealOpen] = useState(false);
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
 
   useEffect(() => {
     if (launcherOpen) {
@@ -123,7 +125,7 @@ export default function HomePageClient({
     if (!navigator.geolocation) {
       setLocationStatus("unsupported");
       setYomechuBaseLocation((current) =>
-        current?.source === "preset" ? current : null
+        current && current.source !== "device" ? current : null
       );
       return;
     }
@@ -147,7 +149,7 @@ export default function HomePageClient({
       () => {
         setUserLoc(null);
         setYomechuBaseLocation((current) =>
-          current?.source === "preset" ? current : null
+          current && current.source !== "device" ? current : null
         );
         setLocationStatus("denied");
       },
@@ -168,6 +170,20 @@ export default function HomePageClient({
     });
     setYomechuError(null);
   }, []);
+
+  const handleConfirmManualLocation = useCallback(
+    (coords: { lat: number; lng: number }) => {
+      setYomechuBaseLocation({
+        lat: coords.lat,
+        lng: coords.lng,
+        label: "직접 지정 위치",
+        source: "manual",
+      });
+      setYomechuError(null);
+      setLocationPickerOpen(false);
+    },
+    []
+  );
 
   const fetchTrends = useCallback(async () => {
     const { data } = await supabase
@@ -245,6 +261,12 @@ export default function HomePageClient({
 
   const showLocationNotice =
     locationStatus === "denied" || locationStatus === "unsupported";
+  const locationPickerInitialCenter =
+    yomechuBaseLocation ??
+    userLoc ?? {
+      lat: 37.5665,
+      lng: 126.978,
+    };
 
   const spinYomechu = useCallback(async () => {
     if (!yomechuBaseLocation || !sessionId) {
@@ -379,6 +401,7 @@ export default function HomePageClient({
             onCategoryChange={setSelectedCategory}
             onCountChange={setSelectedCount}
             onSpin={spinYomechu}
+            onOpenLocationPicker={() => setLocationPickerOpen(true)}
             onRetryLocation={requestUserLocation}
             onUsePresetLocation={handleUsePresetLocation}
           />
@@ -554,6 +577,12 @@ export default function HomePageClient({
         </section>
         <Footer />
       </main>
+      <YomechuLocationPickerModal
+        isOpen={locationPickerOpen}
+        initialCenter={locationPickerInitialCenter}
+        onClose={() => setLocationPickerOpen(false)}
+        onConfirm={handleConfirmManualLocation}
+      />
       <YomechuRevealModal
         isOpen={revealOpen}
         isLoading={yomechuLoading}
