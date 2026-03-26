@@ -126,6 +126,34 @@ export default function YomechuRevealModal({
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const scrollY = window.scrollY;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyPosition = document.body.style.position;
+    const originalBodyTop = document.body.style.top;
+    const originalBodyWidth = document.body.style.width;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+
+    return () => {
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.position = originalBodyPosition;
+      document.body.style.top = originalBodyTop;
+      document.body.style.width = originalBodyWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen || !primaryWinner || reel.length === 0) {
       setPhase("idle");
       setCurrentIndex(0);
@@ -183,14 +211,14 @@ export default function YomechuRevealModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-gray-950/55 px-4 py-4 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-[80] flex items-end justify-center overflow-y-auto bg-gray-950/55 px-4 py-4 backdrop-blur-sm overscroll-contain sm:items-center"
         >
           <motion.div
             initial={{ opacity: 0, y: 32, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ duration: 0.24, ease: "easeOut" }}
-            className="relative w-full max-w-md overflow-hidden rounded-[32px] border border-white/20 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_35%),linear-gradient(160deg,_#111827_0%,_#160f2d_55%,_#10203c_100%)] p-5 pt-16 text-white shadow-[0_30px_80px_rgba(17,24,39,0.55)]"
+            className="relative my-auto max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-[32px] border border-white/20 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_35%),linear-gradient(160deg,_#111827_0%,_#160f2d_55%,_#10203c_100%)] p-5 pt-16 text-white shadow-[0_30px_80px_rgba(17,24,39,0.55)]"
           >
             <div className="absolute left-4 right-4 top-4 flex flex-wrap items-center justify-between gap-2">
               <button
