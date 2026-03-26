@@ -47,10 +47,12 @@ export default function DashboardTab() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [trendsRes, storesRes, reportsRes, keywordsRes, recentRes, recentStoresRes, analyticsRes] =
+      const [trendsRes, storesRes, storesVerifiedRes, storesUnverifiedRes, reportsRes, keywordsRes, recentRes, recentStoresRes, analyticsRes] =
         await Promise.all([
           supabase.from("trends").select("id, status"),
-          supabase.from("stores").select("id, verified"),
+          supabase.from("stores").select("*", { count: "exact", head: true }),
+          supabase.from("stores").select("*", { count: "exact", head: true }).eq("verified", true),
+          supabase.from("stores").select("*", { count: "exact", head: true }).eq("verified", false),
           supabase.from("reports").select("id").eq("status", "pending"),
           supabase.from("keywords").select("id, is_active"),
           supabase
@@ -67,7 +69,6 @@ export default function DashboardTab() {
         ]);
 
       const trends = trendsRes.data || [];
-      const stores = storesRes.data || [];
       const keywords = keywordsRes.data || [];
 
       setStats({
@@ -77,9 +78,9 @@ export default function DashboardTab() {
           active: trends.filter((t) => t.status === "active").length,
         },
         stores: {
-          total: stores.length,
-          verified: stores.filter((s) => s.verified).length,
-          unverified: stores.filter((s) => !s.verified).length,
+          total: storesRes.count || 0,
+          verified: storesVerifiedRes.count || 0,
+          unverified: storesUnverifiedRes.count || 0,
         },
         pendingReports: reportsRes.data?.length || 0,
         keywords: {
