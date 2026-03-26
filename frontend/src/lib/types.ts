@@ -78,9 +78,17 @@ export type YomechuCategorySlug =
   | "cafe-dessert"
   | "pub";
 
+export type YomechuResultCount = 1 | 3 | 5;
+
 export interface YomechuOption<T extends string | number> {
   label: string;
   value: T;
+}
+
+export interface YomechuLocationPreset {
+  label: string;
+  lat: number;
+  lng: number;
 }
 
 export interface YomechuPlace {
@@ -98,6 +106,8 @@ export interface YomechuSpinResponse {
   spin_id: string | null;
   pool_size: number;
   used_fallback: boolean;
+  result_count: YomechuResultCount;
   reel: YomechuPlace[];
   winner: YomechuPlace;
+  winners: YomechuPlace[];
 }

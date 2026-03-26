@@ -144,13 +144,31 @@ def distance_weight(distance_m: int, radius_m: int) -> float:
     return max(0.15, 1 - min(distance_m / radius_m, 1.0))
 
 
-def weighted_pick(candidates: list[dict[str, Any]], radius_m: int) -> dict[str, Any]:
-    weights = []
-    for candidate in candidates:
-        base = distance_weight(candidate["distance_m"], radius_m)
-        trend_bonus = 0.2 if candidate.get("trend_names") else 0
-        weights.append(base + trend_bonus)
-    return random.choices(candidates, weights=weights, k=1)[0]
+def candidate_weight(candidate: dict[str, Any], radius_m: int) -> float:
+    base = distance_weight(candidate["distance_m"], radius_m)
+    trend_bonus = 0.2 if candidate.get("trend_names") else 0
+    return base + trend_bonus
+
+
+def weighted_sample_without_replacement(
+    candidates: list[dict[str, Any]],
+    radius_m: int,
+    count: int,
+) -> list[dict[str, Any]]:
+    remaining = candidates.copy()
+    winners: list[dict[str, Any]] = []
+
+    while remaining and len(winners) < count:
+        weights = [candidate_weight(candidate, radius_m) for candidate in remaining]
+        winner = random.choices(remaining, weights=weights, k=1)[0]
+        winners.append(winner)
+        remaining = [
+            candidate
+            for candidate in remaining
+            if candidate["place_id"] != winner["place_id"]
+        ]
+
+    return winners
 
 
 def build_reel(candidates: list[dict[str, Any]], winner: dict[str, Any]) -> list[dict[str, Any]]:
@@ -182,6 +200,7 @@ async def find_yomechu_candidates(
     lng: float,
     radius_m: int,
     category_slug: str,
+    result_count: int,
 ) -> tuple[list[dict[str, Any]], bool]:
     config = CATEGORY_CONFIG[category_slug]
     requested = await fetch_category_places(config["group_code"], lat, lng, radius_m)
@@ -190,7 +209,7 @@ async def find_yomechu_candidates(
     ]
 
     used_fallback = False
-    if category_slug != "all" and len(requested) < 3:
+    if category_slug != "all" and len(requested) < result_count:
         requested = await fetch_category_places(
             CATEGORY_CONFIG["all"]["group_code"], lat, lng, radius_m
         )
@@ -227,6 +246,7 @@ async def spin_yomechu(
     lng: float,
     radius_m: int,
     category_slug: str,
+    result_count: int,
     session_id: str | None,
 ) -> dict[str, Any]:
     del session_id
@@ -234,23 +254,30 @@ async def spin_yomechu(
     if category_slug not in CATEGORY_CONFIG:
         raise ValueError(f"Unsupported category: {category_slug}")
 
+    if result_count not in (1, 3, 5):
+        raise ValueError(f"Unsupported result count: {result_count}")
+
     candidates, used_fallback = await find_yomechu_candidates(
         lat=lat,
         lng=lng,
         radius_m=radius_m,
         category_slug=category_slug,
+        result_count=result_count,
     )
 
     if not candidates:
         raise YomechuNoResultsError("추천할 후보가 없습니다.")
 
-    winner = weighted_pick(candidates, radius_m)
-    reel = build_reel(candidates, winner)
+    winners = weighted_sample_without_replacement(candidates, radius_m, result_count)
+    primary_winner = winners[0]
+    reel = build_reel(candidates, primary_winner)
 
     return {
         "spin_id": None,
         "pool_size": len(candidates),
         "used_fallback": used_fallback,
+        "result_count": len(winners),
         "reel": [build_response_item(item, category_slug) for item in reel],
-        "winner": build_response_item(winner, category_slug),
+        "winner": build_response_item(primary_winner, category_slug),
+        "winners": [build_response_item(item, category_slug) for item in winners],
     }

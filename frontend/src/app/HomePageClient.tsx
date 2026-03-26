@@ -19,7 +19,9 @@ import type {
   Trend,
   Store,
   YomechuCategorySlug,
+  YomechuLocationPreset,
   YomechuPlace,
+  YomechuResultCount,
   YomechuSpinResponse,
 } from "@/lib/types";
 
@@ -43,6 +45,13 @@ function getDistance(
 interface NearbyStore extends Store {
   distance: number;
   trend_name?: string;
+}
+
+interface YomechuBaseLocation {
+  lat: number;
+  lng: number;
+  label: string;
+  source: "device" | "preset";
 }
 
 interface HomePageClientProps {
@@ -71,11 +80,14 @@ export default function HomePageClient({
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(
     null
   );
+  const [yomechuBaseLocation, setYomechuBaseLocation] =
+    useState<YomechuBaseLocation | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
   const [sessionId, setSessionId] = useState("");
   const [selectedRadius, setSelectedRadius] = useState(1000);
   const [selectedCategory, setSelectedCategory] =
     useState<YomechuCategorySlug>("all");
+  const [selectedCount, setSelectedCount] = useState<YomechuResultCount>(3);
   const [yomechuLoading, setYomechuLoading] = useState(false);
   const [yomechuError, setYomechuError] = useState<string | null>(null);
   const [yomechuResult, setYomechuResult] = useState<YomechuSpinResponse | null>(
@@ -86,17 +98,33 @@ export default function HomePageClient({
   const requestUserLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationStatus("unsupported");
+      setYomechuBaseLocation((current) =>
+        current?.source === "preset" ? current : null
+      );
       return;
     }
 
     setLocationStatus("loading");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const nextLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        setUserLoc(nextLocation);
+        setYomechuBaseLocation({
+          ...nextLocation,
+          label: "내 위치",
+          source: "device",
+        });
         setLocationStatus("granted");
       },
       () => {
         setUserLoc(null);
+        setYomechuBaseLocation((current) =>
+          current?.source === "preset" ? current : null
+        );
         setLocationStatus("denied");
       },
       {
@@ -106,6 +134,19 @@ export default function HomePageClient({
       }
     );
   }, []);
+
+  const handleUsePresetLocation = useCallback(
+    (preset: YomechuLocationPreset) => {
+      setYomechuBaseLocation({
+        lat: preset.lat,
+        lng: preset.lng,
+        label: preset.label,
+        source: "preset",
+      });
+      setYomechuError(null);
+    },
+    []
+  );
 
   const fetchTrends = useCallback(async () => {
     const { data } = await supabase
@@ -189,8 +230,8 @@ export default function HomePageClient({
     locationStatus === "denied" || locationStatus === "unsupported";
 
   const spinYomechu = useCallback(async () => {
-    if (!userLoc || !sessionId) {
-      setYomechuError("현재 위치를 확인한 뒤 다시 시도해 주세요.");
+    if (!yomechuBaseLocation || !sessionId) {
+      setYomechuError("현재 위치를 확인하거나 기준 지역을 선택한 뒤 다시 시도해 주세요.");
       setRevealOpen(true);
       return;
     }
@@ -203,10 +244,11 @@ export default function HomePageClient({
 
     try {
       const result = await fetchYomechuSpin({
-        lat: userLoc.lat,
-        lng: userLoc.lng,
+        lat: yomechuBaseLocation.lat,
+        lng: yomechuBaseLocation.lng,
         radius_m: selectedRadius,
         category_slug: selectedCategory,
+        result_count: selectedCount,
         session_id: sessionId,
       });
       setYomechuResult(result);
@@ -219,7 +261,13 @@ export default function HomePageClient({
     } finally {
       setYomechuLoading(false);
     }
-  }, [selectedCategory, selectedRadius, sessionId, userLoc]);
+  }, [
+    selectedCategory,
+    selectedCount,
+    selectedRadius,
+    sessionId,
+    yomechuBaseLocation,
+  ]);
 
   const handleCloseReveal = useCallback(() => {
     if (yomechuResult?.spin_id && sessionId) {
@@ -301,14 +349,19 @@ export default function HomePageClient({
           <YomechuLauncher
             open={launcherOpen}
             locationStatus={locationStatus}
+            locationLabel={yomechuBaseLocation?.label ?? null}
+            hasBaseLocation={Boolean(yomechuBaseLocation)}
             selectedRadius={selectedRadius}
             selectedCategory={selectedCategory}
+            selectedCount={selectedCount}
             isSubmitting={yomechuLoading}
             error={yomechuError}
             onRadiusChange={setSelectedRadius}
             onCategoryChange={setSelectedCategory}
+            onCountChange={setSelectedCount}
             onSpin={spinYomechu}
             onRetryLocation={requestUserLocation}
+            onUsePresetLocation={handleUsePresetLocation}
           />
         }
       />

@@ -1,6 +1,8 @@
 import type {
   YomechuCategorySlug,
+  YomechuLocationPreset,
   YomechuOption,
+  YomechuResultCount,
   YomechuSpinResponse,
 } from "./types";
 
@@ -23,6 +25,20 @@ export const YOMECHU_RADIUS_OPTIONS: YomechuOption<number>[] = [
   { label: "1km", value: 1000 },
   { label: "2km", value: 2000 },
   { label: "3km", value: 3000 },
+];
+
+export const YOMECHU_COUNT_OPTIONS: YomechuOption<YomechuResultCount>[] = [
+  { label: "1곳", value: 1 },
+  { label: "3곳", value: 3 },
+  { label: "5곳", value: 5 },
+];
+
+export const YOMECHU_LOCATION_PRESETS: YomechuLocationPreset[] = [
+  { label: "서울시청", lat: 37.5665, lng: 126.978 },
+  { label: "강남역", lat: 37.4979, lng: 127.0276 },
+  { label: "홍대입구", lat: 37.5572, lng: 126.9245 },
+  { label: "잠실역", lat: 37.5133, lng: 127.1001 },
+  { label: "성수역", lat: 37.5446, lng: 127.0557 },
 ];
 
 export const YOMECHU_CATEGORY_OPTIONS: YomechuOption<YomechuCategorySlug>[] = [
@@ -52,6 +68,7 @@ export async function fetchYomechuSpin(payload: {
   lng: number;
   radius_m: number;
   category_slug: YomechuCategorySlug;
+  result_count: YomechuResultCount;
   session_id: string;
 }): Promise<YomechuSpinResponse> {
   if (!CRAWLER_BASE_URL) {
