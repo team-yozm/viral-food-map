@@ -26,6 +26,11 @@ export interface Store {
   last_updated: string;
 }
 
+export interface NearbyTrendStore extends Store {
+  distance_km: number;
+  trend_name?: string | null;
+}
+
 export interface Report {
   id?: string;
   trend_id: string;

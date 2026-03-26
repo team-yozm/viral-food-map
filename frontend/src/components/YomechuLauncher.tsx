@@ -50,7 +50,7 @@ function getLocationCopy(
     case "loading":
       return "현재 위치를 확인하는 중입니다.";
     case "denied":
-      return "위치 권한이 없어서 바로 추천할 수 없습니다. 기준 지역을 선택해 계속 진행할 수 있습니다.";
+      return "위치 권한이 없어 바로 추천할 수 없습니다. 기준 지역을 선택해 계속 진행할 수 있습니다.";
     case "unsupported":
       return "이 브라우저에서는 위치 정보를 사용할 수 없습니다. 아래 기준 지역으로 대신 추천할 수 있습니다.";
     default:
@@ -199,7 +199,7 @@ export default function YomechuLauncher({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <p className="break-keep text-sm font-semibold text-gray-900">
-                        위치 권한이 없어도 사용할 수 있습니다
+                        위치 권한 없이도 사용할 수 있습니다
                       </p>
                       <p className="mt-1 break-keep text-sm leading-6 text-gray-500">
                         기준 지역을 하나 고르면 그 주변으로 요메추를 계속 사용할 수 있습니다.
@@ -210,7 +210,7 @@ export default function YomechuLauncher({
                       onClick={onRetryLocation}
                       className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:border-primary hover:text-primary"
                     >
-                      내 위치 다시 확인
+                      현재 위치 다시 확인
                     </button>
                   </div>
 

@@ -2,50 +2,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import Header from "@/components/Header";
+
 import BottomNav from "@/components/BottomNav";
-import TrendCard from "@/components/TrendCard";
-import InstallPrompt from "@/components/InstallPrompt";
 import Footer from "@/components/Footer";
+import Header from "@/components/Header";
+import InstallPrompt from "@/components/InstallPrompt";
+import TrendCard from "@/components/TrendCard";
 import YomechuLauncher from "@/components/YomechuLauncher";
 import YomechuRevealModal from "@/components/YomechuRevealModal";
 import {
   fetchYomechuSpin,
+  formatDistanceMeters,
   sendYomechuFeedback,
 } from "@/lib/crawler";
 import { supabase } from "@/lib/supabase";
 import type {
   LocationStatus,
+  NearbyTrendStore,
   Trend,
-  Store,
   YomechuCategorySlug,
   YomechuLocationPreset,
   YomechuPlace,
   YomechuResultCount,
   YomechuSpinResponse,
 } from "@/lib/types";
-
-function getDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-interface NearbyStore extends Store {
-  distance: number;
-  trend_name?: string;
-}
 
 interface YomechuBaseLocation {
   lat: number;
@@ -74,7 +54,7 @@ export default function HomePageClient({
   lastUpdated,
 }: HomePageClientProps) {
   const [trends, setTrends] = useState<Trend[]>(initialTrends);
-  const [nearbyStores, setNearbyStores] = useState<NearbyStore[]>([]);
+  const [nearbyStores, setNearbyStores] = useState<NearbyTrendStore[]>([]);
   const [loading, setLoading] = useState(initialTrends.length === 0);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(
@@ -115,7 +95,7 @@ export default function HomePageClient({
         setUserLoc(nextLocation);
         setYomechuBaseLocation({
           ...nextLocation,
-          label: "내 위치",
+          label: "현재 위치",
           source: "device",
         });
         setLocationStatus("granted");
@@ -135,18 +115,15 @@ export default function HomePageClient({
     );
   }, []);
 
-  const handleUsePresetLocation = useCallback(
-    (preset: YomechuLocationPreset) => {
-      setYomechuBaseLocation({
-        lat: preset.lat,
-        lng: preset.lng,
-        label: preset.label,
-        source: "preset",
-      });
-      setYomechuError(null);
-    },
-    []
-  );
+  const handleUsePresetLocation = useCallback((preset: YomechuLocationPreset) => {
+    setYomechuBaseLocation({
+      lat: preset.lat,
+      lng: preset.lng,
+      label: preset.label,
+      source: "preset",
+    });
+    setYomechuError(null);
+  }, []);
 
   const fetchTrends = useCallback(async () => {
     const { data } = await supabase
@@ -156,10 +133,12 @@ export default function HomePageClient({
       .order("peak_score", { ascending: false });
 
     if (data) {
-      const mapped = data.map((trend: any) => ({
-        ...trend,
-        store_count: trend.stores?.[0]?.count || 0,
-      }));
+      const mapped = data.map(
+        (trend: Trend & { stores?: { count: number }[] | null }) => ({
+          ...trend,
+          store_count: trend.stores?.[0]?.count || 0,
+        })
+      );
       setTrends(mapped);
     }
     setLoading(false);
@@ -193,25 +172,19 @@ export default function HomePageClient({
   }, [fetchTrends, requestUserLocation]);
 
   useEffect(() => {
-    if (!userLoc) return;
+    if (!userLoc) {
+      setNearbyStores([]);
+      return;
+    }
 
     const fetchNearby = async () => {
-      const { data: stores } = await supabase
-        .from("stores")
-        .select("*, trends(name)")
-        .range(0, 4999);
+      const { data } = await supabase.rpc("get_nearby_trend_stores", {
+        user_lat: userLoc.lat,
+        user_lng: userLoc.lng,
+        result_limit: 5,
+      });
 
-      if (stores) {
-        const withDistance = stores
-          .map((store: any) => ({
-            ...store,
-            trend_name: store.trends?.name,
-            distance: getDistance(userLoc.lat, userLoc.lng, store.lat, store.lng),
-          }))
-          .sort((a: NearbyStore, b: NearbyStore) => a.distance - b.distance)
-          .slice(0, 5);
-        setNearbyStores(withDistance);
-      }
+      setNearbyStores((data as NearbyTrendStore[]) ?? []);
     };
 
     fetchNearby();
@@ -231,7 +204,9 @@ export default function HomePageClient({
 
   const spinYomechu = useCallback(async () => {
     if (!yomechuBaseLocation || !sessionId) {
-      setYomechuError("현재 위치를 확인하거나 기준 지역을 선택한 뒤 다시 시도해 주세요.");
+      setYomechuError(
+        "현재 위치를 확인하거나 기준 지역을 선택한 뒤 다시 시도해 주세요."
+      );
       setRevealOpen(true);
       return;
     }
@@ -398,17 +373,17 @@ export default function HomePageClient({
                 판매처 제보
               </Link>
             </div>
-            {lastUpdatedLabel && (
+            {lastUpdatedLabel ? (
               <p className="mt-4 text-xs text-white/80">
                 최근 트렌드 업데이트: {lastUpdatedLabel}
               </p>
-            )}
+            ) : null}
           </div>
         </section>
 
         <InstallPrompt />
 
-        {showLocationNotice && (
+        {showLocationNotice ? (
           <section className="mb-6">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
               <p className="text-sm font-semibold text-amber-900">
@@ -425,11 +400,11 @@ export default function HomePageClient({
               </Link>
             </div>
           </section>
-        )}
+        ) : null}
 
-        {nearbyStores.length > 0 && (
+        {nearbyStores.length > 0 ? (
           <section className="mb-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">📍 내 근처 판매처</h3>
               <Link href="/map" className="text-xs text-primary font-medium">
                 지도에서 보기
@@ -449,31 +424,29 @@ export default function HomePageClient({
                       <h4 className="font-semibold text-sm text-gray-900 truncate">
                         {store.name}
                       </h4>
-                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex-shrink-0">
-                        {store.trend_name}
-                      </span>
+                      {store.trend_name ? (
+                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex-shrink-0">
+                          {store.trend_name}
+                        </span>
+                      ) : null}
                     </div>
-                    <p className="text-xs text-gray-400 truncate">
-                      {store.address}
-                    </p>
+                    <p className="text-xs text-gray-400 truncate">{store.address}</p>
                   </div>
                   <span className="text-xs text-primary font-semibold flex-shrink-0">
-                    {store.distance < 1
-                      ? `${Math.round(store.distance * 1000)}m`
-                      : `${store.distance.toFixed(1)}km`}
+                    {formatDistanceMeters(
+                      Math.max(Math.round(store.distance_km * 1000), 0)
+                    )}
                   </span>
                 </div>
               ))}
             </div>
           </section>
-        )}
+        ) : null}
 
         <section>
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex items-center justify-between">
             <h3 className="font-bold text-gray-900">트렌드 목록</h3>
-            <span className="text-xs text-gray-400">
-              {trends.length}개 트렌드
-            </span>
+            <span className="text-xs text-gray-400">{trends.length}개 트렌드</span>
           </div>
 
           {loading ? (
