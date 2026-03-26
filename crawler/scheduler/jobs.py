@@ -12,7 +12,7 @@ from detector.keyword_discoverer import discover_keywords
 from detector.store_updater import refresh_stores_for_active_trends
 from detector.trend_detector import detect_trends
 from error_reporting import report_exception_to_discord
-from notifications import send_discord_message
+from notifications import send_discord_message, send_push_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,25 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
         await send_discord_message(
             _build_job_message(job_name, trigger, "완료", summary=summary)
         )
+
+        # 새로 확정된 트렌드가 있으면 웹 푸시 발송
+        new_keywords: list[str] = summary.get("confirmed_keywords", [])
+        if new_keywords:
+            from database import get_client
+            rows = (
+                get_client()
+                .table("trends")
+                .select("id, name")
+                .in_("name", new_keywords)
+                .execute()
+                .data
+            ) or []
+            for row in rows:
+                try:
+                    send_push_notifications(row["name"], row["id"])
+                except Exception as push_exc:
+                    logger.warning("웹 푸시 발송 오류 (%s): %s", row["name"], push_exc)
+
         return summary
     except Exception as exc:
         logger.exception("%s 트리거 %s 실패", trigger, job_name)

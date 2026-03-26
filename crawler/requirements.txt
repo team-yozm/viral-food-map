@@ -7,3 +7,4 @@ beautifulsoup4==4.12.3
 pytrends==4.9.2
 python-dotenv==1.0.1
 kiwipiepy==0.18.0
+pywebpush==2.0.0

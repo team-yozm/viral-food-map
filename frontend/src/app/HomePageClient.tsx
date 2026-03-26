@@ -7,6 +7,7 @@ import BottomNav from "@/components/BottomNav";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import InstallPrompt from "@/components/InstallPrompt";
+import PushSubscribeButton from "@/components/PushSubscribeButton";
 import TrendCard from "@/components/TrendCard";
 import YomechuLauncher from "@/components/YomechuLauncher";
 import YomechuLocationPickerModal from "@/components/YomechuLocationPickerModal";
@@ -509,6 +510,10 @@ export default function HomePageClient({
         </section>
 
         <InstallPrompt />
+
+        <div className="flex justify-center mb-2">
+          <PushSubscribeButton />
+        </div>
 
         {showLocationNotice ? (
           <section className="mb-6">

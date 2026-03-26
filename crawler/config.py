@@ -12,6 +12,9 @@ class Settings:
     NAVER_CLIENT_SECRET: str = os.getenv("NAVER_CLIENT_SECRET", "")
     KAKAO_REST_API_KEY: str = os.getenv("KAKAO_REST_API_KEY", "")
     DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
+    VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
+    VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
+    VAPID_CONTACT: str = os.getenv("VAPID_CONTACT", "mailto:support@yozmeat.com")
 
     TREND_THRESHOLD: float = float(os.getenv("TREND_THRESHOLD", "20"))
     TREND_SCORE_THRESHOLD: float = float(os.getenv("TREND_SCORE_THRESHOLD", "15"))
