@@ -202,7 +202,7 @@ export default function YomechuRevealModal({
     };
   }, [isOpen, primaryWinner, reel]);
 
-  const activePlace = reel[currentIndex] ?? primaryWinner;
+  const activePlace = phase === "winner" ? primaryWinner : (reel[currentIndex] ?? primaryWinner);
 
   return (
     <AnimatePresence>
