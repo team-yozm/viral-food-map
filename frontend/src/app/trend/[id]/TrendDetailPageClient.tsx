@@ -80,8 +80,6 @@ export default function TrendDetailPageClient({
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(
     null
   );
-  const normalizedStoreQuery = storeQuery.trim().toLowerCase();
-  const totalStoreCount = initialStores.length;
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -92,35 +90,6 @@ export default function TrendDetailPageClient({
       );
     }
   }, []);
-
-  const sortedStores = useMemo(() => {
-    return userLoc
-      ? [...initialStores].sort(
-          (a, b) =>
-            getDistance(userLoc.lat, userLoc.lng, a.lat, a.lng) -
-            getDistance(userLoc.lat, userLoc.lng, b.lat, b.lng)
-        )
-      : initialStores;
-  }, [initialStores, userLoc]);
-
-  const filteredStores = useMemo(() => {
-    if (!normalizedStoreQuery) return sortedStores;
-    return sortedStores.filter(
-      (store) =>
-        store.name.toLowerCase().includes(normalizedStoreQuery) ||
-        store.address.toLowerCase().includes(normalizedStoreQuery)
-    );
-  }, [normalizedStoreQuery, sortedStores]);
-
-  const nearestStore = filteredStores[0] ?? sortedStores[0];
-  const mapCenter = nearestStore
-    ? { lat: nearestStore.lat, lng: nearestStore.lng }
-    : { lat: 37.5665, lng: 126.978 };
-  const showStoreSearch = totalStoreCount > 3;
-  const hasActiveSearch = normalizedStoreQuery.length > 0;
-  const storeCountLabel = hasActiveSearch
-    ? `검색 결과 ${filteredStores.length}곳 / 전체 ${totalStoreCount}곳`
-    : `판매처 ${totalStoreCount}곳`;
 
   if (!initialTrend) {
     return (
@@ -134,6 +103,25 @@ export default function TrendDetailPageClient({
       </>
     );
   }
+
+  const sortedStores = useMemo(() => {
+    const sorted = userLoc
+      ? [...initialStores].sort(
+          (a, b) =>
+            getDistance(userLoc.lat, userLoc.lng, a.lat, a.lng) -
+            getDistance(userLoc.lat, userLoc.lng, b.lat, b.lng)
+        )
+      : initialStores;
+    if (!storeQuery.trim()) return sorted;
+    const q = storeQuery.trim().toLowerCase();
+    return sorted.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.address.toLowerCase().includes(q)
+    );
+  }, [initialStores, userLoc, storeQuery]);
+  const nearestStore = sortedStores[0];
+  const mapCenter = nearestStore
+    ? { lat: nearestStore.lat, lng: nearestStore.lng }
+    : { lat: 37.5665, lng: 126.978 };
 
   return (
     <>
@@ -154,7 +142,7 @@ export default function TrendDetailPageClient({
           <p className="text-xs text-gray-400 mt-1 mb-3">
             {initialTrend.detected_at &&
               `${new Date(initialTrend.detected_at).toLocaleDateString("ko-KR")} 감지`}{" "}
-            · 판매처 {totalStoreCount}곳
+            · 판매처 {sortedStores.length}곳
           </p>
           <ShareButton
             title={`${initialTrend.name} - 요즘뭐먹`}
@@ -163,17 +151,23 @@ export default function TrendDetailPageClient({
           />
         </div>
 
-        <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div>
-              <h3 className="font-bold text-gray-900">지도에서 판매처 찾기</h3>
-              <p className="text-xs text-gray-500 mt-1">{storeCountLabel}</p>
-            </div>
+        <KakaoMap
+          stores={sortedStores}
+          center={mapCenter}
+          level={5}
+          autoFitBounds={false}
+          selectedStoreId={selectedStoreId}
+          onMarkerClick={setSelectedStoreId}
+        />
+
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-gray-900">판매처 목록</h3>
             <Link href={`/report?trend=${id}`} className="text-xs text-primary font-medium">
               + 제보하기
             </Link>
           </div>
-          {showStoreSearch && (
+          {initialStores.length > 3 && (
             <div className="mb-3">
               <input
                 type="text"
@@ -184,41 +178,11 @@ export default function TrendDetailPageClient({
               />
             </div>
           )}
-          {hasActiveSearch && filteredStores.length === 0 && (
-            <p className="mb-3 text-xs text-amber-700">
-              검색 결과가 없어 지도에는 표시할 판매처가 없습니다. 다른 이름이나 주소로 다시 찾아보세요.
-            </p>
-          )}
-          <KakaoMap
-            stores={filteredStores}
-            center={mapCenter}
-            level={5}
-            autoFitBounds={false}
-            selectedStoreId={selectedStoreId}
-            onMarkerClick={setSelectedStoreId}
-          />
-        </div>
-
-        <div className="pb-2">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-900">판매처 목록</h3>
-            <p className="text-xs text-gray-500">{storeCountLabel}</p>
-          </div>
           <StoreList
-            stores={filteredStores}
+            stores={sortedStores}
             userLoc={userLoc}
             selectedStoreId={selectedStoreId}
             onStoreClick={setSelectedStoreId}
-            emptyTitle={
-              hasActiveSearch && totalStoreCount > 0
-                ? "검색 결과가 없어요"
-                : "아직 등록된 판매처가 없어요"
-            }
-            emptyDescription={
-              hasActiveSearch && totalStoreCount > 0
-                ? "다른 판매처 이름이나 주소로 다시 찾아보세요."
-                : "제보 탭에서 알려주세요!"
-            }
           />
         </div>
       </main>

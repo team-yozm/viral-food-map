@@ -9,8 +9,6 @@ interface StoreListProps {
   userLoc?: { lat: number; lng: number } | null;
   selectedStoreId?: string | null;
   onStoreClick?: (storeId: string) => void;
-  emptyTitle?: string;
-  emptyDescription?: string;
 }
 
 function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -65,8 +63,6 @@ export default function StoreList({
   userLoc,
   selectedStoreId,
   onStoreClick,
-  emptyTitle = "아직 등록된 판매처가 없어요",
-  emptyDescription = "제보 탭에서 알려주세요!",
 }: StoreListProps) {
   useEffect(() => {
     if (!selectedStoreId) return;
@@ -79,8 +75,8 @@ export default function StoreList({
     return (
       <div className="text-center py-8 text-gray-400">
         <p className="text-3xl mb-2">📍</p>
-        <p className="text-sm">{emptyTitle}</p>
-        <p className="text-xs mt-1">{emptyDescription}</p>
+        <p className="text-sm">아직 등록된 판매처가 없어요</p>
+        <p className="text-xs mt-1">제보 탭에서 알려주세요!</p>
       </div>
     );
   }
