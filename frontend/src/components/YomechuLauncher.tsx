@@ -7,12 +7,14 @@ import {
   YOMECHU_COUNT_OPTIONS,
   YOMECHU_LOCATION_PRESETS,
   YOMECHU_RADIUS_OPTIONS,
+  YOMECHU_SITUATION_OPTIONS,
 } from "@/lib/crawler";
 import type {
   LocationStatus,
   YomechuCategorySlug,
   YomechuLocationPreset,
   YomechuResultCount,
+  YomechuSituation,
 } from "@/lib/types";
 
 interface YomechuLauncherProps {
@@ -24,11 +26,13 @@ interface YomechuLauncherProps {
   selectedRadius: number;
   selectedCategory: YomechuCategorySlug;
   selectedCount: YomechuResultCount;
+  selectedSituation: YomechuSituation;
   isSubmitting: boolean;
   error: string | null;
   onRadiusChange: (radius: number) => void;
   onCategoryChange: (category: YomechuCategorySlug) => void;
   onCountChange: (count: YomechuResultCount) => void;
+  onSituationChange: (situation: YomechuSituation) => void;
   onSpin: () => void;
   onOpenLocationPicker: () => void;
   onRetryLocation: () => void;
@@ -120,11 +124,13 @@ export default function YomechuLauncher({
   selectedRadius,
   selectedCategory,
   selectedCount,
+  selectedSituation,
   isSubmitting,
   error,
   onRadiusChange,
   onCategoryChange,
   onCountChange,
+  onSituationChange,
   onSpin,
   onOpenLocationPicker,
   onRetryLocation,
@@ -269,6 +275,25 @@ export default function YomechuLauncher({
                           selectedCategory === option.value
                             ? "bg-primary text-white shadow-lg shadow-primary/20"
                             : "bg-primary/8 text-primary hover:bg-primary/12"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-gray-500">상황</p>
+                  <div className="flex flex-wrap gap-2">
+                    {YOMECHU_SITUATION_OPTIONS.map((option) => (
+                      <button
+                        key={option.value ?? "none"}
+                        type="button"
+                        onClick={() => onSituationChange(option.value)}
+                        className={`rounded-full px-3 py-2 text-sm font-semibold transition-all ${
+                          selectedSituation === option.value
+                            ? "bg-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/20"
+                            : "bg-fuchsia-500/8 text-fuchsia-600 hover:bg-fuchsia-500/12"
                         }`}
                       >
                         {option.label}

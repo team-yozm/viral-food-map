@@ -30,6 +30,7 @@ import type {
   YomechuLocationPreset,
   YomechuPlace,
   YomechuResultCount,
+  YomechuSituation,
   YomechuSpinResponse,
 } from "@/lib/types";
 
@@ -112,6 +113,7 @@ export default function HomePageClient({
   const [selectedCategory, setSelectedCategory] =
     useState<YomechuCategorySlug>("all");
   const [selectedCount, setSelectedCount] = useState<YomechuResultCount>(3);
+  const [selectedSituation, setSelectedSituation] = useState<YomechuSituation>(null);
   const [yomechuLoading, setYomechuLoading] = useState(false);
   const [yomechuError, setYomechuError] = useState<string | null>(null);
   const [yomechuResult, setYomechuResult] = useState<YomechuSpinResponse | null>(
@@ -352,6 +354,7 @@ export default function HomePageClient({
         radius_m: selectedRadius,
         category_slug: selectedCategory,
         result_count: selectedCount,
+        situation: selectedSituation,
         session_id: sessionId,
       });
       setYomechuResult(result);
@@ -458,11 +461,13 @@ export default function HomePageClient({
             selectedRadius={selectedRadius}
             selectedCategory={selectedCategory}
             selectedCount={selectedCount}
+            selectedSituation={selectedSituation}
             isSubmitting={yomechuLoading}
             error={yomechuError}
             onRadiusChange={setSelectedRadius}
             onCategoryChange={setSelectedCategory}
             onCountChange={setSelectedCount}
+            onSituationChange={setSelectedSituation}
             onSpin={spinYomechu}
             onOpenLocationPicker={() => setLocationPickerOpen(true)}
             onRetryLocation={requestUserLocation}
