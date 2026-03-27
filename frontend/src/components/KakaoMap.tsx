@@ -12,12 +12,14 @@ export interface MapBounds {
 interface KakaoMapProps {
   stores: Store[];
   center?: { lat: number; lng: number };
+  currentLocation?: { lat: number; lng: number } | null;
   level?: number;
   className?: string;
   selectedStoreId?: string | null;
   onMarkerClick?: (storeId: string) => void;
   onBoundsChange?: (bounds: MapBounds) => void;
   autoFitBounds?: boolean;
+  onRequestCurrentLocation?: () => Promise<{ lat: number; lng: number } | null>;
 }
 
 function escapeInfoWindowText(value: string) {
@@ -32,12 +34,14 @@ function escapeInfoWindowText(value: string) {
 export default function KakaoMap({
   stores,
   center = { lat: 37.5665, lng: 126.978 },
+  currentLocation = null,
   level = 5,
   className = "map-container",
   selectedStoreId,
   onMarkerClick,
   onBoundsChange,
   autoFitBounds = true,
+  onRequestCurrentLocation,
 }: KakaoMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<kakao.maps.Map | null>(null);
@@ -46,6 +50,7 @@ export default function KakaoMap({
     Map<string, { marker: kakao.maps.Marker; infoWindow: kakao.maps.InfoWindow }>
   >(new Map());
   const openInfoWindowRef = useRef<kakao.maps.InfoWindow | null>(null);
+  const currentLocationOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -95,20 +100,47 @@ export default function KakaoMap({
     kakao.maps.event.addListener(newMap, "idle", emitBounds);
     setTimeout(emitBounds, 500);
 
-    // 현재 위치 마커 (파란 점)
+    setMap(newMap);
+
+    return () => {
+      if (currentLocationOverlayRef.current) {
+        currentLocationOverlayRef.current.setMap(null);
+        currentLocationOverlayRef.current = null;
+      }
+    };
+  }, [loaded, center.lat, center.lng, level]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    if (currentLocationOverlayRef.current) {
+      currentLocationOverlayRef.current.setMap(null);
+      currentLocationOverlayRef.current = null;
+    }
+
+    if (!currentLocation) return;
+
     const markerContent = document.createElement("div");
     markerContent.innerHTML = `
       <div style="width:16px;height:16px;background:#4A90D9;border:3px solid white;border-radius:50%;box-shadow:0 0 6px rgba(74,144,217,0.5);"></div>
     `;
-    new kakao.maps.CustomOverlay({
-      position: new kakao.maps.LatLng(center.lat, center.lng),
+
+    const overlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(currentLocation.lat, currentLocation.lng),
       content: markerContent,
-      map: newMap,
+      map,
       zIndex: 10,
     });
 
-    setMap(newMap);
-  }, [loaded, center.lat, center.lng, level]);
+    currentLocationOverlayRef.current = overlay;
+
+    return () => {
+      overlay.setMap(null);
+      if (currentLocationOverlayRef.current === overlay) {
+        currentLocationOverlayRef.current = null;
+      }
+    };
+  }, [map, currentLocation?.lat, currentLocation?.lng]);
 
   useEffect(() => {
     if (!map || stores.length === 0) return;
@@ -194,13 +226,37 @@ export default function KakaoMap({
     openInfoWindowRef.current = entry.infoWindow;
   }, [map, selectedStoreId]);
 
-  const moveToMyLocation = () => {
+  const panToLocation = (location: { lat: number; lng: number }) => {
     if (!map) return;
+    const loc = new kakao.maps.LatLng(location.lat, location.lng);
+    map.panTo(loc);
+    map.setLevel(4);
+  };
+
+  const moveToMyLocation = async () => {
+    if (!map) return;
+
+    if (currentLocation) {
+      panToLocation(currentLocation);
+      return;
+    }
+
+    if (onRequestCurrentLocation) {
+      const nextLocation = await onRequestCurrentLocation();
+      if (nextLocation) {
+        panToLocation(nextLocation);
+      }
+      return;
+    }
+
+    if (!navigator.geolocation) return;
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const loc = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        map.panTo(loc);
-        map.setLevel(4);
+        panToLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
       },
       () => {}
     );
@@ -218,7 +274,10 @@ export default function KakaoMap({
     <div className="relative">
       <div ref={mapRef} className={className} />
       <button
-        onClick={moveToMyLocation}
+        type="button"
+        onClick={() => {
+          void moveToMyLocation();
+        }}
         className="absolute bottom-3 right-3 z-10 bg-white rounded-full shadow-md px-3 py-2 flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-primary hover:shadow-lg transition-all"
         title="내 위치로 이동"
       >

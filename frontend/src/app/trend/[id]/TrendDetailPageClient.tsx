@@ -17,6 +17,11 @@ interface TrendDetailPageClientProps {
   initialStores: Store[];
 }
 
+type UserLocation = {
+  lat: number;
+  lng: number;
+};
+
 function VolumeChart({ data }: { data: Record<string, number> }) {
   const [open, setOpen] = useState(false);
   const entries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
@@ -77,19 +82,56 @@ export default function TrendDetailPageClient({
 }: TrendDetailPageClientProps) {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [storeQuery, setStoreQuery] = useState("");
-  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(
-    null
+  const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [canRetryLocation, setCanRetryLocation] = useState(false);
+
+  const requestLocation = useCallback(
+    () =>
+      new Promise<UserLocation | null>((resolve) => {
+        if (!navigator.geolocation) {
+          setUserLoc(null);
+          setLocationMessage(
+            "위치 기능을 지원하지 않아 가까운 판매처 기준으로 지도를 보여드리고 있어요."
+          );
+          setCanRetryLocation(false);
+          resolve(null);
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const nextLocation = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            };
+
+            setUserLoc(nextLocation);
+            setLocationMessage(null);
+            setCanRetryLocation(false);
+            resolve(nextLocation);
+          },
+          () => {
+            setUserLoc(null);
+            setLocationMessage(
+              "브라우저 위치 권한이 없어 가까운 판매처 기준으로 지도를 보여드리고 있어요."
+            );
+            setCanRetryLocation(true);
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 0,
+          }
+        );
+      }),
+    []
   );
 
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {},
-        { timeout: 5000 }
-      );
-    }
-  }, []);
+    void requestLocation();
+  }, [requestLocation]);
 
   if (!initialTrend) {
     return (
@@ -154,11 +196,30 @@ export default function TrendDetailPageClient({
         <KakaoMap
           stores={sortedStores}
           center={mapCenter}
+          currentLocation={userLoc}
           level={5}
           autoFitBounds={false}
           selectedStoreId={selectedStoreId}
           onMarkerClick={setSelectedStoreId}
+          onRequestCurrentLocation={requestLocation}
         />
+
+        {locationMessage && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-900">{locationMessage}</p>
+            {canRetryLocation && (
+              <button
+                type="button"
+                onClick={() => {
+                  void requestLocation();
+                }}
+                className="mt-3 rounded-lg bg-amber-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-950"
+              >
+                현재 위치 다시 시도
+              </button>
+            )}
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between mb-3">
