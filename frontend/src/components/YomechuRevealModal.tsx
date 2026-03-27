@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import { formatDistanceMeters } from "@/lib/crawler";
 import type { YomechuPlace, YomechuSpinResponse } from "@/lib/types";
+import ShareButton from "@/components/ShareButton";
 
 interface YomechuRevealModalProps {
   isOpen: boolean;
@@ -15,6 +16,8 @@ interface YomechuRevealModalProps {
   onClose: () => void;
   onReroll: () => void;
   onOpenPlace: (place: YomechuPlace) => void;
+  onShare?: () => void;
+  shareUrl?: string | null;
 }
 
 type RevealPhase = "idle" | "fast" | "slow" | "winner";
@@ -95,6 +98,8 @@ export default function YomechuRevealModal({
   onClose,
   onReroll,
   onOpenPlace,
+  onShare,
+  shareUrl,
 }: YomechuRevealModalProps) {
   const winners = useMemo(() => {
     if (!result) {
@@ -357,6 +362,20 @@ export default function YomechuRevealModal({
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-5 flex flex-col gap-3"
                   >
+                    {result?.spin_id && shareUrl ? (
+                      <div className="flex justify-center">
+                        <ShareButton
+                          title={
+                            winners.length > 1
+                              ? `${primaryWinner.name} 포함 ${winners.length}곳 추천 - 요즘뭐먹`
+                              : `${primaryWinner.name} 추천 - 요즘뭐먹`
+                          }
+                          description={`요메추가 고른 오늘의 추천 결과예요. ${primaryWinner.name}부터 확인해보세요.`}
+                          url={shareUrl}
+                          onShare={onShare}
+                        />
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => onOpenPlace(primaryWinner)}

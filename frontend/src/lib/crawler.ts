@@ -1,5 +1,6 @@
 import type {
   YomechuCategorySlug,
+  YomechuFeedbackEventType,
   YomechuLocationPreset,
   YomechuOption,
   YomechuResultCount,
@@ -199,8 +200,8 @@ export async function fetchYomechuSpin(payload: {
 export async function sendYomechuFeedback(payload: {
   spin_id: string;
   place_id?: string | null;
-  session_id: string;
-  event_type: "reroll" | "open" | "close";
+  session_id?: string | null;
+  event_type: YomechuFeedbackEventType;
   payload?: Record<string, unknown>;
 }) {
   if (!CRAWLER_BASE_URL) {

@@ -24,7 +24,7 @@ class FeedbackRequest(BaseModel):
     spin_id: str
     place_id: str | None = None
     session_id: str | None = Field(default=None, max_length=120)
-    event_type: Literal["reroll", "open", "close"]
+    event_type: Literal["reroll", "open", "close", "share"]
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

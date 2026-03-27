@@ -38,6 +38,7 @@ const FEEDBACK_LABELS: Record<YomechuFeedbackRow["event_type"], string> = {
   open: "매장 열기",
   reroll: "다시 추천",
   close: "모달 닫기",
+  share: "결과 공유",
 };
 
 function createEmptySectionState<T>(data: T): SectionState<T> {
@@ -274,7 +275,10 @@ export default function YomechuTab() {
       counts[feedback.event_type] += 1;
       return counts;
     },
-    { open: 0, reroll: 0, close: 0 }
+    { open: 0, reroll: 0, close: 0, share: 0 } satisfies Record<
+      YomechuFeedbackRow["event_type"],
+      number
+    >
   );
   const recentSpins = spinsState.data.slice(0, 15);
 

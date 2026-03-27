@@ -21,6 +21,7 @@ import {
 } from "@/lib/crawler";
 import { openExternalUrl } from "@/lib/external-links";
 import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
+import { SITE_URL } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
 import type {
   LocationStatus,
@@ -60,6 +61,11 @@ function createSessionId() {
 
 function getVisibleTrendNames(trendNames: string[]) {
   return trendNames.slice(0, 2);
+}
+
+function buildYomechuShareUrl(spinId: string) {
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : SITE_URL;
+  return new URL(`/yomechu/share/${spinId}`, baseUrl).toString();
 }
 
 function groupNearbyStores(stores: NearbyTrendStore[]) {
@@ -430,6 +436,19 @@ export default function HomePageClient({
     [sessionId, yomechuResult]
   );
 
+  const handleShareResult = useCallback(() => {
+    if (!yomechuResult?.spin_id) {
+      return;
+    }
+
+    void sendYomechuFeedback({
+      spin_id: yomechuResult.spin_id,
+      place_id: yomechuResult.winner.place_id,
+      session_id: sessionId || null,
+      event_type: "share",
+    });
+  }, [sessionId, yomechuResult]);
+
   return (
     <>
       <Header
@@ -737,6 +756,10 @@ export default function HomePageClient({
         onClose={handleCloseReveal}
         onReroll={handleReroll}
         onOpenPlace={handleOpenPlace}
+        onShare={handleShareResult}
+        shareUrl={
+          yomechuResult?.spin_id ? buildYomechuShareUrl(yomechuResult.spin_id) : null
+        }
       />
       <BottomNav />
     </>

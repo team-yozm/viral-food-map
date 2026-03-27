@@ -7,9 +7,20 @@ interface ShareButtonProps {
   description?: string;
   imageUrl?: string;
   url?: string;
+  shareLabel?: string;
+  copyLabel?: string;
+  onShare?: (method: "native" | "kakao" | "copy") => void;
 }
 
-export default function ShareButton({ title, description, imageUrl, url }: ShareButtonProps) {
+export default function ShareButton({
+  title,
+  description,
+  imageUrl,
+  url,
+  shareLabel = "공유하기",
+  copyLabel = "링크 복사",
+  onShare,
+}: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const shareUrl = url ?? (typeof window !== "undefined" ? window.location.href : "");
@@ -25,6 +36,7 @@ export default function ShareButton({ title, description, imageUrl, url }: Share
       document.execCommand("copy");
       document.body.removeChild(el);
     }
+    onShare?.("copy");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -39,6 +51,7 @@ export default function ShareButton({ title, description, imageUrl, url }: Share
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share(shareData);
+        onShare?.("native");
         return;
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
@@ -64,6 +77,7 @@ export default function ShareButton({ title, description, imageUrl, url }: Share
           },
         ],
       });
+      onShare?.("kakao");
       return;
     }
 
@@ -80,7 +94,7 @@ export default function ShareButton({ title, description, imageUrl, url }: Share
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 3C6.477 3 2 6.582 2 11c0 2.796 1.57 5.264 3.978 6.837L5 21l3.745-1.97A11.4 11.4 0 0 0 12 19c5.523 0 10-3.582 10-8s-4.477-8-10-8z"/>
         </svg>
-        공유하기
+        {shareLabel}
       </button>
       <button
         onClick={handleCopy}
@@ -99,7 +113,7 @@ export default function ShareButton({ title, description, imageUrl, url }: Share
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
             </svg>
-            링크 복사
+            {copyLabel}
           </>
         )}
       </button>

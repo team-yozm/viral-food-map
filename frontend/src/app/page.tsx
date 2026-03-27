@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import KakaoSdkScripts from "@/components/KakaoSdkScripts";
 import HomePageClient from "./HomePageClient";
 import { buildMetadata } from "@/lib/seo";
 import { getHomePageData } from "@/lib/trends-server";
@@ -15,10 +16,13 @@ export default async function HomePage() {
   const homePageData = await getHomePageData();
 
   return (
-    <HomePageClient
-      initialTrends={homePageData.trends}
-      verifiedStoreCount={homePageData.verifiedStoreCount}
-      lastUpdated={homePageData.lastUpdated}
-    />
+    <>
+      <KakaoSdkScripts />
+      <HomePageClient
+        initialTrends={homePageData.trends}
+        verifiedStoreCount={homePageData.verifiedStoreCount}
+        lastUpdated={homePageData.lastUpdated}
+      />
+    </>
   );
 }

@@ -150,16 +150,23 @@ export interface YomechuSpinRow {
   pool_size: number;
   used_fallback: boolean;
   winner_place_id: string | null;
+  winner_place_ids: string[];
   reel_place_ids: string[];
   created_at: string;
 }
+
+export type YomechuFeedbackEventType =
+  | "reroll"
+  | "open"
+  | "close"
+  | "share";
 
 export interface YomechuFeedbackRow {
   id: string;
   spin_id: string;
   place_id: string | null;
   session_id: string | null;
-  event_type: "reroll" | "open" | "close";
+  event_type: YomechuFeedbackEventType;
   payload: Record<string, unknown>;
   created_at: string;
 }

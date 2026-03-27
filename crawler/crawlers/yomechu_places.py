@@ -486,6 +486,7 @@ async def spin_yomechu(
             "pool_size": len(candidates),
             "used_fallback": used_fallback,
             "winner_place_id": primary_winner["id"],
+            "winner_place_ids": [item["id"] for item in winners],
             "reel_place_ids": [item["id"] for item in reel],
         }
     )
