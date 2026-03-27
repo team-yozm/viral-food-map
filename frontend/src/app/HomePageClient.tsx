@@ -132,6 +132,26 @@ export default function HomePageClient({
     }
   }, [launcherOpen]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(window.location.search);
+    if (nextParams.get("openYomechu") !== "1") {
+      return;
+    }
+
+    setLauncherOpen(true);
+    nextParams.delete("openYomechu");
+    const nextQuery = nextParams.toString();
+    const nextUrl = nextQuery
+      ? `${window.location.pathname}?${nextQuery}`
+      : window.location.pathname;
+
+    window.history.replaceState({}, "", nextUrl);
+  }, []);
+
   const updateBaseLocationLabel = useCallback(
     (
       source: YomechuBaseLocation["source"],
