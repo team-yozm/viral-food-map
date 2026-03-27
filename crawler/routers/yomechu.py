@@ -11,16 +11,12 @@ from database import insert_yomechu_feedback
 router = APIRouter(prefix="/api/yomechu", tags=["yomechu"])
 
 
-VALID_SITUATIONS = {"solo", "date", "group", None}
-
-
 class SpinRequest(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     lng: float = Field(..., ge=-180, le=180)
     radius_m: int = Field(..., ge=100, le=3000)
     category_slug: str = Field(..., min_length=1)
     result_count: Literal[1, 2, 3, 4, 5] = 1
-    situation: str | None = Field(default=None, max_length=20)
     session_id: str | None = Field(default=None, max_length=120)
 
 
@@ -36,8 +32,6 @@ class FeedbackRequest(BaseModel):
 async def create_spin(payload: SpinRequest):
     if payload.category_slug not in CATEGORY_CONFIG:
         raise HTTPException(status_code=400, detail="Unsupported category")
-    if payload.situation and payload.situation not in VALID_SITUATIONS:
-        raise HTTPException(status_code=400, detail="Unsupported situation")
 
     try:
         return await spin_yomechu(
@@ -46,7 +40,6 @@ async def create_spin(payload: SpinRequest):
             radius_m=payload.radius_m,
             category_slug=payload.category_slug,
             result_count=payload.result_count,
-            situation=payload.situation,
             session_id=payload.session_id,
         )
     except YomechuNoResultsError as exc:

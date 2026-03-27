@@ -84,8 +84,6 @@ export type YomechuCategorySlug =
   | "cafe-dessert"
   | "pub";
 
-export type YomechuSituation = "solo" | "date" | "group" | null;
-
 export type YomechuResultCount = 1 | 2 | 3 | 4 | 5;
 
 export interface YomechuOption<T extends string | number> {

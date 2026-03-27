@@ -374,36 +374,18 @@ def to_place_row(place: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in place.items() if key != "distance_m"}
 
 
-SITUATION_KEYWORDS: dict[str, str] = {
-    "solo": "혼밥",
-    "date": "데이트",
-    "group": "회식",
-}
-
-
 async def find_yomechu_candidates(
     lat: float,
     lng: float,
     radius_m: int,
     category_slug: str,
     result_count: int,
-    situation: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     config = CATEGORY_CONFIG[category_slug]
     keyword = config.get("keyword")
-    situation_keyword = SITUATION_KEYWORDS.get(situation) if situation else None
 
-    if situation_keyword and keyword:
-        search_keyword = f"{keyword} {situation_keyword}"
-    elif situation_keyword:
-        search_keyword = f"{situation_keyword} 맛집"
-    else:
-        search_keyword = keyword
-
-    if search_keyword:
-        requested = await fetch_keyword_places(search_keyword, lat, lng, radius_m)
-        if not requested and search_keyword != keyword:
-            requested = await fetch_keyword_places(keyword, lat, lng, radius_m) if keyword else []
+    if keyword:
+        requested = await fetch_keyword_places(keyword, lat, lng, radius_m)
     else:
         requested = await fetch_category_places(config["group_code"], lat, lng, radius_m)
 
@@ -470,8 +452,7 @@ async def spin_yomechu(
     radius_m: int,
     category_slug: str,
     result_count: int,
-    situation: str | None = None,
-    session_id: str | None = None,
+    session_id: str | None,
 ) -> dict[str, Any]:
     if category_slug not in CATEGORY_CONFIG:
         raise ValueError(f"Unsupported category: {category_slug}")
@@ -485,7 +466,6 @@ async def spin_yomechu(
         radius_m=radius_m,
         category_slug=category_slug,
         result_count=result_count,
-        situation=situation,
     )
 
     if not candidates:

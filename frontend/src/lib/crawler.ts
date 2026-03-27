@@ -3,7 +3,6 @@ import type {
   YomechuLocationPreset,
   YomechuOption,
   YomechuResultCount,
-  YomechuSituation,
   YomechuSpinResponse,
 } from "./types";
 
@@ -106,13 +105,6 @@ export const YOMECHU_LOCATION_PRESETS: YomechuLocationPreset[] = [
   { label: "성수역", lat: 37.5446, lng: 127.0557 },
 ];
 
-export const YOMECHU_SITUATION_OPTIONS: { label: string; value: YomechuSituation }[] = [
-  { label: "상관없음", value: null },
-  { label: "혼밥", value: "solo" },
-  { label: "데이트", value: "date" },
-  { label: "회식/모임", value: "group" },
-];
-
 export const YOMECHU_CATEGORY_OPTIONS: YomechuOption<YomechuCategorySlug>[] = [
   { label: "전체", value: "all" },
   { label: "한식", value: "korean" },
@@ -178,7 +170,6 @@ export async function fetchYomechuSpin(payload: {
   radius_m: number;
   category_slug: YomechuCategorySlug;
   result_count: YomechuResultCount;
-  situation?: YomechuSituation;
   session_id: string;
 }): Promise<YomechuSpinResponse> {
   if (!CRAWLER_BASE_URL) {
