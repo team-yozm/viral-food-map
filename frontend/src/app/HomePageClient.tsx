@@ -445,7 +445,7 @@ export default function HomePageClient({
                 : "border-primary/20 bg-primary/5 text-primary hover:border-primary/40 hover:bg-primary/10"
             }`}
           >
-            요메추
+            오늘 뭐 먹지?
           </button>
         }
         bottomSlot={
