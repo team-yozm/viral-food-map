@@ -241,6 +241,15 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                       <h4 className="font-semibold text-sm text-gray-900 truncate">
                         {store.name}
                       </h4>
+                      {store.is_franchise ? (
+                        <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
+                          프랜차이즈
+                        </span>
+                      ) : (
+                        <span className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-600">
+                          개인
+                        </span>
+                      )}
                       {selectedTrendId === "all" && store.trend_name && (
                         <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full flex-shrink-0">
                           {store.trend_name}

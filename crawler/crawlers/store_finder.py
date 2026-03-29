@@ -1,6 +1,7 @@
 import asyncio
 import httpx
 from config import settings
+from franchise_checker import is_franchise
 import logging
 
 logger = logging.getLogger(__name__)
@@ -62,8 +63,9 @@ async def find_stores_kakao(
                     data = resp.json()
 
                     for doc in data.get("documents", []):
+                        place_name = doc["place_name"]
                         store = {
-                            "name": doc["place_name"],
+                            "name": place_name,
                             "address": doc.get("road_address_name") or doc.get("address_name", ""),
                             "lat": float(doc["y"]),
                             "lng": float(doc["x"]),
@@ -71,6 +73,7 @@ async def find_stores_kakao(
                             "place_url": doc.get("place_url") or None,
                             "source": "kakao_api",
                             "verified": True,
+                            "is_franchise": is_franchise(place_name),
                         }
                         key = (store["name"], store["address"])
                         if key in seen:

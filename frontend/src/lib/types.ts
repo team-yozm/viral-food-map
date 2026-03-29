@@ -24,6 +24,7 @@ export interface Store {
   rating: number | null;
   source: "kakao_api" | "naver_place" | "user_report";
   verified: boolean;
+  is_franchise: boolean;
   last_updated: string;
 }
 
