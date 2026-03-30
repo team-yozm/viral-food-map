@@ -402,6 +402,24 @@ META_KEYWORD_PATTERNS = (
     "매장",
 )
 
+GENERIC_FOOD_KEYWORDS = frozenset({
+    "음식",
+    "먹거리",
+    "길거리",
+    "길거리음식",
+    "식사",
+    "간식",
+    "디저트",
+    "음료",
+    "치킨",
+    "피자",
+    "버거",
+    "햄버거",
+    "떡볶이",
+    "라면",
+    "국밥",
+})
+
 _SEED_KEYWORD_SET = frozenset(
     keyword
     for keyword_list in SEED_KEYWORDS.values()
@@ -455,7 +473,14 @@ def is_generic_keyword(keyword: str) -> bool:
     normalized = normalize_keyword(keyword)
     if not normalized:
         return True
-    if normalized in STOPWORDS or normalized in SEED_KEYWORDS:
+    if normalized in STOPWORDS or normalized in GENERIC_FOOD_KEYWORDS:
+        return True
+    # 1단어 일반 메뉴명은 제외하고, 수식어가 붙은 구체 키워드만 허용
+    if (
+        normalized.endswith(FOOD_SUFFIXES)
+        and len(normalized) <= 3
+        and normalized not in _SEED_KEYWORD_SET
+    ):
         return True
     return any(pattern in normalized for pattern in META_KEYWORD_PATTERNS)
 
