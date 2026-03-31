@@ -9,6 +9,7 @@ from kiwipiepy import Kiwi
 from ai_reviewer import (
     AIReviewError,
     DiscoveryReviewPayload,
+    TrendReviewResult,
     review_discovered_keyword,
 )
 from config import settings
@@ -25,6 +26,7 @@ from detector.keyword_manager import (
 logger = logging.getLogger(__name__)
 
 NAVER_BLOG_URL = "https://openapi.naver.com/v1/search/blog"
+DEFAULT_CATEGORY = "기타"
 
 META_QUERIES = [
     "요즘 핫한 음식 트렌드",
@@ -151,7 +153,7 @@ def classify_category(noun: str, context_nouns: Counter) -> str:
         if pattern.search(noun):
             return category
 
-    return "기타"
+    return DEFAULT_CATEGORY
 
 
 def collect_candidate_snippets(keyword: str, texts: list[str]) -> list[str]:
@@ -171,16 +173,40 @@ def collect_candidate_snippets(keyword: str, texts: list[str]) -> list[str]:
     return snippets
 
 
+def _build_ai_detail_line(
+    keyword: str,
+    *,
+    confidence: float | None,
+    category: str,
+    reason: str,
+) -> str:
+    confidence_text = f"{confidence:.2f}" if confidence is not None else "n/a"
+    normalized_reason = " ".join(str(reason or "").split()) or "사유 없음"
+    return (
+        f"{keyword} (confidence={confidence_text}, category={category}): "
+        f"{normalized_reason[:160]}"
+    )
+
+
+def _is_ai_accept(review: TrendReviewResult) -> bool:
+    return (
+        review.verdict == "accept"
+        and review.confidence >= settings.AI_REVIEW_MIN_CONFIDENCE
+    )
+
+
 async def discover_keywords() -> dict:
-    logger.info("Keyword discovery started")
+    logger.info("키워드 발굴 시작")
     summary = {
         "queries": len(META_QUERIES),
         "collected_posts": 0,
         "new_keywords": 0,
         "keywords": [],
         "ai_reviewed": 0,
-        "ai_skipped_keywords": [],
-        "ai_fallback_keywords": [],
+        "ai_accepted": 0,
+        "ai_rejected_details": [],
+        "ai_review_details": [],
+        "ai_fallback_details": [],
     }
 
     all_texts = []
@@ -191,14 +217,14 @@ async def discover_keywords() -> dict:
                 item.get("description", "")
             )
             all_texts.append(text)
-        logger.info("Collected %s blog posts for '%s'", len(items), query)
+        logger.info("'%s' 블로그 %s건 수집", query, len(items))
         await asyncio.sleep(0.5)
 
     summary["collected_posts"] = len(all_texts)
-    logger.info("Collected %s blog texts for keyword discovery", len(all_texts))
+    logger.info("키워드 발굴용 블로그 텍스트 %s건 수집", len(all_texts))
 
     if not all_texts:
-        logger.warning("No blog texts were collected for keyword discovery")
+        logger.warning("키워드 발굴용 블로그 텍스트를 수집하지 못함")
         return summary
 
     noun_counter = Counter()
@@ -238,7 +264,7 @@ async def discover_keywords() -> dict:
     candidates = candidates[: settings.DISCOVERY_MAX_NEW_KEYWORDS]
 
     if not candidates:
-        logger.info("No new keyword candidates passed rule-based discovery")
+        logger.info("규칙 기반 발굴을 통과한 신규 키워드 후보 없음")
         return summary
 
     new_keywords = []
@@ -266,31 +292,49 @@ async def discover_keywords() -> dict:
                 )
                 summary["ai_reviewed"] += 1
 
-                if (
-                    review.verdict != "accept"
-                    or review.confidence < settings.AI_REVIEW_MIN_CONFIDENCE
-                ):
-                    summary["ai_skipped_keywords"].append(original_keyword)
+                if review.category != DEFAULT_CATEGORY or category == DEFAULT_CATEGORY:
+                    category = review.category
+
+                if not _is_ai_accept(review):
+                    target_key = (
+                        "ai_rejected_details"
+                        if review.verdict == "reject"
+                        else "ai_review_details"
+                    )
+                    summary[target_key].append(
+                        _build_ai_detail_line(
+                            original_keyword,
+                            confidence=review.confidence,
+                            category=category,
+                            reason=review.reason,
+                        )
+                    )
                     logger.info(
-                        "AI skipped discovered keyword '%s': %s",
+                        "AI 발굴 키워드 제외 '%s': %s",
                         original_keyword,
                         review.reason,
                     )
                     continue
 
+                summary["ai_accepted"] += 1
                 resolved_keyword = review.canonical_keyword or original_keyword
-                if review.category != "기타" or category == "기타":
-                    category = review.category
             except AIReviewError as exc:
-                summary["ai_fallback_keywords"].append(original_keyword)
+                summary["ai_fallback_details"].append(
+                    _build_ai_detail_line(
+                        original_keyword,
+                        confidence=None,
+                        category=category,
+                        reason=str(exc),
+                    )
+                )
                 logger.warning(
-                    "AI review failed for discovered keyword '%s', using rules: %s",
+                    "AI 심사 실패 발굴 키워드 '%s', 규칙 기반 적용: %s",
                     original_keyword,
                     exc,
                 )
 
         if resolved_keyword in existing or resolved_keyword in seen_keywords:
-            logger.info("Skipping duplicate discovered keyword '%s'", resolved_keyword)
+            logger.info("중복 발굴 키워드 스킵 '%s'", resolved_keyword)
             continue
 
         new_keywords.append({
@@ -301,7 +345,7 @@ async def discover_keywords() -> dict:
         })
         seen_keywords.add(resolved_keyword)
         logger.info(
-            "Discovered keyword '%s' (freq=%s, score=%s, category=%s)",
+            "키워드 발굴 '%s' (빈도=%s, 점수=%s, 카테고리=%s)",
             resolved_keyword,
             candidate["frequency"],
             candidate["food_score"],
@@ -311,5 +355,5 @@ async def discover_keywords() -> dict:
     insert_keywords(new_keywords)
     summary["new_keywords"] = len(new_keywords)
     summary["keywords"] = [keyword["keyword"] for keyword in new_keywords]
-    logger.info("Stored %s discovered keywords", len(new_keywords))
+    logger.info("발굴 키워드 %s건 저장", len(new_keywords))
     return summary

@@ -142,7 +142,7 @@ def _coerce_result(
 
     reason = " ".join(str(raw.get("reason", "")).split())
     if not reason:
-        reason = "No review reason provided."
+        reason = "심사 사유 없음"
 
     return TrendReviewResult(
         verdict=_normalize_verdict(raw.get("verdict")),
@@ -222,7 +222,7 @@ async def review_trend_candidate(payload: TrendReviewPayload) -> TrendReviewResu
         fallback_category=payload.category_hint,
     )
     logger.info(
-        "AI reviewed trend '%s': verdict=%s confidence=%.2f category=%s",
+        "AI 트렌드 심사 '%s': 판정=%s 신뢰도=%.2f 카테고리=%s",
         payload.keyword,
         result.verdict,
         result.confidence,
@@ -250,7 +250,7 @@ async def review_discovered_keyword(
         fallback_category=payload.category_hint,
     )
     logger.info(
-        "AI reviewed discovery keyword '%s': verdict=%s confidence=%.2f category=%s",
+        "AI 발굴 키워드 심사 '%s': 판정=%s 신뢰도=%.2f 카테고리=%s",
         payload.keyword,
         result.verdict,
         result.confidence,

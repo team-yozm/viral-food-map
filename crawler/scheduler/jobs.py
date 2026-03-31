@@ -20,6 +20,12 @@ scheduler = BackgroundScheduler()
 store_update_lock = threading.Lock()
 yomechu_enrich_lock = threading.Lock()
 
+MAX_DETAIL_LINES = 5
+TREND_JOB_NAME = "트렌드 감지"
+DISCOVERY_JOB_NAME = "키워드 발굴"
+STORE_UPDATE_JOB_NAME = "판매처 갱신"
+YOMECHU_JOB_NAME = "요메추 보강"
+
 TREND_LABELS = {
     "keywords": "모니터링 키워드",
     "candidates": "급등 후보",
@@ -28,19 +34,22 @@ TREND_LABELS = {
     "stored_stores": "등록 판매처",
     "confirmed_keywords": "확정 키워드",
     "ai_reviewed": "AI 심사 수",
-    "ai_rejected_keywords": "AI 거절 키워드",
-    "ai_review_keywords": "AI 보류 키워드",
-    "ai_fallback_keywords": "AI fallback 키워드",
+    "ai_accepted": "AI 승인 수",
+    "ai_rejected_details": "AI 거절 상세",
+    "ai_review_details": "AI 보류 상세",
+    "ai_fallback_details": "AI fallback 상세",
 }
 
 DISCOVERY_LABELS = {
-    "queries": "탐색 쿼리",
+    "queries": "검색 쿼리",
     "collected_posts": "수집 포스트",
     "new_keywords": "신규 키워드",
     "keywords": "발굴 키워드",
     "ai_reviewed": "AI 심사 수",
-    "ai_skipped_keywords": "AI 제외 키워드",
-    "ai_fallback_keywords": "AI fallback 키워드",
+    "ai_accepted": "AI 승인 수",
+    "ai_rejected_details": "AI 거절 상세",
+    "ai_review_details": "AI 보류 상세",
+    "ai_fallback_details": "AI fallback 상세",
 }
 
 STORE_UPDATE_LABELS = {
@@ -51,15 +60,15 @@ STORE_UPDATE_LABELS = {
 }
 
 YOMECHU_LABELS = {
-    "scanned": "검사 장소",
-    "updated": "평점 갱신",
+    "scanned": "검사 매장",
+    "updated": "보강 건수",
 }
 
 JOB_LABELS = {
-    "트렌드 감지": TREND_LABELS,
-    "키워드 발굴": DISCOVERY_LABELS,
-    "판매처 갱신": STORE_UPDATE_LABELS,
-    "요메추 보강": YOMECHU_LABELS,
+    TREND_JOB_NAME: TREND_LABELS,
+    DISCOVERY_JOB_NAME: DISCOVERY_LABELS,
+    STORE_UPDATE_JOB_NAME: STORE_UPDATE_LABELS,
+    YOMECHU_JOB_NAME: YOMECHU_LABELS,
 }
 
 
@@ -69,11 +78,26 @@ def _format_summary_lines(summary: dict, labels: dict[str, str]) -> list[str]:
         value = summary.get(key)
         if value in (None, "", [], {}):
             continue
+        if key.startswith("ai_") and value == 0:
+            continue
+
         if isinstance(value, list):
+            if key.endswith("_details"):
+                visible_items = [str(item) for item in value[:MAX_DETAIL_LINES]]
+                remaining = len(value) - len(visible_items)
+                detail_lines = [f"{label}:"]
+                detail_lines.extend(f"- {item}" for item in visible_items)
+                if remaining > 0:
+                    detail_lines.append(f"- 외 {remaining}건")
+                lines.append("\n".join(detail_lines))
+                continue
+
             formatted = ", ".join(str(item) for item in value)
         else:
             formatted = str(value)
+
         lines.append(f"{label}: {formatted}")
+
     return lines
 
 
@@ -96,7 +120,7 @@ def _build_job_message(
 
 
 async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
-    job_name = "트렌드 감지"
+    job_name = TREND_JOB_NAME
     logger.info("%s 트리거 %s 시작", trigger, job_name)
     await send_discord_message(_build_job_message(job_name, trigger, "시작"))
 
@@ -106,15 +130,15 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
             _build_job_message(job_name, trigger, "완료", summary=summary)
         )
 
-        # 새로 확정된 트렌드가 있으면 웹 푸시 발송
-        new_keywords: list[str] = summary.get("confirmed_keywords", [])
-        if new_keywords:
+        confirmed_keywords: list[str] = summary.get("confirmed_keywords", [])
+        if confirmed_keywords:
             from database import get_client
+
             rows = (
                 get_client()
                 .table("trends")
                 .select("id, name")
-                .in_("name", new_keywords)
+                .in_("name", confirmed_keywords)
                 .execute()
                 .data
             ) or []
@@ -136,7 +160,7 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
 
 
 async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:
-    job_name = "키워드 발굴"
+    job_name = DISCOVERY_JOB_NAME
     logger.info("%s 트리거 %s 시작", trigger, job_name)
     await send_discord_message(_build_job_message(job_name, trigger, "시작"))
 
@@ -162,14 +186,14 @@ async def run_startup_bootstrap_job() -> None:
         await run_keyword_discovery_job(trigger="startup")
     except Exception:
         logger.info(
-            "startup keyword discovery failed; continuing with trend detection fallback"
+            "시작 시 키워드 발굴 실패; 트렌드 감지로 계속 진행"
         )
 
     await run_trend_detection_job(trigger="startup")
 
 
 async def run_store_update_job(trigger: str = "scheduler") -> dict:
-    job_name = "판매처 갱신"
+    job_name = STORE_UPDATE_JOB_NAME
     if not store_update_lock.acquire(blocking=False):
         logger.warning("%s 트리거 %s 스킵: 이전 작업이 아직 실행 중", trigger, job_name)
         return {
@@ -202,7 +226,7 @@ async def run_store_update_job(trigger: str = "scheduler") -> dict:
 
 
 async def run_yomechu_enrichment_job(trigger: str = "scheduler") -> dict:
-    job_name = "요메추 보강"
+    job_name = YOMECHU_JOB_NAME
     if not yomechu_enrich_lock.acquire(blocking=False):
         logger.warning("%s 트리거 %s 스킵: 이전 작업이 아직 실행 중", trigger, job_name)
         return {"scanned": 0, "updated": 0, "skipped": True}
