@@ -149,6 +149,18 @@ async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:
         raise
 
 
+async def run_startup_bootstrap_job() -> None:
+    """Run keyword discovery before the first startup trend detection."""
+    try:
+        await run_keyword_discovery_job(trigger="startup")
+    except Exception:
+        logger.info(
+            "startup keyword discovery failed; continuing with trend detection fallback"
+        )
+
+    await run_trend_detection_job(trigger="startup")
+
+
 async def run_store_update_job(trigger: str = "scheduler") -> dict:
     job_name = "판매처 갱신"
     if not store_update_lock.acquire(blocking=False):

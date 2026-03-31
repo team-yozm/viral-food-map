@@ -15,7 +15,7 @@ from routers.stores import router as stores_router
 from routers.trends import router as trends_router
 from routers.yomechu import router as yomechu_router
 from scheduler.jobs import (
-    run_store_update_job,
+    run_startup_bootstrap_job,
     run_yomechu_enrichment_job,
     start_scheduler,
     stop_scheduler,
@@ -53,15 +53,15 @@ def _handle_background_task_result(task: asyncio.Task):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("서버 시작")
-    startup_store_update: asyncio.Task | None = None
+    startup_bootstrap: asyncio.Task | None = None
     startup_yomechu_enrich: asyncio.Task | None = None
 
     try:
         start_scheduler()
         await send_discord_message(_build_startup_message())
 
-        startup_store_update = asyncio.create_task(run_store_update_job(trigger="startup"))
-        startup_store_update.add_done_callback(_handle_background_task_result)
+        startup_bootstrap = asyncio.create_task(run_startup_bootstrap_job())
+        startup_bootstrap.add_done_callback(_handle_background_task_result)
 
         startup_yomechu_enrich = asyncio.create_task(
             run_yomechu_enrichment_job(trigger="startup")
@@ -74,8 +74,8 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         try:
-            if startup_store_update and not startup_store_update.done():
-                startup_store_update.cancel()
+            if startup_bootstrap and not startup_bootstrap.done():
+                startup_bootstrap.cancel()
             if startup_yomechu_enrich and not startup_yomechu_enrich.done():
                 startup_yomechu_enrich.cancel()
             stop_scheduler()
