@@ -61,10 +61,6 @@ export default function BottomNav() {
       style={{
         minHeight: "calc(var(--bottom-nav-height) + var(--safe-bottom))",
         paddingBottom: "var(--safe-bottom)",
-        transform: "translateZ(0)",
-        WebkitTransform: "translateZ(0)",
-        backfaceVisibility: "hidden",
-        WebkitBackfaceVisibility: "hidden",
       }}
     >
       <div className="max-w-lg mx-auto flex min-h-[var(--bottom-nav-height)] items-center justify-around px-2 py-2">

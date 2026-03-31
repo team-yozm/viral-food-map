@@ -15,14 +15,8 @@ export default function Header({ showBack, rightSlot, bottomSlot }: HeaderProps)
 
   return (
     <header
-      className="fixed inset-x-0 top-0 z-[60] isolate bg-white border-b border-gray-100 shadow-sm relative"
-      style={{
-        paddingTop: "var(--safe-top)",
-        transform: "translateZ(0)",
-        WebkitTransform: "translateZ(0)",
-        backfaceVisibility: "hidden",
-        WebkitBackfaceVisibility: "hidden",
-      }}
+      className="sticky top-0 z-[60] isolate bg-white border-b border-gray-100 shadow-sm relative"
+      style={{ paddingTop: "var(--safe-top)" }}
     >
       <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-center">
         {showBack && (
