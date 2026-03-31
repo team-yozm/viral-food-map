@@ -1,8 +1,37 @@
 import os
+import sys
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _detect_app_env() -> str:
+    explicit_env = (
+        os.getenv("APP_ENV")
+        or os.getenv("ENVIRONMENT")
+        or os.getenv("SERVER_ENV")
+        or os.getenv("PYTHON_ENV")
+    )
+    if explicit_env:
+        return explicit_env.strip().lower()
+
+    # Koyeb production containers expose KOYEB_* environment variables.
+    if any(
+        os.getenv(key)
+        for key in (
+            "KOYEB_SERVICE_NAME",
+            "KOYEB_SERVICE_ID",
+            "KOYEB_APP_NAME",
+            "KOYEB_APP_ID",
+        )
+    ):
+        return "production"
+
+    if "--reload" in sys.argv:
+        return "development"
+
+    return "development"
 
 
 class Settings:
@@ -12,6 +41,7 @@ class Settings:
     NAVER_CLIENT_SECRET: str = os.getenv("NAVER_CLIENT_SECRET", "")
     KAKAO_REST_API_KEY: str = os.getenv("KAKAO_REST_API_KEY", "")
     DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
+    APP_ENV: str = _detect_app_env()
     VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
     VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
     VAPID_CONTACT: str = os.getenv("VAPID_CONTACT", "mailto:support@yozmeat.com")
