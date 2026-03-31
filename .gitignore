@@ -49,3 +49,6 @@ frontend/android/capacitor-cordova-android-plugins/build/
 
 # Misc
 *.log
+
+# Supabase local temp files
+supabase/.temp/
