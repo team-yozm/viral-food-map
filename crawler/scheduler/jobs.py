@@ -28,11 +28,15 @@ YOMECHU_JOB_NAME = "요메추 보강"
 
 TREND_LABELS = {
     "keywords": "모니터링 키워드",
+    "db_keywords": "DB 키워드",
+    "seed_keywords": "시드 키워드",
     "candidates": "급등 후보",
+    "rank_candidates": "순위 후보",
     "confirmed": "확정 트렌드",
     "stored_trends": "저장 트렌드",
     "stored_stores": "등록 판매처",
     "confirmed_keywords": "확정 키워드",
+    "deactivated_trends": "비활성 트렌드",
     "ai_reviewed": "AI 심사 수",
     "ai_accepted": "AI 승인 수",
     "ai_rejected_details": "AI 거절 상세",

@@ -61,6 +61,11 @@ class Settings:
     TREND_RISING_ACCELERATION_THRESHOLD: float = float(
         os.getenv("TREND_RISING_ACCELERATION_THRESHOLD", "100")
     )
+    TREND_REFERENCE_KEYWORD: str = os.getenv("TREND_REFERENCE_KEYWORD", "마라탕")
+    TREND_TOP_RANK_CANDIDATE_MAX: int = int(
+        os.getenv("TREND_TOP_RANK_CANDIDATE_MAX", "10")
+    )
+    ACTIVE_TREND_TTL_HOURS: int = int(os.getenv("ACTIVE_TREND_TTL_HOURS", "24"))
     CRAWL_INTERVAL_MINUTES: int = int(os.getenv("CRAWL_INTERVAL_MINUTES", "30"))
     STORE_UPDATE_INTERVAL_MINUTES: int = int(
         os.getenv("STORE_UPDATE_INTERVAL_MINUTES", "60")

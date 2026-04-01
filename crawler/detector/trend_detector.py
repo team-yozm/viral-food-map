@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from ai_reviewer import (
     AIReviewError,
@@ -11,16 +11,21 @@ from ai_reviewer import (
 from config import settings
 from crawlers.image_finder import find_food_image
 from crawlers.instagram import get_hashtag_post_count
-from crawlers.naver_datalab import calculate_acceleration, get_search_trend
+from crawlers.naver_datalab import calculate_acceleration, get_search_trend_insights
 from crawlers.naver_search import get_blog_mention_count, search_blog_mentions
 from crawlers.store_finder import find_stores_nationwide
 from database import (
     get_all_keywords,
+    get_active_trends,
     get_trends_by_names,
     insert_stores,
+    update_trend_status,
     upsert_trend,
 )
-from detector.keyword_manager import get_flat_keywords, is_food_specific_keyword
+from detector.keyword_manager import (
+    get_all_seed_keywords,
+    is_food_specific_keyword,
+)
 from detector.store_updater import build_store_records
 
 logger = logging.getLogger(__name__)
@@ -38,11 +43,41 @@ def score_acceleration(acceleration: float) -> float:
     return 0
 
 
+def score_popularity(popularity: float) -> float:
+    if popularity >= 140:
+        return 25
+    if popularity >= 100:
+        return 20
+    if popularity >= 70:
+        return 15
+    if popularity >= 40:
+        return 10
+    if popularity >= 20:
+        return 5
+    return 0
+
+
+def score_rank(rank: int | None) -> float:
+    if rank is None:
+        return 0
+    if rank <= 3:
+        return 35
+    if rank <= 5:
+        return 30
+    if rank <= 10:
+        return 20
+    if rank <= 20:
+        return 10
+    return 0
+
+
 def classify_status(score: float, acceleration: float) -> str:
     if (
-        score >= settings.TREND_RISING_SCORE_THRESHOLD
-        or acceleration >= settings.TREND_RISING_ACCELERATION_THRESHOLD
+        acceleration >= settings.TREND_THRESHOLD
+        and score >= settings.TREND_RISING_SCORE_THRESHOLD
     ):
+        return "rising"
+    if acceleration >= settings.TREND_RISING_ACCELERATION_THRESHOLD:
         return "rising"
     return "active"
 
@@ -57,14 +92,68 @@ def _build_search_volume_map(data_points: list[dict]) -> dict[str, float]:
 
 def _choose_category(
     keyword: str,
-    db_keywords_by_name: dict[str, dict],
+    keyword_metadata_by_name: dict[str, dict],
     existing_trend: dict | None,
 ) -> str:
-    if keyword in db_keywords_by_name:
-        return db_keywords_by_name[keyword].get("category") or DEFAULT_CATEGORY
+    if keyword in keyword_metadata_by_name:
+        return keyword_metadata_by_name[keyword].get("category") or DEFAULT_CATEGORY
     if existing_trend:
         return existing_trend.get("category") or DEFAULT_CATEGORY
     return DEFAULT_CATEGORY
+
+
+def _build_keyword_metadata_by_name(db_keywords: list[dict]) -> dict[str, dict]:
+    keyword_metadata_by_name = {
+        item["keyword"]: item
+        for item in get_all_seed_keywords()
+        if item.get("keyword")
+    }
+
+    for item in db_keywords:
+        keyword = item.get("keyword")
+        if not keyword:
+            continue
+        merged = dict(keyword_metadata_by_name.get(keyword, {}))
+        merged.update(item)
+        keyword_metadata_by_name[keyword] = merged
+
+    return keyword_metadata_by_name
+
+
+def _parse_detected_at(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _deactivate_stale_trends(confirmed_keywords: list[str]) -> list[str]:
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        hours=settings.ACTIVE_TREND_TTL_HOURS
+    )
+    confirmed_keyword_set = set(confirmed_keywords)
+    deactivated_trends: list[str] = []
+
+    for trend in get_active_trends() or []:
+        trend_id = trend.get("id")
+        keyword = trend.get("name")
+        if not trend_id or not keyword or keyword in confirmed_keyword_set:
+            continue
+
+        detected_at = _parse_detected_at(trend.get("detected_at"))
+        if detected_at and detected_at > cutoff:
+            continue
+
+        update_trend_status(trend_id, "inactive")
+        deactivated_trends.append(keyword)
+        logger.info("비활성 처리: %s", keyword)
+
+    return deactivated_trends
 
 
 def _build_ai_detail_line(
@@ -123,20 +212,23 @@ async def detect_trends() -> dict:
     logger.info("=== 트렌드 감지 시작 ===")
 
     db_keywords = get_all_keywords() or []
-    db_keywords_by_name = {
-        item["keyword"]: item
-        for item in db_keywords
-        if item.get("keyword")
-    }
-    keywords = list(db_keywords_by_name) if db_keywords_by_name else get_flat_keywords()
+    keyword_metadata_by_name = _build_keyword_metadata_by_name(db_keywords)
+    db_keyword_count = len(
+        [item for item in db_keywords if item.get("keyword")]
+    )
+    keywords = list(keyword_metadata_by_name)
 
     summary = {
         "keywords": len(keywords),
+        "db_keywords": db_keyword_count,
+        "seed_keywords": len(get_all_seed_keywords()),
         "candidates": 0,
+        "rank_candidates": 0,
         "confirmed": 0,
         "stored_trends": 0,
         "stored_stores": 0,
         "confirmed_keywords": [],
+        "deactivated_trends": [],
         "ai_reviewed": 0,
         "ai_accepted": 0,
         "ai_rejected_details": [],
@@ -146,26 +238,41 @@ async def detect_trends() -> dict:
 
     logger.info("모니터링 키워드 %s개", len(keywords))
 
-    search_data = await get_search_trend(keywords)
+    trend_insights = await get_search_trend_insights(keywords)
+    search_data = trend_insights["series"]
+    popularity_scores = trend_insights["popularity_scores"]
+    popularity_ranks = trend_insights["popularity_ranks"]
 
     candidates = []
     for keyword, data_points in search_data.items():
         acceleration = calculate_acceleration(data_points)
-        if acceleration >= settings.TREND_THRESHOLD:
+        popularity = float(popularity_scores.get(keyword, 0.0))
+        rank = popularity_ranks.get(keyword)
+        is_rank_candidate = (
+            rank is not None and rank <= settings.TREND_TOP_RANK_CANDIDATE_MAX
+        )
+        if acceleration >= settings.TREND_THRESHOLD or is_rank_candidate:
             candidates.append({
                 "keyword": keyword,
                 "acceleration": acceleration,
                 "data_points": data_points,
+                "popularity": popularity,
+                "rank": rank,
             })
+            if is_rank_candidate:
+                summary["rank_candidates"] += 1
             logger.info(
-                "급등 후보 감지: %s (가속도 %.1f%%)",
+                "후보 감지: %s (가속도 %.1f%%, 인기도 %.2f, 순위 %s)",
                 keyword,
                 acceleration,
+                popularity,
+                rank or "-",
             )
 
     summary["candidates"] = len(candidates)
 
     if not candidates:
+        summary["deactivated_trends"] = _deactivate_stale_trends([])
         logger.info("급등 키워드 없음")
         return summary
 
@@ -179,7 +286,11 @@ async def detect_trends() -> dict:
     for candidate in candidates:
         keyword = candidate["keyword"]
         existing_trend = candidate_existing_trends.get(keyword)
-        category_hint = _choose_category(keyword, db_keywords_by_name, existing_trend)
+        category_hint = _choose_category(
+            keyword,
+            keyword_metadata_by_name,
+            existing_trend,
+        )
 
         if not is_food_specific_keyword(keyword):
             logger.info("범용 키워드 스킵: %s", keyword)
@@ -200,6 +311,8 @@ async def detect_trends() -> dict:
             elif ig_count > 1000:
                 score += 15
 
+        score += score_rank(candidate.get("rank"))
+        score += score_popularity(candidate.get("popularity", 0.0))
         score += score_acceleration(candidate["acceleration"])
 
         candidate["score"] = score
@@ -272,6 +385,9 @@ async def detect_trends() -> dict:
     confirmed = list(confirmed_by_name.values())
     summary["confirmed"] = len(confirmed)
     summary["confirmed_keywords"] = [trend["keyword"] for trend in confirmed]
+    summary["deactivated_trends"] = _deactivate_stale_trends(
+        summary["confirmed_keywords"]
+    )
 
     existing_trends = {
         trend["name"]: trend
@@ -284,7 +400,7 @@ async def detect_trends() -> dict:
         existing_trend = existing_trends.get(keyword)
         category = trend.get("category") or _choose_category(
             keyword,
-            db_keywords_by_name,
+            keyword_metadata_by_name,
             existing_trend,
         )
         trend_id = existing_trend["id"] if existing_trend else str(uuid.uuid4())
