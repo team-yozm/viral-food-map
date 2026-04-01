@@ -14,8 +14,9 @@
 :root {
   --primary: #9B7DD4;
   --secondary: #8BACD8;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Keep iOS app chrome anchored to hardware safe areas instead of dynamic toolbar insets. */
+  --safe-top: env(safe-area-max-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px));
   --bottom-nav-height: 64px;
   --bottom-nav-offset: calc(var(--bottom-nav-height) + var(--safe-bottom));
 }
