@@ -53,6 +53,11 @@ export default function KakaoMap({
   >(new Map());
   const openInfoWindowRef = useRef<kakao.maps.InfoWindow | null>(null);
   const currentLocationOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
+  const onBoundsChangeRef = useRef(onBoundsChange);
+
+  useEffect(() => {
+    onBoundsChangeRef.current = onBoundsChange;
+  }, [onBoundsChange]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -82,17 +87,21 @@ export default function KakaoMap({
   useEffect(() => {
     if (!loaded || !mapRef.current) return;
 
+    // Kakao Map appends its own layer DOM into the container.
+    // Clear stale layers before initializing so a prop change cannot leave maps stacked.
+    mapRef.current.innerHTML = "";
+
     const newMap = new kakao.maps.Map(mapRef.current, {
       center: new kakao.maps.LatLng(center.lat, center.lng),
       level,
     });
 
     const emitBounds = () => {
-      if (!onBoundsChange) return;
+      if (!onBoundsChangeRef.current) return;
       const b = newMap.getBounds();
       const sw = b.getSouthWest();
       const ne = b.getNorthEast();
-      onBoundsChange({
+      onBoundsChangeRef.current({
         sw: { lat: sw.getLat(), lng: sw.getLng() },
         ne: { lat: ne.getLat(), lng: ne.getLng() },
         level: newMap.getLevel(),
@@ -100,17 +109,29 @@ export default function KakaoMap({
     };
 
     kakao.maps.event.addListener(newMap, "idle", emitBounds);
-    setTimeout(emitBounds, 500);
+    const emitBoundsTimer = window.setTimeout(emitBounds, 500);
 
     setMap(newMap);
 
     return () => {
+      window.clearTimeout(emitBoundsTimer);
       if (currentLocationOverlayRef.current) {
         currentLocationOverlayRef.current.setMap(null);
         currentLocationOverlayRef.current = null;
       }
+      if (mapRef.current) {
+        mapRef.current.innerHTML = "";
+      }
     };
-  }, [loaded, center.lat, center.lng, level]);
+  }, [loaded]);
+
+  useEffect(() => {
+    if (!map) return;
+    if (autoFitBounds && stores.length > 0) return;
+
+    map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+    map.setLevel(level);
+  }, [map, center.lat, center.lng, level, autoFitBounds, stores.length]);
 
   useEffect(() => {
     if (!map) return;
