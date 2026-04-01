@@ -71,6 +71,11 @@ export interface TrendDetectionSummary {
   stored_trends: number;
   stored_stores: number;
   confirmed_keywords: string[];
+  ai_calls_used?: number;
+  ai_calls_remaining?: number;
+  alias_matches?: number;
+  canonicalized_keywords?: string[];
+  budget_exhausted?: boolean;
 }
 
 export interface TrendDetectionResponse {
@@ -81,6 +86,12 @@ export interface TrendDetectionResponse {
 export interface CrawlerHealthResponse {
   status: string;
   service: string;
+  yomechu_enrich_enabled?: boolean;
+  scheduler_timezone?: string;
+  daily_ai_limit?: number;
+  trend_detection_schedule?: string;
+  keyword_discovery_schedule?: string;
+  store_update_interval_minutes?: number;
 }
 
 export const YOMECHU_RADIUS_OPTIONS: YomechuOption<number>[] = [

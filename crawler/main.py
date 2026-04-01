@@ -133,4 +133,7 @@ async def health():
         "yomechu_enrich_enabled": settings.YOMECHU_ENRICH_ENABLED,
         "scheduler_timezone": schedule["timezone"],
         "daily_ai_limit": int(schedule["daily_ai_limit"]),
+        "trend_detection_schedule": schedule["trend_detection"],
+        "keyword_discovery_schedule": schedule["keyword_discovery"],
+        "store_update_interval_minutes": int(schedule["store_update_minutes"]),
     }
