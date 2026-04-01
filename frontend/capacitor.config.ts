@@ -9,6 +9,7 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   ios: {
+    backgroundColor: "#FAFAFA",
     contentInset: "never",
     preferredContentMode: "mobile",
   },

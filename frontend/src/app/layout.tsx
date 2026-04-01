@@ -81,7 +81,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: structuredData }}
         />
       </head>
-      <body className="bg-gray-50 min-h-screen">
+      <body className="min-h-screen bg-[#FAFAFA]">
         <NativeInitializer />
         <PageViewTracker />
         {children}

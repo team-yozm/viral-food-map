@@ -194,7 +194,13 @@ export default function YomechuLauncher({
           className="border-t border-gray-100 bg-[radial-gradient(circle_at_top,_rgba(155,125,212,0.14),_transparent_55%),linear-gradient(180deg,_#fff_0%,_#faf7ff_100%)]"
         >
           <div className="mx-auto max-w-lg px-4 pb-4 pt-3">
-            <div className="flex max-h-[calc(100dvh-136px)] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_18px_40px_rgba(155,125,212,0.18)]">
+            <div
+              className="flex flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_18px_40px_rgba(155,125,212,0.18)]"
+              style={{
+                maxHeight:
+                  "calc(100dvh - 136px - var(--bottom-nav-offset) - 12px)",
+              }}
+            >
               <div className="min-h-0 overflow-y-auto p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -410,7 +416,7 @@ export default function YomechuLauncher({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-0 z-10 mt-5 -mx-4 border-t border-gray-100 bg-white/95 px-4 pb-[calc(var(--safe-bottom)+1rem)] pt-3 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+                <div className="sticky bottom-0 z-10 mt-5 -mx-4 border-t border-gray-100 bg-white/95 px-4 pb-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-white/85">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
                     Selected
                   </p>
