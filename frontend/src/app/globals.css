@@ -21,6 +21,7 @@
   --safe-bottom: env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px));
   --bottom-nav-height: 56px;
   --bottom-nav-offset: calc(var(--bottom-nav-height) + var(--safe-bottom));
+  --launcher-footer-offset: 0px;
 }
 
 html {
@@ -45,6 +46,10 @@ body {
 html.native-app,
 html.native-app body {
   background: var(--app-background);
+}
+
+html.native-app {
+  --launcher-footer-offset: calc(var(--bottom-nav-offset) + 12px);
 }
 
 .card-hover {
