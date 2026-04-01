@@ -69,8 +69,7 @@ export default function AiAliasesTab() {
     }
 
     const today = getTodaySeoulDate();
-    const [healthResult, aliasesResult, usageResult] = await Promise.allSettled([
-      fetchCrawlerHealth(),
+    const [aliasesResult, usageResult] = await Promise.allSettled([
       supabase
         .from("keyword_aliases")
         .select(
@@ -86,10 +85,6 @@ export default function AiAliasesTab() {
         .limit(50),
     ]);
 
-    if (healthResult.status === "fulfilled") {
-      setHealth(healthResult.value);
-    }
-
     if (aliasesResult.status === "fulfilled" && aliasesResult.value.data) {
       setAliases(aliasesResult.value.data as KeywordAliasRow[]);
     }
@@ -100,6 +95,14 @@ export default function AiAliasesTab() {
 
     setLoading(false);
     setRefreshing(false);
+
+    void fetchCrawlerHealth()
+      .then((result) => {
+        setHealth(result);
+      })
+      .catch(() => {
+        setHealth(null);
+      });
   };
 
   useEffect(() => {

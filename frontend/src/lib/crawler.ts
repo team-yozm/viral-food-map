@@ -167,7 +167,24 @@ export async function fetchCrawlerHealth(): Promise<CrawlerHealthResponse> {
     throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
   }
 
-  const response = await fetch(`${CRAWLER_BASE_URL}/health`);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${CRAWLER_BASE_URL}/health`, {
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("크롤러 상태 확인이 지연되고 있습니다.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new Error("크롤러 상태 확인에 실패했습니다.");
