@@ -7,21 +7,22 @@ import { getTrendDetailById } from "@/lib/trends-server";
 export const revalidate = 3600;
 
 interface TrendPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function generateMetadata({
   params,
 }: TrendPageProps): Promise<Metadata> {
-  const trendData = await getTrendDetailById(params.id);
+  const { id } = await params;
+  const trendData = await getTrendDetailById(id);
 
   if (!trendData) {
     return buildMetadata({
       title: "트렌드를 찾을 수 없어요",
       description: "요청한 트렌드 정보를 찾을 수 없습니다.",
-      path: `/trend/${params.id}`,
+      path: `/trend/${id}`,
       noIndex: true,
     });
   }
@@ -34,7 +35,7 @@ export async function generateMetadata({
       storeCount: trendData.trend.store_count,
       detectedAt: trendData.trend.detected_at,
     }),
-    path: `/trend/${params.id}`,
+    path: `/trend/${id}`,
     image: trendData.trend.image_url,
     keywords: [
       trendData.trend.name,
@@ -46,13 +47,14 @@ export async function generateMetadata({
 }
 
 export default async function TrendDetailPage({ params }: TrendPageProps) {
-  const trendData = await getTrendDetailById(params.id);
+  const { id } = await params;
+  const trendData = await getTrendDetailById(id);
 
   return (
     <>
       <KakaoSdkScripts />
       <TrendDetailPageClient
-        id={params.id}
+        id={id}
         initialTrend={trendData?.trend ?? null}
         initialStores={trendData?.stores ?? []}
       />

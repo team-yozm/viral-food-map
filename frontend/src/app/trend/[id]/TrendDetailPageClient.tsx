@@ -133,19 +133,6 @@ export default function TrendDetailPageClient({
     void requestLocation();
   }, [requestLocation]);
 
-  if (!initialTrend) {
-    return (
-      <>
-        <Header showBack />
-        <main className="page-with-bottom-nav max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
-          <p className="text-4xl mb-3">😅</p>
-          <p>트렌드를 찾을 수 없어요</p>
-        </main>
-        <BottomNav />
-      </>
-    );
-  }
-
   const sortedStores = useMemo(() => {
     const sorted = userLoc
       ? [...initialStores].sort(
@@ -164,6 +151,19 @@ export default function TrendDetailPageClient({
   const mapCenter = nearestStore
     ? { lat: nearestStore.lat, lng: nearestStore.lng }
     : { lat: 37.5665, lng: 126.978 };
+
+  if (!initialTrend) {
+    return (
+      <>
+        <Header showBack />
+        <main className="page-with-bottom-nav max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
+          <p className="text-4xl mb-3">😅</p>
+          <p>트렌드를 찾을 수 없어요</p>
+        </main>
+        <BottomNav />
+      </>
+    );
+  }
 
   return (
     <>

@@ -12,21 +12,22 @@ import YomechuSharePageClient from "./YomechuSharePageClient";
 export const revalidate = 3600;
 
 interface YomechuSharePageProps {
-  params: {
+  params: Promise<{
     spinId: string;
-  };
+  }>;
 }
 
 export async function generateMetadata({
   params,
 }: YomechuSharePageProps): Promise<Metadata> {
-  const sharedSpin = await getSharedYomechuSpinById(params.spinId);
+  const { spinId } = await params;
+  const sharedSpin = await getSharedYomechuSpinById(spinId);
 
   if (!sharedSpin?.primaryWinner) {
     return buildMetadata({
       title: "요메추 추천 결과를 찾을 수 없어요",
       description: "공유된 요메추 추천 결과를 찾을 수 없습니다.",
-      path: `/yomechu/share/${params.spinId}`,
+      path: `/yomechu/share/${spinId}`,
       noIndex: true,
     });
   }
@@ -40,7 +41,7 @@ export async function generateMetadata({
       sharedSpin.primaryWinner,
       sharedSpin.winners.length
     ),
-    path: `/yomechu/share/${params.spinId}`,
+    path: `/yomechu/share/${spinId}`,
     noIndex: true,
   });
 }
@@ -48,7 +49,8 @@ export async function generateMetadata({
 export default async function YomechuSharePage({
   params,
 }: YomechuSharePageProps) {
-  const sharedSpin = await getSharedYomechuSpinById(params.spinId);
+  const { spinId } = await params;
+  const sharedSpin = await getSharedYomechuSpinById(spinId);
 
   if (!sharedSpin) {
     notFound();

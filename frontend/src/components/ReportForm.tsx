@@ -45,7 +45,7 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [trendsLoading, setTrendsLoading] = useState(initialTrends.length === 0);
   const [trendsError, setTrendsError] = useState<string | null>(null);
-  const debounceRef = useRef<NodeJS.Timeout>();
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const paginationRef = useRef<kakao.maps.services.PlacesPagination | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
