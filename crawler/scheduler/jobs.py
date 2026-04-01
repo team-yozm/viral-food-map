@@ -231,6 +231,10 @@ async def run_store_update_job(trigger: str = "scheduler") -> dict:
 
 async def run_yomechu_enrichment_job(trigger: str = "scheduler") -> dict:
     job_name = YOMECHU_JOB_NAME
+    if not settings.YOMECHU_ENRICH_ENABLED:
+        logger.info("%s 트리거 %s 스킵: 배치 비활성화", trigger, job_name)
+        return {"scanned": 0, "updated": 0, "skipped": True}
+
     if not yomechu_enrich_lock.acquire(blocking=False):
         logger.warning("%s 트리거 %s 스킵: 이전 작업이 아직 실행 중", trigger, job_name)
         return {"scanned": 0, "updated": 0, "skipped": True}
@@ -301,22 +305,28 @@ def start_scheduler():
         max_instances=1,
         coalesce=True,
     )
-    scheduler.add_job(
-        run_yomechu_enrichment,
-        "interval",
-        hours=settings.YOMECHU_ENRICH_INTERVAL_HOURS,
-        id="yomechu_enrichment",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
+    if settings.YOMECHU_ENRICH_ENABLED:
+        scheduler.add_job(
+            run_yomechu_enrichment,
+            "interval",
+            hours=settings.YOMECHU_ENRICH_INTERVAL_HOURS,
+            id="yomechu_enrichment",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     scheduler.start()
+    yomechu_label = (
+        f"요메추 보강 {settings.YOMECHU_ENRICH_INTERVAL_HOURS}시간"
+        if settings.YOMECHU_ENRICH_ENABLED
+        else "요메추 보강 비활성화"
+    )
     logger.info(
-        "스케줄러 시작: 트렌드 감지 %s분 / 판매처 갱신 %s분 / 키워드 발굴 %s시간 / 요메추 보강 %s시간",
+        "스케줄러 시작: 트렌드 감지 %s분 / 판매처 갱신 %s분 / 키워드 발굴 %s시간 / %s",
         settings.CRAWL_INTERVAL_MINUTES,
         settings.STORE_UPDATE_INTERVAL_MINUTES,
         settings.DISCOVERY_INTERVAL_HOURS,
-        settings.YOMECHU_ENRICH_INTERVAL_HOURS,
+        yomechu_label,
     )
 
 

@@ -30,13 +30,18 @@ logger = logging.getLogger(__name__)
 
 
 def _build_startup_message() -> str:
+    yomechu_line = (
+        f"요메추 보강 주기: {settings.YOMECHU_ENRICH_INTERVAL_HOURS}시간"
+        if settings.YOMECHU_ENRICH_ENABLED
+        else "요메추 보강 배치: 비활성화"
+    )
     return "\n".join(
         [
             "[크롤러 시작]",
             f"트렌드 감지 주기: {settings.CRAWL_INTERVAL_MINUTES}분",
             f"판매처 갱신 주기: {settings.STORE_UPDATE_INTERVAL_MINUTES}분",
             f"키워드 발굴 주기: {settings.DISCOVERY_INTERVAL_HOURS}시간",
-            f"요메추 보강 주기: {settings.YOMECHU_ENRICH_INTERVAL_HOURS}시간",
+            yomechu_line,
         ]
     )
 
@@ -63,10 +68,13 @@ async def lifespan(app: FastAPI):
         startup_bootstrap = asyncio.create_task(run_startup_bootstrap_job())
         startup_bootstrap.add_done_callback(_handle_background_task_result)
 
-        startup_yomechu_enrich = asyncio.create_task(
-            run_yomechu_enrichment_job(trigger="startup")
-        )
-        startup_yomechu_enrich.add_done_callback(_handle_background_task_result)
+        if settings.YOMECHU_ENRICH_ENABLED:
+            startup_yomechu_enrich = asyncio.create_task(
+                run_yomechu_enrichment_job(trigger="startup")
+            )
+            startup_yomechu_enrich.add_done_callback(_handle_background_task_result)
+        else:
+            logger.info("요메추 보강 배치 비활성화: startup 실행 건너뜀")
         yield
     except Exception as exc:
         logger.exception("서버 라이프사이클 처리 실패")
@@ -123,4 +131,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "viral-food-map-crawler"}
+    return {
+        "status": "ok",
+        "service": "viral-food-map-crawler",
+        "yomechu_enrich_enabled": settings.YOMECHU_ENRICH_ENABLED,
+    }

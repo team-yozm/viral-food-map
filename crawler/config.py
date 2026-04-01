@@ -81,6 +81,10 @@ class Settings:
     YOMECHU_ENRICH_BATCH_SIZE: int = int(
         os.getenv("YOMECHU_ENRICH_BATCH_SIZE", "100")
     )
+    YOMECHU_ENRICH_ENABLED: bool = _env_bool(
+        "YOMECHU_ENRICH_ENABLED",
+        default=False,
+    )
     AI_REVIEW_API_URL: str = os.getenv(
         "AI_REVIEW_API_URL",
         "https://api.openai.com/v1/chat/completions",
