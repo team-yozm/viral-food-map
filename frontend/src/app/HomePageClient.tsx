@@ -26,6 +26,7 @@ import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
 import { DEFAULT_MAP_CENTER, hasUsableCoordinates } from "@/lib/location";
 import { SITE_URL } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
+import { getTrendHref } from "@/lib/trend-links";
 import type {
   LocationStatus,
   NearbyTrendStore,
@@ -312,7 +313,6 @@ export default function HomePageClient({
       setSessionId(nextSessionId);
     }
 
-    requestUserLocation();
     fetchTrends();
 
     const channel = supabase
@@ -361,6 +361,8 @@ export default function HomePageClient({
     locationStatus === "denied" ||
     locationStatus === "invalid" ||
     locationStatus === "unsupported";
+  const showLocationPermissionIntro =
+    locationStatus === "idle" && !hasUsableCoordinates(userLoc);
   const locationPickerInitialCenter = hasUsableCoordinates(yomechuBaseLocation)
     ? yomechuBaseLocation
     : hasUsableCoordinates(userLoc)
@@ -586,6 +588,46 @@ export default function HomePageClient({
           <PushSubscribeButton />
         </div>
 
+        {showLocationPermissionIntro ? (
+          <section className="mb-6">
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+              <p className="text-sm font-semibold text-sky-900">
+                현재 위치는 원할 때만 사용할 수 있어요.
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-sky-800">
+                홈에서 가까운 판매처를 정렬하거나 요메추 추천 범위를 맞추고 싶을 때만
+                위치 권한을 허용해 주세요.
+              </p>
+              <p className="mt-2 text-xs leading-5 text-sky-700">
+                권한을 허용하지 않아도 지도 탐색과 직접 위치 선택은 계속 사용할 수
+                있습니다.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => {
+                    requestUserLocation();
+                  }}
+                  className="inline-flex rounded-lg bg-sky-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-sky-950"
+                >
+                  현재 위치 사용하기
+                </button>
+                <button
+                  onClick={() => setLocationPickerOpen(true)}
+                  className="inline-flex rounded-lg border border-sky-300 px-3 py-2 text-xs font-semibold text-sky-900 transition-colors hover:bg-sky-100"
+                >
+                  기준 위치 직접 선택
+                </button>
+                <Link
+                  href="/info#permissions"
+                  className="inline-flex rounded-lg border border-sky-300 px-3 py-2 text-xs font-semibold text-sky-900 transition-colors hover:bg-sky-100"
+                >
+                  자세히 보기
+                </Link>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {showLocationNotice ? (
           <section className="mb-6">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
@@ -640,9 +682,14 @@ export default function HomePageClient({
           <section className="mb-6">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">📍 내 근처 판매처</h3>
-              <Link href="/map" className="text-xs text-primary font-medium">
-                지도에서 보기
-              </Link>
+              <div className="flex items-center gap-3">
+                <Link href="/info#content-policy" className="text-xs text-gray-400 font-medium">
+                  수정·삭제 요청
+                </Link>
+                <Link href="/map" className="text-xs text-primary font-medium">
+                  지도에서 보기
+                </Link>
+              </div>
             </div>
             <div className="space-y-2">
               {nearbyStores.map((store) => (
@@ -722,7 +769,7 @@ export default function HomePageClient({
                 <>
                   {topTrend && (
                     <section className="mb-8">
-                      <Link href={`/trend/${topTrend.id}`}>
+                      <Link href={getTrendHref(topTrend.id)}>
                         <div className="relative rounded-2xl overflow-hidden shadow-lg">
                           <div className="relative h-56 w-full bg-gray-100">
                             {topTrend.image_url ? (

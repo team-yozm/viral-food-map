@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isNative } from "@/lib/capacitor-utils";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -33,6 +34,10 @@ export default function InstallPrompt() {
   const [showKakaoAndroid, setShowKakaoAndroid] = useState(false);
   const [showKakaoIos, setShowKakaoIos] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
+  if (isNative()) {
+    return null;
+  }
 
   useEffect(() => {
     if (window.matchMedia("(display-mode: standalone)").matches) return;

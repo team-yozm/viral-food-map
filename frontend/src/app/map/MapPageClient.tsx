@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import KakaoMap, { type MapBounds } from "@/components/KakaoMap";
 import { openExternalUrl, openInstagramTag } from "@/lib/external-links";
+import { buildStoreIssueMailto } from "@/lib/support";
 import { supabase } from "@/lib/supabase";
 import type { Store, Trend } from "@/lib/types";
 import { getCurrentPosition } from "@/lib/native-geolocation";
@@ -22,6 +23,8 @@ type UserLocation = {
   lng: number;
 };
 
+const FALLBACK_LOCATION: UserLocation = { lat: 37.5665, lng: 126.978 };
+
 export default function MapPageClient({ initialTrends }: MapPageClientProps) {
   const [trends, setTrends] = useState<Trend[]>(initialTrends);
   const [stores, setStores] = useState<MapStore[]>([]);
@@ -31,25 +34,30 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
   const [storeQuery, setStoreQuery] = useState("");
   const [franchiseFilter, setFranchiseFilter] = useState<"all" | "franchise" | "independent">("all");
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
-  const [locReady, setLocReady] = useState(false);
+  const [mapCenter, setMapCenter] = useState<UserLocation>(FALLBACK_LOCATION);
+  const [hasAttemptedLocation, setHasAttemptedLocation] = useState(false);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
 
   const requestLocation = useCallback(
-    () =>
+    () => {
+      setHasAttemptedLocation(true);
+
+      return (
       getCurrentPosition({ timeout: 5000 })
         .then((nextLocation) => {
           setUserLoc(nextLocation);
+          setMapCenter(nextLocation);
           setLocationMessage(null);
-          setLocReady(true);
           return nextLocation as UserLocation;
         })
         .catch(() => {
-          const fallbackLocation = { lat: 37.5665, lng: 126.978 };
-          setUserLoc(fallbackLocation);
-          setLocationMessage("위치 권한이 없어 서울 시청 기준으로 표시 중입니다.");
-          setLocReady(true);
-          return fallbackLocation as UserLocation;
-        }),
+          setUserLoc(null);
+          setMapCenter(FALLBACK_LOCATION);
+          setLocationMessage("위치 권한을 허용하지 않아 서울 시청 기준으로 표시 중입니다.");
+          return FALLBACK_LOCATION;
+        })
+      );
+    },
     []
   );
 
@@ -64,10 +72,6 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
       setTrends(data as Trend[]);
     }
   }, []);
-
-  useEffect(() => {
-    void requestLocation();
-  }, [requestLocation]);
 
   useEffect(() => {
     void fetchTrends();
@@ -127,6 +131,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
 
   const hasStoreQuery = storeQuery.trim().length > 0;
   const showSearchInput = stores.length > 3 || hasStoreQuery;
+  const showLocationIntro = !hasAttemptedLocation && !userLoc;
 
   return (
     <>
@@ -158,6 +163,35 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
           ))}
         </div>
 
+        {showLocationIntro ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+            <p className="text-sm font-semibold text-sky-900">
+              현재 위치를 쓰면 내 주변 판매처를 더 정확히 볼 수 있어요.
+            </p>
+            <p className="mt-1 text-sm text-sky-800">
+              위치 권한은 버튼을 눌렀을 때만 요청하며, 허용하지 않아도 지도 탐색은
+              계속 가능합니다.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void requestLocation();
+                }}
+                className="rounded-lg bg-sky-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-sky-950"
+              >
+                현재 위치 사용하기
+              </button>
+              <a
+                href="/info#permissions"
+                className="rounded-lg border border-sky-300 px-3 py-2 text-xs font-semibold text-sky-900 transition-colors hover:bg-sky-100"
+              >
+                권한 안내
+              </a>
+            </div>
+          </div>
+        ) : null}
+
         {locationMessage && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-sm font-semibold text-amber-900">
@@ -178,24 +212,18 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
           </div>
         )}
 
-        {locReady && userLoc ? (
-          <KakaoMap
-            stores={filteredStores}
-            center={userLoc}
-            currentLocation={userLoc}
-            level={7}
-            className="map-container !h-[60vh]"
-            selectedStoreId={selectedStoreId}
-            onMarkerClick={setSelectedStoreId}
-            onBoundsChange={setMapBounds}
-            autoFitBounds={false}
-            onRequestCurrentLocation={requestLocation}
-          />
-        ) : (
-          <div className="map-container !h-[60vh] bg-gray-100 flex items-center justify-center rounded-xl">
-            <p className="text-gray-400 text-sm">위치 확인 중...</p>
-          </div>
-        )}
+        <KakaoMap
+          stores={filteredStores}
+          center={mapCenter}
+          currentLocation={userLoc}
+          level={7}
+          className="map-container !h-[60vh]"
+          selectedStoreId={selectedStoreId}
+          onMarkerClick={setSelectedStoreId}
+          onBoundsChange={setMapBounds}
+          autoFitBounds={false}
+          onRequestCurrentLocation={requestLocation}
+        />
 
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -332,6 +360,18 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                     >
                       인스타
                     </a>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        window.location.href = buildStoreIssueMailto(store, {
+                          trendName: store.trend_name,
+                          pagePath: "/map",
+                        });
+                      }}
+                      className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      수정요청
+                    </button>
                   </div>
                 </div>
               ))}

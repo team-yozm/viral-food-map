@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { getTrendHref } from "@/lib/trend-links";
 import type { Trend } from "@/lib/types";
 import TrendBadge from "./TrendBadge";
 
@@ -11,7 +12,7 @@ interface TrendCardProps {
 
 export default function TrendCard({ trend }: TrendCardProps) {
   return (
-    <Link href={`/trend/${trend.id}`}>
+    <Link href={getTrendHref(trend.id)}>
       <div className="bg-white rounded-2xl overflow-hidden shadow-md card-hover border border-gray-100">
         {trend.image_url && (
           <div className="relative h-40 w-full">
