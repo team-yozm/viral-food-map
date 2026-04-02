@@ -21,6 +21,7 @@ import {
   formatDistanceMeters,
   sendYomechuFeedback,
 } from "@/lib/crawler";
+import { isNative } from "@/lib/capacitor-utils";
 import { openExternalUrl } from "@/lib/external-links";
 import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
 import { DEFAULT_MAP_CENTER, hasUsableCoordinates } from "@/lib/location";
@@ -68,7 +69,8 @@ function getVisibleTrendNames(trendNames: string[]) {
 }
 
 function buildYomechuShareUrl(spinId: string) {
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : SITE_URL;
+  const baseUrl =
+    typeof window !== "undefined" && !isNative() ? window.location.origin : SITE_URL;
   return new URL(`/yomechu/share/${spinId}`, baseUrl).toString();
 }
 

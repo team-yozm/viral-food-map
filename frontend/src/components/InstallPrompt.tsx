@@ -34,12 +34,10 @@ export default function InstallPrompt() {
   const [showKakaoAndroid, setShowKakaoAndroid] = useState(false);
   const [showKakaoIos, setShowKakaoIos] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-
-  if (isNative()) {
-    return null;
-  }
+  const native = isNative();
 
   useEffect(() => {
+    if (native) return;
     if (window.matchMedia("(display-mode: standalone)").matches) return;
 
     const ua = navigator.userAgent;
@@ -81,7 +79,7 @@ export default function InstallPrompt() {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
       window.removeEventListener("appinstalled", handleInstalled);
     };
-  }, []);
+  }, [native]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt.current) return;
@@ -96,6 +94,7 @@ export default function InstallPrompt() {
     location.href = `intent://${url.replace(/https?:\/\//, "")}#Intent;scheme=https;package=com.android.chrome;end`;
   };
 
+  if (native) return null;
   if (dismissed) return null;
 
   // 카카오톡 Android → Chrome으로 열기

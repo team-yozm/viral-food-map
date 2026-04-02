@@ -84,6 +84,7 @@ export default function TrendDetailPageClient({
   const [trend, setTrend] = useState<Trend | null>(initialTrend);
   const [stores, setStores] = useState<Store[]>(initialStores);
   const [isTrendLoading, setIsTrendLoading] = useState(initialTrend === null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [storeQuery, setStoreQuery] = useState("");
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
@@ -143,30 +144,54 @@ export default function TrendDetailPageClient({
     let cancelled = false;
 
     const fetchLatest = async () => {
-      const [trendResult, storesResult] = await Promise.all([
-        supabase.from("trends").select("*").eq("id", id).single(),
-        supabase
-          .from("stores")
-          .select("*")
-          .eq("trend_id", id)
-          .order("verified", { ascending: false }),
-      ]);
+      setLoadError(null);
 
-      if (cancelled) {
-        return;
+      try {
+        const [trendResult, storesResult] = await Promise.all([
+          supabase.from("trends").select("*").eq("id", id).single(),
+          supabase
+            .from("stores")
+            .select("*")
+            .eq("trend_id", id)
+            .order("verified", { ascending: false }),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (trendResult.error) {
+          throw trendResult.error;
+        }
+
+        if (storesResult.error) {
+          throw storesResult.error;
+        }
+
+        if (trendResult.data) {
+          setTrend(trendResult.data as Trend);
+        } else if (initialTrend === null) {
+          setTrend(null);
+        }
+
+        if (storesResult.data) {
+          setStores(storesResult.data as Store[]);
+        }
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        if (initialTrend === null) {
+          setTrend(null);
+        }
+
+        setLoadError("트렌드 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+      } finally {
+        if (!cancelled) {
+          setIsTrendLoading(false);
+        }
       }
-
-      if (trendResult.data) {
-        setTrend(trendResult.data as Trend);
-      } else if (initialTrend === null) {
-        setTrend(null);
-      }
-
-      if (storesResult.data) {
-        setStores(storesResult.data as Store[]);
-      }
-
-      setIsTrendLoading(false);
     };
 
     void fetchLatest();
@@ -174,7 +199,7 @@ export default function TrendDetailPageClient({
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, initialTrend]);
 
   const sortedStores = useMemo(() => {
     const sorted = userLoc
@@ -214,7 +239,7 @@ export default function TrendDetailPageClient({
         <Header showBack />
         <main className="page-with-bottom-nav max-w-lg mx-auto px-4 py-12 text-center text-gray-400">
           <p className="text-4xl mb-3">😅</p>
-          <p>트렌드를 찾을 수 없어요</p>
+          <p>{loadError ?? "트렌드를 찾을 수 없어요"}</p>
         </main>
         <BottomNav />
       </>
@@ -230,6 +255,14 @@ export default function TrendDetailPageClient({
             <h2 className="text-xl font-bold text-gray-900">{trend.name}</h2>
             <TrendBadge status={trend.status} />
           </div>
+          {loadError ? (
+            <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-900">{loadError}</p>
+              <p className="mt-1 text-xs text-amber-800">
+                표시 중인 내용은 마지막으로 불러온 기준일 수 있습니다.
+              </p>
+            </div>
+          ) : null}
           <p className="text-sm text-gray-500">
             {trend.description || "이 트렌드는 최근 감지되어 상세 정보를 준비 중입니다. 판매처를 알고 계시면 제보해주세요!"}
           </p>
