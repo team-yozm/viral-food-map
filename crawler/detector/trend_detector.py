@@ -188,6 +188,7 @@ def _build_summary() -> dict:
         "stored_stores": 0,
         "generated_descriptions": 0,
         "confirmed_keywords": [],
+        "new_confirmed_keywords": [],
         "deactivated_trends": [],
         "ai_reviewed": 0,
         "ai_accepted": 0,
@@ -698,6 +699,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     consumed_existing_ids: set[str] = set()
     confirmed_keywords: list[str] = []
+    new_confirmed_keywords: list[str] = []
 
     for group in confirmed_groups.values():
         group_candidates = group["candidates"]
@@ -730,20 +732,22 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 display_keyword,
             )
 
-        matching_existing_trends = _find_matching_existing_trends(
+        matching_active_trends = _find_matching_existing_trends(
             active_trends,
             search_terms=search_terms,
             consumed_trend_ids=consumed_existing_ids,
             alias_lookup=alias_lookup,
         )
         matching_existing_trends = _dedupe_existing_trends(
-            matching_existing_trends,
+            matching_active_trends,
             _find_persisted_matching_trends(
                 search_terms=search_terms,
                 consumed_trend_ids=consumed_existing_ids,
                 alias_lookup=alias_lookup,
             ),
         )
+        if not matching_active_trends:
+            new_confirmed_keywords.append(display_keyword)
         primary_existing_trend = _select_primary_existing_trend(matching_existing_trends)
         if primary_existing_trend:
             consumed_existing_ids.update(
@@ -829,8 +833,10 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     upsert_keyword_aliases(alias_rows_to_upsert)
     deduped_confirmed_keywords = dedupe_terms(confirmed_keywords)
+    deduped_new_confirmed_keywords = dedupe_terms(new_confirmed_keywords)
     summary["confirmed"] = len(deduped_confirmed_keywords)
     summary["confirmed_keywords"] = deduped_confirmed_keywords
+    summary["new_confirmed_keywords"] = deduped_new_confirmed_keywords
     summary["deactivated_trends"] = _merge_deactivated_trends(
         invalid_active_trends,
         _deactivate_stale_trends(deduped_confirmed_keywords),

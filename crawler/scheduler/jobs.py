@@ -171,27 +171,39 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
             _build_job_message(job_name, trigger, "완료", summary=summary)
         )
 
-        confirmed_keywords: list[str] = summary.get("confirmed_keywords", [])
-        if confirmed_keywords:
+        notification_keywords: list[str] = summary.get("new_confirmed_keywords", [])
+        if notification_keywords:
             from database import get_client
 
             rows = (
                 get_client()
                 .table("trends")
                 .select("id, name")
-                .in_("name", confirmed_keywords)
+                .in_("name", notification_keywords)
                 .execute()
                 .data
             ) or []
-            for row in rows:
-                try:
-                    send_push_notifications(row["name"], row["id"])
-                except Exception as push_exc:
-                    logger.warning(
-                        "Push notification failed for %s: %s",
-                        row["name"],
-                        push_exc,
-                    )
+            rows_by_name = {
+                row["name"]: row
+                for row in rows
+                if row.get("name")
+            }
+            notification_targets = [
+                {
+                    "name": keyword,
+                    "id": rows_by_name.get(keyword, {}).get("id"),
+                }
+                for keyword in notification_keywords
+            ]
+
+            try:
+                send_push_notifications(notification_targets)
+            except Exception as push_exc:
+                logger.warning(
+                    "Push notification failed for %s trends: %s",
+                    len(notification_targets),
+                    push_exc,
+                )
 
         return summary
     except Exception as exc:
