@@ -307,6 +307,22 @@ def _select_primary_existing_trend(existing_trends: list[dict]) -> dict | None:
     return max(existing_trends, key=sort_key)
 
 
+def _should_refresh_image(
+    existing_trend: dict | None,
+    display_keyword: str,
+) -> bool:
+    if not existing_trend:
+        return True
+
+    if not existing_trend.get("image_url"):
+        return True
+
+    existing_name = clean_display_keyword(existing_trend.get("name"))
+    return normalize_keyword_text(existing_name) != normalize_keyword_text(
+        display_keyword
+    )
+
+
 def _find_matching_existing_trends(
     active_trends: list[dict],
     *,
@@ -746,8 +762,12 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             ),
         }
 
-        if not trend_data["image_url"]:
-            image_url = await find_food_image(display_keyword, category=category)
+        if _should_refresh_image(primary_existing_trend, display_keyword):
+            image_url = await find_food_image(
+                display_keyword,
+                category=category,
+                existing_image_url=trend_data["image_url"],
+            )
             if image_url:
                 trend_data["image_url"] = image_url
 

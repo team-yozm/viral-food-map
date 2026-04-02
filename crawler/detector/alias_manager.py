@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Iterable
 
 DISPLAY_WHITESPACE_RE = re.compile(r"\s+")
-NORMALIZE_RE = re.compile(r"[^0-9A-Za-z가-힣]+")
+NORMALIZE_RE = re.compile(r"[^0-9A-Za-z\uAC00-\uD7A3]+")
 
 
 def clean_display_keyword(value: str | None) -> str:
