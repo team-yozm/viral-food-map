@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
@@ -26,6 +27,11 @@ def get_client() -> Client:
     if _client is None:
         _client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
     return _client
+
+
+def _reset_client() -> None:
+    global _client
+    _client = None
 
 
 def get_active_trends():
@@ -98,9 +104,16 @@ def upsert_trend(trend_data: dict):
 def insert_stores(stores: list[dict]):
     if not stores:
         return None
-    return get_client().table("stores").upsert(
-        stores, on_conflict="trend_id,name,address"
-    ).execute()
+    try:
+        return get_client().table("stores").upsert(
+            stores, on_conflict="trend_id,name,address"
+        ).execute()
+    except httpx.LocalProtocolError:
+        logger.warning("HTTP/2 protocol error on insert_stores, resetting client and retrying")
+        _reset_client()
+        return get_client().table("stores").upsert(
+            stores, on_conflict="trend_id,name,address"
+        ).execute()
 
 
 def get_stores_by_trend_ids(trend_ids: list[str]):
