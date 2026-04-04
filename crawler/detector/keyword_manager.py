@@ -23,7 +23,6 @@ SEED_KEYWORDS = {
     ],
     "음료": [
         "하이볼",
-        "제로슈거",
         "말차라떼",
         "흑당버블티",
         "아인슈페너",
@@ -338,6 +337,7 @@ FOOD_SUFFIXES = (
 )
 
 FOOD_PREFIXES = (
+    "제로",
     "크림",
     "치즈",
     "초코",
@@ -396,7 +396,6 @@ CATEGORY_SIGNALS = {
         "떡",
         "호떡",
         "포차",
-        "분식",
         "튀김",
     },
 }
@@ -442,6 +441,8 @@ GENERIC_FOOD_KEYWORDS = frozenset({
     "떡볶이",
     "라면",
     "국밥",
+    "분식",
+    "제로슈거",
 })
 
 _SEED_KEYWORD_SET = frozenset(
