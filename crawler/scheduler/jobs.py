@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -18,8 +19,18 @@ from notifications import send_discord_message, send_push_notifications
 logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler(timezone=ZoneInfo(settings.SCHEDULER_TIMEZONE))
+trend_detection_lock = threading.Lock()
 store_update_lock = threading.Lock()
 yomechu_enrich_lock = threading.Lock()
+trend_detection_task: asyncio.Task | None = None
+trend_detection_status: dict[str, object | None] = {
+    "state": "idle",
+    "last_trigger": None,
+    "last_started_at": None,
+    "last_finished_at": None,
+    "last_summary": None,
+    "last_error": None,
+}
 
 MAX_DETAIL_LINES = 5
 TREND_JOB_NAME = "트렌드 감지"
@@ -162,8 +173,98 @@ def get_scheduler_description() -> dict[str, str]:
     }
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _mark_trend_detection_queued(trigger: str) -> None:
+    trend_detection_status["state"] = "queued"
+    trend_detection_status["last_trigger"] = trigger
+    trend_detection_status["last_error"] = None
+
+
+def _mark_trend_detection_running(trigger: str) -> None:
+    trend_detection_status["state"] = "running"
+    trend_detection_status["last_trigger"] = trigger
+    trend_detection_status["last_started_at"] = _utc_now_iso()
+    trend_detection_status["last_error"] = None
+
+
+def _mark_trend_detection_finished(summary: dict) -> None:
+    trend_detection_status["state"] = "completed"
+    trend_detection_status["last_finished_at"] = _utc_now_iso()
+    trend_detection_status["last_summary"] = summary
+    trend_detection_status["last_error"] = None
+
+
+def _mark_trend_detection_failed(error: str) -> None:
+    trend_detection_status["state"] = "failed"
+    trend_detection_status["last_finished_at"] = _utc_now_iso()
+    trend_detection_status["last_error"] = error
+
+
+def get_trend_detection_status() -> dict[str, object | None]:
+    status = dict(trend_detection_status)
+    status["running"] = bool(
+        trend_detection_lock.locked()
+        or status.get("state") in {"queued", "running"}
+        or (trend_detection_task and not trend_detection_task.done())
+    )
+    return status
+
+
+def _handle_trend_detection_task_result(task: asyncio.Task) -> None:
+    global trend_detection_task
+
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.info("%s detached task cancelled", TREND_JOB_NAME)
+    except Exception:
+        logger.exception("%s detached task failed", TREND_JOB_NAME)
+    finally:
+        if trend_detection_task is task:
+            trend_detection_task = None
+
+
+def queue_trend_detection_job(trigger: str = "manual") -> dict[str, object]:
+    global trend_detection_task
+
+    if trend_detection_lock.locked() or (
+        trend_detection_task and not trend_detection_task.done()
+    ):
+        return {
+            "accepted": False,
+            "status": "running",
+            "message": "Trend detection is already running.",
+            "job": get_trend_detection_status(),
+        }
+
+    _mark_trend_detection_queued(trigger)
+    trend_detection_task = asyncio.create_task(run_trend_detection_job(trigger=trigger))
+    trend_detection_task.add_done_callback(_handle_trend_detection_task_result)
+    return {
+        "accepted": True,
+        "status": "queued",
+        "message": "Trend detection queued.",
+        "job": get_trend_detection_status(),
+    }
+
+
 async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
     job_name = TREND_JOB_NAME
+    if not trend_detection_lock.acquire(blocking=False):
+        logger.warning("%s skipped because previous run is still active", job_name)
+        return {
+            "confirmed": 0,
+            "stored_trends": 0,
+            "stored_stores": 0,
+            "confirmed_keywords": [],
+            "skipped": True,
+            "reason": "already_running",
+        }
+
+    _mark_trend_detection_running(trigger)
     logger.info("%s started (%s)", job_name, trigger)
     await send_discord_message(_build_job_message(job_name, trigger, "시작"))
 
@@ -207,8 +308,10 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
                     push_exc,
                 )
 
+        _mark_trend_detection_finished(summary)
         return summary
     except Exception as exc:
+        _mark_trend_detection_failed(str(exc))
         logger.exception("%s failed (%s)", job_name, trigger)
         await report_exception_to_discord(
             f"{job_name} 실패",
@@ -216,6 +319,8 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
             details={"trigger": trigger},
         )
         raise
+    finally:
+        trend_detection_lock.release()
 
 
 async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:

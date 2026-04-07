@@ -10,17 +10,36 @@ jobs:
   crawl:
     runs-on: ubuntu-latest
     steps:
+      - name: Wake crawler service
+        run: |
+          echo "Waiting for crawler health check..."
+          health_code=""
+          for attempt in $(seq 1 12); do
+            health_code=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://silly-donnamarie-aiproject-41bab04f.koyeb.app/health" \
+              --max-time 15 || true)
+            echo "Health status: $health_code"
+            if [ "$health_code" = "200" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "$health_code" != "200" ]; then
+            echo "Crawler service did not become healthy"
+            exit 1
+          fi
+
       - name: Trigger trend detection
         run: |
-          echo "Triggering trend detection..."
+          echo "Queueing trend detection..."
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "https://silly-donnamarie-aiproject-41bab04f.koyeb.app/api/trends/detect" \
-            --max-time 120)
+            --max-time 30)
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -1)
           echo "Status: $http_code"
           echo "Response: $body"
-          if [ "$http_code" != "200" ]; then
+          if [ "$http_code" != "200" ] && [ "$http_code" != "202" ]; then
             echo "Failed with status $http_code"
             exit 1
           fi

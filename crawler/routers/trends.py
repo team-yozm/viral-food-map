@@ -1,6 +1,11 @@
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from database import get_client
-from scheduler.jobs import run_trend_detection_job, run_keyword_discovery_job
+from scheduler.jobs import (
+    get_trend_detection_status,
+    queue_trend_detection_job,
+    run_keyword_discovery_job,
+)
 
 router = APIRouter(prefix="/api/trends", tags=["trends"])
 
@@ -46,11 +51,14 @@ async def get_trend(trend_id: str):
 @router.post("/detect")
 async def trigger_detection():
     """수동 트렌드 탐지 트리거"""
-    summary = await run_trend_detection_job(trigger="manual")
-    return {
-        "message": "트렌드 탐지 완료",
-        "summary": summary,
-    }
+    result = queue_trend_detection_job(trigger="manual")
+    status_code = 202 if result["accepted"] else 200
+    return JSONResponse(status_code=status_code, content=result)
+
+
+@router.get("/detect/status")
+async def get_detection_status():
+    return get_trend_detection_status()
 
 
 @router.post("/discover-keywords")
