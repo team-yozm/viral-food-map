@@ -1,0 +1,11 @@
+{
+  "name": "viral-food-map-crawler-renderer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render:instagram-card": "node scripts/render_instagram_card.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}

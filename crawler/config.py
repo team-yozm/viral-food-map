@@ -65,6 +65,36 @@ class Settings:
     YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
     KAKAO_REST_API_KEY: str = os.getenv("KAKAO_REST_API_KEY", "")
     DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
+    INSTAGRAM_POSTING_ENABLED: bool = _env_bool(
+        "INSTAGRAM_POSTING_ENABLED",
+        default=False,
+    )
+    INSTAGRAM_POST_SCHEDULE_HOUR: int = int(
+        os.getenv("INSTAGRAM_POST_SCHEDULE_HOUR", "11")
+    )
+    INSTAGRAM_POST_SCHEDULE_MINUTE: int = int(
+        os.getenv("INSTAGRAM_POST_SCHEDULE_MINUTE", "0")
+    )
+    INSTAGRAM_IG_USER_ID: str = os.getenv("INSTAGRAM_IG_USER_ID", "")
+    INSTAGRAM_ACCESS_TOKEN: str = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+    INSTAGRAM_MEDIA_BUCKET: str = os.getenv(
+        "INSTAGRAM_MEDIA_BUCKET",
+        "instagram-feed",
+    )
+    INSTAGRAM_GRAPH_API_VERSION: str = os.getenv(
+        "INSTAGRAM_GRAPH_API_VERSION",
+        "v23.0",
+    )
+    INSTAGRAM_CONTAINER_STATUS_TIMEOUT_SECONDS: int = int(
+        os.getenv("INSTAGRAM_CONTAINER_STATUS_TIMEOUT_SECONDS", "90")
+    )
+    INSTAGRAM_CONTAINER_STATUS_POLL_SECONDS: int = int(
+        os.getenv("INSTAGRAM_CONTAINER_STATUS_POLL_SECONDS", "3")
+    )
+    INSTAGRAM_LINK_HUB_URL: str = os.getenv(
+        "INSTAGRAM_LINK_HUB_URL",
+        "https://www.yozmeat.com",
+    )
     APP_ENV: str = _detect_app_env()
     VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
     VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")

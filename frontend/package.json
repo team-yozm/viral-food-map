@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint src worker capacitor.config.ts"
+    "lint": "eslint src worker capacitor.config.ts",
+    "generate:instagram-sample": "node scripts/generate-instagram-sample.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",

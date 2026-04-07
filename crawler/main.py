@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from config import settings
 from error_reporting import install_recent_logs_handler, report_exception_to_discord
 from notifications import send_discord_message
+from routers.instagram import router as instagram_router
 from routers.stores import router as stores_router
 from routers.trends import router as trends_router
 from routers.yomechu import router as yomechu_router
@@ -31,6 +32,11 @@ logger = logging.getLogger(__name__)
 
 def _build_startup_message() -> str:
     schedule = get_scheduler_description()
+    instagram_line = (
+        f"인스타 피드: 매일 {schedule['instagram_feed_schedule']}"
+        if settings.INSTAGRAM_POSTING_ENABLED
+        else "인스타 피드: 비활성화"
+    )
     yomechu_line = (
         f"요메추 보강 주기: {settings.YOMECHU_ENRICH_INTERVAL_HOURS}시간"
         if settings.YOMECHU_ENRICH_ENABLED
@@ -44,6 +50,7 @@ def _build_startup_message() -> str:
             f"키워드 발굴: {schedule['keyword_discovery']}",
             f"자동 AI 한도: {schedule['daily_ai_limit']}회/일",
             f"판매처 갱신: {schedule['store_update_minutes']}분 간격",
+            instagram_line,
             yomechu_line,
         ]
     )
@@ -106,6 +113,7 @@ app.add_middleware(
 
 app.include_router(trends_router)
 app.include_router(stores_router)
+app.include_router(instagram_router)
 app.include_router(yomechu_router)
 
 
@@ -136,4 +144,7 @@ async def health():
         "trend_detection_schedule": schedule["trend_detection"],
         "keyword_discovery_schedule": schedule["keyword_discovery"],
         "store_update_interval_minutes": int(schedule["store_update_minutes"]),
+        "instagram_posting_enabled": settings.INSTAGRAM_POSTING_ENABLED,
+        "instagram_feed_schedule": schedule["instagram_feed_schedule"],
+        "instagram_media_bucket": settings.INSTAGRAM_MEDIA_BUCKET,
     }

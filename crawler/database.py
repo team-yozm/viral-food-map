@@ -354,3 +354,102 @@ def update_yomechu_place(
     )
     data = result.data or []
     return data[0] if data else None
+
+
+def get_instagram_feed_run_by_date(run_date: str) -> dict[str, Any] | None:
+    try:
+        result = (
+            get_client()
+            .table("instagram_feed_runs")
+            .select("*")
+            .eq("run_date", run_date)
+            .limit(1)
+            .execute()
+        )
+        data = result.data or []
+        return data[0] if data else None
+    except Exception as exc:
+        _warn_once(
+            "instagram_feed_runs_lookup",
+            "instagram_feed_runs lookup unavailable",
+            exc,
+        )
+        return None
+
+
+def create_instagram_feed_run(payload: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        result = get_client().table("instagram_feed_runs").insert(payload).execute()
+        data = result.data or []
+        return data[0] if data else None
+    except Exception as exc:
+        _warn_once(
+            "instagram_feed_runs_insert",
+            "instagram_feed_runs insert unavailable",
+            exc,
+        )
+        raise
+
+
+def update_instagram_feed_run(
+    run_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        result = (
+            get_client()
+            .table("instagram_feed_runs")
+            .update(payload)
+            .eq("id", run_id)
+            .execute()
+        )
+        data = result.data or []
+        return data[0] if data else None
+    except Exception as exc:
+        _warn_once(
+            "instagram_feed_runs_update",
+            "instagram_feed_runs update unavailable",
+            exc,
+        )
+        raise
+
+
+def list_instagram_feed_runs(limit: int = 30) -> list[dict[str, Any]]:
+    try:
+        result = (
+            get_client()
+            .table("instagram_feed_runs")
+            .select("*")
+            .order("run_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        _warn_once(
+            "instagram_feed_runs_list",
+            "instagram_feed_runs list unavailable",
+            exc,
+        )
+        return []
+
+
+def list_published_instagram_trend_ids() -> list[str]:
+    try:
+        result = (
+            get_client()
+            .table("instagram_feed_runs")
+            .select("trend_id")
+            .eq("status", "published")
+            .not_.is_("trend_id", "null")
+            .execute()
+        )
+        rows = result.data or []
+        return [row["trend_id"] for row in rows if row.get("trend_id")]
+    except Exception as exc:
+        _warn_once(
+            "instagram_feed_runs_published",
+            "instagram_feed_runs published lookup unavailable",
+            exc,
+        )
+        return []

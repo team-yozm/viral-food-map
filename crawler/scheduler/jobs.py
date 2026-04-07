@@ -14,6 +14,7 @@ from detector.keyword_discoverer import discover_keywords
 from detector.store_updater import refresh_stores_for_active_trends
 from detector.trend_detector import detect_trends
 from error_reporting import report_exception_to_discord
+from instagram_publisher import publish_daily_instagram_feed
 from notifications import send_discord_message, send_push_notifications
 
 logger = logging.getLogger(__name__)
@@ -31,12 +32,14 @@ trend_detection_status: dict[str, object | None] = {
     "last_summary": None,
     "last_error": None,
 }
+instagram_post_lock = threading.Lock()
 
 MAX_DETAIL_LINES = 5
 TREND_JOB_NAME = "트렌드 감지"
 DISCOVERY_JOB_NAME = "키워드 발굴"
 STORE_UPDATE_JOB_NAME = "판매처 갱신"
 YOMECHU_JOB_NAME = "요메추 보강"
+INSTAGRAM_JOB_NAME = "인스타 피드"
 
 TREND_LABELS = {
     "keywords": "모니터링 키워드",
@@ -154,6 +157,48 @@ def _format_hour_minute(hour: int, minute: int) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
+def _build_instagram_job_message(trigger: str, status: str, summary: dict | None = None) -> str:
+    lines = [f"[{INSTAGRAM_JOB_NAME} {status}]", f"트리거: {trigger}"]
+    if not summary:
+        return "\n".join(lines)
+
+    lines.append(f"결과: {summary.get('status', 'unknown')}")
+
+    published_trend = summary.get("published_trend") or {}
+    trend_name = (
+        published_trend.get("name")
+        or (summary.get("run") or {}).get("trend_name_snapshot")
+    )
+    if trend_name:
+        lines.append(f"음식: {trend_name}")
+
+    candidate_count = summary.get("candidate_count")
+    if candidate_count is not None:
+        lines.append(f"후보 수: {candidate_count}")
+
+    if summary.get("selected_scope"):
+        lines.append(f"후보 범위: {summary['selected_scope']}")
+
+    if summary.get("skip_reason"):
+        lines.append(f"스킵 사유: {summary['skip_reason']}")
+
+    if summary.get("reason"):
+        lines.append(f"사유: {summary['reason']}")
+
+    if summary.get("used_fallback_image"):
+        lines.append("이미지: fallback 카드 사용")
+
+    if summary.get("final_image_url"):
+        lines.append(f"이미지 URL: {summary['final_image_url']}")
+
+    errors = summary.get("errors") or []
+    if errors:
+        lines.append("오류:")
+        lines.extend(f"- {error}" for error in errors[:MAX_DETAIL_LINES])
+
+    return "\n".join(lines)
+
+
 def get_scheduler_description() -> dict[str, str]:
     trend_hours = sorted(settings.TREND_DETECTION_SCHEDULE_HOURS)
     trend_schedule = (
@@ -170,6 +215,11 @@ def get_scheduler_description() -> dict[str, str]:
         "keyword_discovery": discovery_schedule,
         "store_update_minutes": str(settings.STORE_UPDATE_INTERVAL_MINUTES),
         "daily_ai_limit": str(settings.AI_AUTOMATION_DAILY_LIMIT),
+        "instagram_posting_enabled": str(settings.INSTAGRAM_POSTING_ENABLED).lower(),
+        "instagram_feed_schedule": _format_hour_minute(
+            settings.INSTAGRAM_POST_SCHEDULE_HOUR,
+            settings.INSTAGRAM_POST_SCHEDULE_MINUTE,
+        ),
     }
 
 
@@ -407,6 +457,58 @@ async def run_yomechu_enrichment_job(trigger: str = "scheduler") -> dict:
         yomechu_enrich_lock.release()
 
 
+async def run_instagram_feed_job(
+    *,
+    trigger: str = "scheduler",
+    dry_run: bool = False,
+    force_retry: bool = False,
+) -> dict:
+    job_name = INSTAGRAM_JOB_NAME
+
+    if dry_run:
+        return await publish_daily_instagram_feed(
+            trigger=trigger,
+            dry_run=True,
+            force_retry=force_retry,
+        )
+
+    if not instagram_post_lock.acquire(blocking=False):
+        logger.warning("%s skipped because previous run is still active", job_name)
+        return {
+            "status": "noop",
+            "reason": "already_running",
+            "trigger": trigger,
+        }
+
+    logger.info("%s started (%s)", job_name, trigger)
+    await send_discord_message(_build_instagram_job_message(trigger, "시작"))
+
+    try:
+        summary = await publish_daily_instagram_feed(
+            trigger=trigger,
+            dry_run=False,
+            force_retry=force_retry,
+        )
+        await send_discord_message(
+            _build_instagram_job_message(trigger, "완료", summary=summary)
+        )
+        return summary
+    except Exception as exc:
+        logger.exception("%s failed (%s)", job_name, trigger)
+        await report_exception_to_discord(
+            f"{job_name} 실패",
+            exc,
+            details={
+                "trigger": trigger,
+                "dry_run": dry_run,
+                "force_retry": force_retry,
+            },
+        )
+        raise
+    finally:
+        instagram_post_lock.release()
+
+
 def run_trend_detection():
     asyncio.run(run_trend_detection_job(trigger="scheduler"))
 
@@ -421,6 +523,10 @@ def run_store_update():
 
 def run_yomechu_enrichment():
     asyncio.run(run_yomechu_enrichment_job(trigger="scheduler"))
+
+
+def run_instagram_feed_post():
+    asyncio.run(run_instagram_feed_job(trigger="scheduler"))
 
 
 def start_scheduler():
@@ -453,6 +559,17 @@ def start_scheduler():
         max_instances=1,
         coalesce=True,
     )
+    if settings.INSTAGRAM_POSTING_ENABLED:
+        scheduler.add_job(
+            run_instagram_feed_post,
+            "cron",
+            hour=settings.INSTAGRAM_POST_SCHEDULE_HOUR,
+            minute=settings.INSTAGRAM_POST_SCHEDULE_MINUTE,
+            id="instagram_feed_post",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     if settings.YOMECHU_ENRICH_ENABLED:
         scheduler.add_job(
             run_yomechu_enrichment,
@@ -467,10 +584,12 @@ def start_scheduler():
 
     description = get_scheduler_description()
     logger.info(
-        "Scheduler started: trend=%s, discovery=%s, store_update=%s min, ai_limit=%s/day, tz=%s",
+        "Scheduler started: trend=%s, discovery=%s, store_update=%s min, instagram=%s (%s), ai_limit=%s/day, tz=%s",
         description["trend_detection"],
         description["keyword_discovery"],
         description["store_update_minutes"],
+        description["instagram_feed_schedule"],
+        description["instagram_posting_enabled"],
         description["daily_ai_limit"],
         description["timezone"],
     )
