@@ -1,5 +1,6 @@
 import re
 
+from config import settings
 from franchise_checker import is_franchise
 
 SEED_KEYWORDS = {
@@ -626,6 +627,17 @@ def get_flat_keywords() -> list[str]:
 
 def normalize_keyword(keyword: str) -> str:
     return re.sub(r"\s+", "", keyword).strip()
+
+
+_TREND_GENERIC_REVIEW_KEYWORDS = frozenset(
+    normalize_keyword(keyword)
+    for keyword in settings.TREND_GENERIC_REVIEW_KEYWORDS
+    if normalize_keyword(keyword)
+)
+
+
+def requires_trend_revalidation(keyword: str) -> bool:
+    return normalize_keyword(keyword) in _TREND_GENERIC_REVIEW_KEYWORDS
 
 
 def _normalize_discovery_text(keyword: str) -> str:

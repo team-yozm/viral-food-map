@@ -20,7 +20,11 @@ from config import settings
 from crawlers.image_finder import find_food_image
 from crawlers.instagram import get_hashtag_post_count
 from crawlers.naver_datalab import calculate_acceleration, get_search_trend_insights
-from crawlers.naver_search import get_blog_mention_count, search_blog_mentions
+from crawlers.naver_search import (
+    BlogSearchInsights,
+    get_blog_search_insights,
+    search_blog_mentions,
+)
 from crawlers.store_finder import find_stores_nationwide
 from database import (
     delete_stores_by_trend_id,
@@ -44,7 +48,11 @@ from detector.alias_manager import (
     normalize_keyword_text,
     resolve_keyword_alias,
 )
-from detector.keyword_manager import get_all_seed_keywords, is_food_specific_keyword
+from detector.keyword_manager import (
+    get_all_seed_keywords,
+    is_food_specific_keyword,
+    requires_trend_revalidation,
+)
 from detector.store_updater import build_store_records
 
 logger = logging.getLogger(__name__)
@@ -90,6 +98,25 @@ def score_rank(rank: int | None) -> float:
     return 0
 
 
+def score_blog_freshness(blog_insights: BlogSearchInsights) -> float:
+    if (
+        blog_insights.recent_count >= 10
+        and blog_insights.recent_ratio >= 0.8
+    ):
+        return 20
+    if (
+        blog_insights.recent_count >= 6
+        and blog_insights.recent_ratio >= 0.6
+    ):
+        return 10
+    if (
+        blog_insights.recent_count >= 3
+        and blog_insights.recent_ratio >= 0.4
+    ):
+        return 5
+    return 0
+
+
 def classify_status(score: float, acceleration: float) -> str:
     if (
         acceleration >= settings.TREND_THRESHOLD
@@ -99,6 +126,38 @@ def classify_status(score: float, acceleration: float) -> str:
     if acceleration >= settings.TREND_RISING_ACCELERATION_THRESHOLD:
         return "rising"
     return "active"
+
+
+def calculate_recent_lift(
+    data_points: list[dict],
+    *,
+    recent_days: int,
+    baseline_days: int,
+) -> float | None:
+    required_points = recent_days + baseline_days
+    if len(data_points) < required_points:
+        return None
+
+    recent_points = data_points[-recent_days:]
+    baseline_points = data_points[-required_points:-recent_days]
+    if not recent_points or not baseline_points:
+        return None
+
+    recent_average = sum(point.get("ratio", 0) for point in recent_points) / len(recent_points)
+    baseline_average = sum(point.get("ratio", 0) for point in baseline_points) / len(
+        baseline_points
+    )
+
+    if baseline_average <= 0:
+        return 100.0 if recent_average > 0 else 0.0
+
+    return round(((recent_average - baseline_average) / baseline_average) * 100, 2)
+
+
+def _is_reference_keyword(keyword: str) -> bool:
+    return normalize_keyword_text(keyword) == normalize_keyword_text(
+        settings.TREND_REFERENCE_KEYWORD
+    )
 
 
 def _build_search_volume_map(data_points: list[dict]) -> dict[str, float]:
@@ -200,6 +259,9 @@ def _build_summary() -> dict:
         "alias_matches": 0,
         "canonicalized_keywords": [],
         "budget_exhausted": False,
+        "skipped_reference_keywords": [],
+        "filtered_stale_keywords": [],
+        "filtered_generic_keywords": [],
     }
 
 
@@ -540,6 +602,10 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     candidates: list[dict] = []
     for keyword, data_points in search_data.items():
+        if _is_reference_keyword(keyword):
+            summary["skipped_reference_keywords"].append(keyword)
+            continue
+
         acceleration = calculate_acceleration(data_points)
         popularity = float(popularity_scores.get(keyword, 0.0))
         rank = popularity_ranks.get(keyword)
@@ -567,6 +633,20 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         )
         return summary
 
+    novelty_lookback_days = max(
+        settings.TREND_NOVELTY_LOOKBACK_DAYS,
+        settings.TREND_NOVELTY_RECENT_DAYS + 1,
+    )
+    novelty_baseline_days = max(
+        novelty_lookback_days - settings.TREND_NOVELTY_RECENT_DAYS,
+        1,
+    )
+    novelty_insights = await get_search_trend_insights(
+        [candidate["keyword"] for candidate in candidates],
+        days=novelty_lookback_days,
+    )
+    novelty_search_data = novelty_insights["series"]
+
     candidate_existing_trends = {
         trend["name"]: trend
         for trend in get_trends_by_names([candidate["keyword"] for candidate in candidates])
@@ -587,15 +667,38 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         if not is_food_specific_keyword(keyword):
             continue
 
-        blog_count = await get_blog_mention_count(keyword)
+        blog_insights = await get_blog_search_insights(
+            keyword,
+            display=settings.TREND_BLOG_SAMPLE_SIZE,
+            recent_days=settings.TREND_BLOG_RECENT_DAYS,
+        )
         ig_count = await get_hashtag_post_count(keyword)
+        novelty_lift = calculate_recent_lift(
+            novelty_search_data.get(keyword, candidate["data_points"]),
+            recent_days=settings.TREND_NOVELTY_RECENT_DAYS,
+            baseline_days=novelty_baseline_days,
+        )
+
+        if (
+            blog_insights.sampled_count
+            and blog_insights.recent_ratio < settings.TREND_BLOG_FRESHNESS_MIN_RATIO
+        ):
+            summary["filtered_stale_keywords"].append(keyword)
+            continue
+
+        if requires_trend_revalidation(keyword):
+            if (
+                novelty_lift is None
+                or novelty_lift < settings.TREND_GENERIC_MIN_LIFT_PCT
+                or blog_insights.recent_count < settings.TREND_GENERIC_MIN_RECENT_BLOG_HITS
+            ):
+                summary["filtered_generic_keywords"].append(keyword)
+                continue
+
         score = score_rank(candidate.get("rank"))
         score += score_popularity(candidate.get("popularity", 0.0))
         score += score_acceleration(candidate["acceleration"])
-        if blog_count > 1000:
-            score += 30
-        elif blog_count > 100:
-            score += 15
+        score += score_blog_freshness(blog_insights)
         if ig_count is not None:
             if ig_count > 10000:
                 score += 30
@@ -603,8 +706,11 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 score += 15
 
         candidate["score"] = score
-        candidate["blog_count"] = blog_count
+        candidate["blog_count"] = blog_insights.total_count
+        candidate["blog_recent_count"] = blog_insights.recent_count
+        candidate["blog_recent_ratio"] = blog_insights.recent_ratio
         candidate["ig_count"] = ig_count
+        candidate["novelty_lift"] = novelty_lift
 
         if score < settings.TREND_SCORE_THRESHOLD:
             continue

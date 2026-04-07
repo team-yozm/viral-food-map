@@ -17,6 +17,11 @@ def _env_csv_ints(name: str, default: str) -> list[int]:
     return values
 
 
+def _env_csv_strings(name: str, default: str) -> list[str]:
+    raw = os.getenv(name, default)
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 def _detect_app_env() -> str:
     explicit_env = (
         os.getenv("APP_ENV")
@@ -76,6 +81,27 @@ class Settings:
     TREND_REFERENCE_KEYWORD: str = os.getenv("TREND_REFERENCE_KEYWORD", "마라탕")
     TREND_TOP_RANK_CANDIDATE_MAX: int = int(
         os.getenv("TREND_TOP_RANK_CANDIDATE_MAX", "10")
+    )
+    TREND_NOVELTY_LOOKBACK_DAYS: int = int(
+        os.getenv("TREND_NOVELTY_LOOKBACK_DAYS", "30")
+    )
+    TREND_NOVELTY_RECENT_DAYS: int = int(
+        os.getenv("TREND_NOVELTY_RECENT_DAYS", "7")
+    )
+    TREND_BLOG_RECENT_DAYS: int = int(os.getenv("TREND_BLOG_RECENT_DAYS", "7"))
+    TREND_BLOG_SAMPLE_SIZE: int = int(os.getenv("TREND_BLOG_SAMPLE_SIZE", "20"))
+    TREND_BLOG_FRESHNESS_MIN_RATIO: float = float(
+        os.getenv("TREND_BLOG_FRESHNESS_MIN_RATIO", "0.6")
+    )
+    TREND_GENERIC_MIN_LIFT_PCT: float = float(
+        os.getenv("TREND_GENERIC_MIN_LIFT_PCT", "20")
+    )
+    TREND_GENERIC_MIN_RECENT_BLOG_HITS: int = int(
+        os.getenv("TREND_GENERIC_MIN_RECENT_BLOG_HITS", "6")
+    )
+    TREND_GENERIC_REVIEW_KEYWORDS: list[str] = _env_csv_strings(
+        "TREND_GENERIC_REVIEW_KEYWORDS",
+        "마라탕,하이볼,호떡,츄러스,탕후루,마카롱,흑당버블티",
     )
     ACTIVE_TREND_TTL_HOURS: int = int(os.getenv("ACTIVE_TREND_TTL_HOURS", "24"))
     CRAWL_INTERVAL_MINUTES: int = int(os.getenv("CRAWL_INTERVAL_MINUTES", "30"))
