@@ -18,10 +18,39 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      KOYEB_CLI_VERSION: "5.10.1"
     steps:
       - name: Install Koyeb CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sh
+          set -euo pipefail
+
+          target="linux_amd64"
+          version="v${KOYEB_CLI_VERSION}"
+          url="https://github.com/koyeb/koyeb-cli/releases/download/${version}/koyeb-cli_${KOYEB_CLI_VERSION}_${target}.tar.gz"
+          tmp_dir="$(mktemp -d)"
+          archive_path="$tmp_dir/koyeb-cli.tar.gz"
+
+          for attempt in 1 2 3; do
+            if curl --fail --location --silent --show-error \
+              --retry 3 --retry-all-errors \
+              --output "$archive_path" \
+              "$url"; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download Koyeb CLI from $url"
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          mkdir -p "$HOME/.koyeb/bin"
+          tar -xzf "$archive_path" -C "$HOME/.koyeb/bin"
+          chmod +x "$HOME/.koyeb/bin/koyeb"
+          "$HOME/.koyeb/bin/koyeb" version
           echo "$HOME/.koyeb/bin" >> "$GITHUB_PATH"
 
       - name: Redeploy crawler service
