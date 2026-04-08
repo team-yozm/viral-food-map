@@ -187,7 +187,7 @@ class Settings:
         ),
     )
     AI_REVIEW_TIMEOUT_SECONDS: int = int(
-        os.getenv("AI_REVIEW_TIMEOUT_SECONDS", "15")
+        os.getenv("AI_REVIEW_TIMEOUT_SECONDS", "30")
     )
     AI_REVIEW_MIN_CONFIDENCE: float = float(
         os.getenv("AI_REVIEW_MIN_CONFIDENCE", "0.7")

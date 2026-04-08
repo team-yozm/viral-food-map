@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass
@@ -37,6 +38,17 @@ _QUOTA_ERROR_KEYWORDS = (
     "billing detail",
     "too many requests",
 )
+
+_TIMEOUT_ERROR_KEYWORDS = (
+    "504",
+    "deadline_exceeded",
+    "deadline exceeded",
+    "deadline",
+    "timeout",
+    "timed out",
+)
+
+_TIMEOUT_RETRY_DELAY_SECONDS = 1.0
 
 
 class AIReviewError(RuntimeError):
@@ -211,14 +223,38 @@ def _coerce_result(
 
 def _is_grounding_error(exc: Exception) -> bool:
     """Return True if the exception looks like a grounding/tool capability error."""
-    msg = str(exc).lower()
-    return any(kw.lower() in msg for kw in _GROUNDING_ERROR_KEYWORDS)
+    return _has_error_keyword(exc, _GROUNDING_ERROR_KEYWORDS)
 
 
 def _is_quota_error(exc: Exception) -> bool:
     """Return True if the exception looks like a quota/rate-limit error."""
-    msg = str(exc).lower()
-    return any(kw.lower() in msg for kw in _QUOTA_ERROR_KEYWORDS)
+    return _has_error_keyword(exc, _QUOTA_ERROR_KEYWORDS)
+
+
+def _iter_exception_chain(exc: Exception):
+    seen: set[int] = set()
+    current: Exception | None = exc
+    while current is not None and id(current) not in seen:
+        yield current
+        seen.add(id(current))
+        next_exc = current.__cause__ or current.__context__
+        current = next_exc if isinstance(next_exc, Exception) else None
+
+
+def _has_error_keyword(exc: Exception, keywords: tuple[str, ...]) -> bool:
+    lowered_keywords = tuple(keyword.lower() for keyword in keywords)
+    return any(
+        any(keyword in str(error).lower() for keyword in lowered_keywords)
+        for error in _iter_exception_chain(exc)
+    )
+
+
+def _is_timeout_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a timeout/deadline issue."""
+    return any(
+        isinstance(error, (TimeoutError, httpx.TimeoutException))
+        for error in _iter_exception_chain(exc)
+    ) or _has_error_keyword(exc, _TIMEOUT_ERROR_KEYWORDS)
 
 
 def _extract_response_text(response: genai_types.GenerateContentResponse) -> str:
@@ -310,6 +346,15 @@ async def _gemini_generate_with_grounding(
             raise
 
         fallback_model = settings.AI_REVIEW_GROUNDING_FALLBACK_MODEL
+        if _is_timeout_error(original_exc):
+            logger.warning(
+                "Grounded Gemini request timed out on %s, retrying without grounding: %s",
+                model,
+                original_exc,
+            )
+            await asyncio.sleep(_TIMEOUT_RETRY_DELAY_SECONDS)
+            return await _call(model, grounded=False)
+
         if _is_grounding_error(original_exc):
             if fallback_model and fallback_model != model:
                 logger.warning(
@@ -322,6 +367,14 @@ async def _gemini_generate_with_grounding(
                     return await _call(fallback_model, grounded=True)
                 except AIReviewError as fallback_exc:
                     fallback_original_exc = fallback_exc.__cause__ or fallback_exc
+                    if _is_timeout_error(fallback_original_exc):
+                        logger.warning(
+                            "Grounded fallback request timed out on %s, retrying without grounding: %s",
+                            fallback_model,
+                            fallback_original_exc,
+                        )
+                        await asyncio.sleep(_TIMEOUT_RETRY_DELAY_SECONDS)
+                        return await _call(fallback_model, grounded=False)
                     if not (
                         _is_grounding_error(fallback_original_exc)
                         or _is_quota_error(fallback_original_exc)
