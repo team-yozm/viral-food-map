@@ -29,6 +29,15 @@ _GROUNDING_ERROR_KEYWORDS = (
     "INVALID_ARGUMENT",
 )
 
+_QUOTA_ERROR_KEYWORDS = (
+    "429",
+    "resource_exhausted",
+    "rate limit",
+    "quota",
+    "billing detail",
+    "too many requests",
+)
+
 
 class AIReviewError(RuntimeError):
     """Raised when the AI review service cannot be used safely."""
@@ -206,6 +215,12 @@ def _is_grounding_error(exc: Exception) -> bool:
     return any(kw.lower() in msg for kw in _GROUNDING_ERROR_KEYWORDS)
 
 
+def _is_quota_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a quota/rate-limit error."""
+    msg = str(exc).lower()
+    return any(kw.lower() in msg for kw in _QUOTA_ERROR_KEYWORDS)
+
+
 def _extract_response_text(response: genai_types.GenerateContentResponse) -> str:
     """Extract text content from a Gemini generate_content response."""
     if response.text:
@@ -272,37 +287,69 @@ async def _gemini_generate_with_grounding(
     if use_grounding:
         tools = [genai_types.Tool(google_search=genai_types.GoogleSearch())]
 
-    try:
+    async def _call(model_name: str, *, grounded: bool) -> str:
         text = await _gemini_generate(
-            model=model,
+            model=model_name,
             system_instruction=system_instruction,
             user_content=user_content,
             max_output_tokens=max_output_tokens,
-            tools=tools,
+            tools=tools if grounded else None,
         )
-        logger.info("Gemini text review completed with model=%s, grounding=%s", model, use_grounding)
+        logger.info(
+            "Gemini text review completed with model=%s, grounding=%s",
+            model_name,
+            grounded,
+        )
         return text
+
+    try:
+        return await _call(model, grounded=use_grounding)
     except AIReviewError as exc:
         original_exc = exc.__cause__ or exc
-        if not (use_grounding and _is_grounding_error(original_exc)):
+        if not use_grounding:
             raise
 
         fallback_model = settings.AI_REVIEW_GROUNDING_FALLBACK_MODEL
-        logger.warning(
-            "Grounding not supported on %s, falling back to %s: %s",
-            model,
-            fallback_model,
-            original_exc,
-        )
-        text = await _gemini_generate(
-            model=fallback_model,
-            system_instruction=system_instruction,
-            user_content=user_content,
-            max_output_tokens=max_output_tokens,
-            tools=tools,
-        )
-        logger.info("Gemini text review completed with fallback model=%s", fallback_model)
-        return text
+        if _is_grounding_error(original_exc):
+            if fallback_model and fallback_model != model:
+                logger.warning(
+                    "Grounding not supported on %s, falling back to %s: %s",
+                    model,
+                    fallback_model,
+                    original_exc,
+                )
+                try:
+                    return await _call(fallback_model, grounded=True)
+                except AIReviewError as fallback_exc:
+                    fallback_original_exc = fallback_exc.__cause__ or fallback_exc
+                    if not (
+                        _is_grounding_error(fallback_original_exc)
+                        or _is_quota_error(fallback_original_exc)
+                    ):
+                        raise
+                    logger.warning(
+                        "Grounded fallback request failed on %s, retrying without grounding: %s",
+                        fallback_model,
+                        fallback_original_exc,
+                    )
+                    return await _call(fallback_model, grounded=False)
+
+            logger.warning(
+                "Grounding not supported on %s, retrying without grounding: %s",
+                model,
+                original_exc,
+            )
+            return await _call(model, grounded=False)
+
+        if _is_quota_error(original_exc):
+            logger.warning(
+                "Grounded Gemini request hit quota on %s, retrying without grounding: %s",
+                model,
+                original_exc,
+            )
+            return await _call(model, grounded=False)
+
+        raise
 
 
 async def _request_text_review(
