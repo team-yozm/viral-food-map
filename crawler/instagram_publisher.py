@@ -71,6 +71,13 @@ def _truncate_text(value: str, max_length: int = 24) -> str:
     return f"{compact[: max_length - 1]}…"
 
 
+def _truncate_error_text(value: str, max_length: int = 400) -> str:
+    compact = " ".join((value or "").split())
+    if len(compact) <= max_length:
+        return compact
+    return f"{compact[: max_length - 1]}…"
+
+
 def _build_caption(trend: dict[str, Any]) -> str:
     name = trend["name"]
     category = trend.get("category") or "간식"
@@ -287,7 +294,7 @@ def _upload_instagram_media(
             "upsert": "true",
         },
     )
-    return bucket.get_public_url(object_path), object_path
+    return bucket.get_public_url(object_path).rstrip("?"), object_path
 
 
 def _delete_instagram_media(object_path: str) -> None:
@@ -296,6 +303,71 @@ def _delete_instagram_media(object_path: str) -> None:
         bucket.remove([object_path])
     except Exception as exc:
         logger.warning("Failed to delete rejected image %s: %s", object_path, exc)
+
+
+def _extract_graph_error_payload(response: httpx.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except Exception:
+        return {"raw_text": _truncate_error_text(response.text)}
+
+    if not isinstance(payload, dict):
+        return {"raw_text": _truncate_error_text(str(payload))}
+
+    error = payload.get("error")
+    if isinstance(error, dict):
+        return {
+            "message": _truncate_error_text(str(error.get("message") or "")),
+            "type": str(error.get("type") or "").strip(),
+            "code": error.get("code"),
+            "error_subcode": error.get("error_subcode"),
+            "fbtrace_id": str(error.get("fbtrace_id") or "").strip(),
+        }
+
+    return {"raw_text": _truncate_error_text(json.dumps(payload, ensure_ascii=False))}
+
+
+def _build_graph_error_message(exc: httpx.HTTPStatusError) -> str:
+    response = exc.response
+    payload = _extract_graph_error_payload(response)
+    parts = [f"status={response.status_code}"]
+
+    error_type = payload.get("type")
+    if error_type:
+        parts.append(f"type={error_type}")
+
+    error_code = payload.get("code")
+    if error_code not in (None, ""):
+        parts.append(f"code={error_code}")
+
+    error_subcode = payload.get("error_subcode")
+    if error_subcode not in (None, ""):
+        parts.append(f"subcode={error_subcode}")
+
+    message = payload.get("message")
+    if message:
+        parts.append(f"message={message}")
+    elif payload.get("raw_text"):
+        parts.append(f"body={payload['raw_text']}")
+
+    fbtrace_id = payload.get("fbtrace_id")
+    if fbtrace_id:
+        parts.append(f"fbtrace_id={fbtrace_id}")
+
+    return " | ".join(parts)
+
+
+def _is_graph_auth_error(exc: httpx.HTTPStatusError) -> bool:
+    if exc.response.status_code == 401:
+        return True
+
+    payload = _extract_graph_error_payload(exc.response)
+    error_code = payload.get("code")
+    if error_code in {190, "190", 102, "102"}:
+        return True
+
+    message = str(payload.get("message") or "").lower()
+    return "access token" in message
 
 
 async def _create_media_container(image_url: str, caption: str) -> str:
@@ -540,26 +612,18 @@ async def publish_daily_instagram_feed(
                     "run": run_row,
                 }
             except httpx.HTTPStatusError as exc:
+                error_message = _build_graph_error_message(exc)
                 logger.warning(
                     "Instagram publishing candidate failed for %s: %s",
                     candidate.get("name"),
-                    exc,
+                    error_message,
                 )
-                errors.append(f"{candidate.get('name')}: {exc}")
+                errors.append(f"{candidate.get('name')}: {error_message}")
                 if object_path:
                     _delete_instagram_media(object_path)
-                status_code = exc.response.status_code
-                if status_code == 401:
+                if _is_graph_auth_error(exc):
                     logger.error("Instagram token invalid, aborting candidate loop")
                     break
-                if status_code == 400:
-                    try:
-                        error_type = exc.response.json().get("error", {}).get("type", "")
-                    except Exception:
-                        error_type = ""
-                    if error_type == "OAuthException":
-                        logger.error("Instagram token expired (OAuthException), aborting candidate loop")
-                        break
                 continue
             except Exception as exc:
                 logger.warning(
