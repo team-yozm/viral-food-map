@@ -204,14 +204,14 @@ function buildOverlaySvg(fontCss) {
 
       <text
         x="108"
-        y="1126"
-        font-size="108"
+        y="1150"
+        font-size="100"
         font-weight="700"
         fill="${colors.white}"
         letter-spacing="-4"
       >${card.title}</text>
 
-      <text x="110" y="1210" font-size="36" font-weight="400" fill="${colors.cream}" fill-opacity="0.94">${card.subtitle}</text>
+      <text x="110" y="1230" font-size="36" font-weight="400" fill="${colors.cream}" fill-opacity="0.94">${card.subtitle}</text>
 
       <rect
         x="${brandChip.x + 8}"

@@ -190,6 +190,16 @@ class Settings:
     AI_REVIEW_MIN_CONFIDENCE: float = float(
         os.getenv("AI_REVIEW_MIN_CONFIDENCE", "0.7")
     )
+    INSTAGRAM_IMAGE_REVIEW_ENABLED: bool = _env_bool(
+        "INSTAGRAM_IMAGE_REVIEW_ENABLED",
+        default=False,
+    )
+    INSTAGRAM_IMAGE_REVIEW_MIN_CONFIDENCE: float = float(
+        os.getenv(
+            "INSTAGRAM_IMAGE_REVIEW_MIN_CONFIDENCE",
+            os.getenv("AI_REVIEW_MIN_CONFIDENCE", "0.7"),
+        )
+    )
     AI_REVIEW_MAX_EVIDENCE_SNIPPETS: int = int(
         os.getenv("AI_REVIEW_MAX_EVIDENCE_SNIPPETS", "4")
     )

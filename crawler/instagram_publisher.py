@@ -13,6 +13,11 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from ai_reviewer import (
+    InstagramImageReviewResult,
+    is_ai_review_enabled,
+    review_instagram_post_image,
+)
 from config import settings
 from database import (
     create_instagram_feed_run,
@@ -99,6 +104,43 @@ def _build_render_subtitle(trend: dict[str, Any]) -> str:
 
 def _build_badge_label(status: str | None) -> str:
     return "인기" if status == "active" else "급상승"
+
+
+def _is_instagram_image_review_accepted(review: InstagramImageReviewResult) -> bool:
+    return (
+        review.verdict == "accept"
+        and review.confidence >= settings.INSTAGRAM_IMAGE_REVIEW_MIN_CONFIDENCE
+    )
+
+
+def _build_instagram_image_review_message(review: InstagramImageReviewResult) -> str:
+    parts = [
+        f"ai_image_review={review.verdict}",
+        f"confidence={review.confidence:.2f}",
+    ]
+    if review.detected_subject:
+        parts.append(f"subject={review.detected_subject}")
+    if review.reason:
+        parts.append(f"reason={review.reason}")
+    if review.concerns:
+        parts.append(f"concerns={', '.join(review.concerns)}")
+    return " | ".join(parts)
+
+
+def _serialize_image_review(
+    review: InstagramImageReviewResult | None,
+) -> dict[str, Any] | None:
+    if review is None:
+        return None
+
+    return {
+        "verdict": review.verdict,
+        "confidence": review.confidence,
+        "reason": review.reason,
+        "detected_subject": review.detected_subject,
+        "concerns": review.concerns or [],
+        "model": review.model,
+    }
 
 
 def _serialize_candidate(row: dict[str, Any]) -> dict[str, Any]:
@@ -327,6 +369,10 @@ def _ensure_instagram_ready() -> None:
         raise RuntimeError("INSTAGRAM_IG_USER_ID is required")
     if not settings.INSTAGRAM_ACCESS_TOKEN.strip():
         raise RuntimeError("INSTAGRAM_ACCESS_TOKEN is required")
+    if settings.INSTAGRAM_IMAGE_REVIEW_ENABLED and not is_ai_review_enabled():
+        raise RuntimeError(
+            "INSTAGRAM_IMAGE_REVIEW_ENABLED requires AI review credentials and model"
+        )
 
 
 async def publish_daily_instagram_feed(
@@ -347,6 +393,7 @@ async def publish_daily_instagram_feed(
             "candidate_count": len(candidates),
             "selected_scope": candidates[0]["status"] if candidates else None,
             "candidates": candidate_preview,
+            "image_review_enabled": settings.INSTAGRAM_IMAGE_REVIEW_ENABLED,
             "trigger": trigger,
         }
 
@@ -395,6 +442,7 @@ async def publish_daily_instagram_feed(
         errors: list[str] = []
         for candidate in candidates:
             caption = _build_caption(candidate)
+            image_review: InstagramImageReviewResult | None = None
             update_instagram_feed_run(
                 run_row["id"],
                 {
@@ -418,6 +466,29 @@ async def publish_daily_instagram_feed(
                     run_date,
                     candidate["name"],
                 )
+                if settings.INSTAGRAM_IMAGE_REVIEW_ENABLED:
+                    image_review = await review_instagram_post_image(
+                        image_url=final_image_url,
+                        trend_name=candidate["name"],
+                        category=candidate.get("category"),
+                        caption=caption,
+                    )
+                    if not _is_instagram_image_review_accepted(image_review):
+                        review_message = _build_instagram_image_review_message(image_review)
+                        logger.info(
+                            "Instagram image review blocked %s: %s",
+                            candidate.get("name"),
+                            review_message,
+                        )
+                        update_instagram_feed_run(
+                            run_row["id"],
+                            {
+                                "skip_reason": "ai_image_review_rejected",
+                                "error_message": review_message,
+                            },
+                        )
+                        errors.append(f"{candidate.get('name')}: {review_message}")
+                        continue
                 creation_id = await _create_media_container(final_image_url, caption)
                 await _wait_for_container_ready(creation_id)
                 media_id = await _publish_media_container(creation_id)
@@ -447,6 +518,8 @@ async def publish_daily_instagram_feed(
                     "final_image_url": final_image_url,
                     "instagram_creation_id": creation_id,
                     "instagram_media_id": media_id,
+                    "image_review": _serialize_image_review(image_review),
+                    "image_review_enabled": settings.INSTAGRAM_IMAGE_REVIEW_ENABLED,
                     "used_fallback_image": bool(render_metadata.get("usedFallback")),
                     "run": run_row,
                 }

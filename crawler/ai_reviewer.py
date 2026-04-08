@@ -51,6 +51,16 @@ class TrendReviewResult:
     model: str | None = None
 
 
+@dataclass(slots=True)
+class InstagramImageReviewResult:
+    verdict: str
+    confidence: float
+    reason: str
+    detected_subject: str | None = None
+    concerns: list[str] | None = None
+    model: str | None = None
+
+
 def is_ai_review_enabled() -> bool:
     return bool(
         settings.AI_REVIEW_ENABLED
@@ -143,6 +153,29 @@ def _extract_message_content(data: dict[str, Any]) -> str:
     return str(content)
 
 
+def _normalize_short_text(value: Any, max_length: int = 160) -> str | None:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return None
+    if len(text) > max_length:
+        text = f"{text[: max_length - 3].rstrip()}..."
+    return text
+
+
+def _normalize_concerns(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    concerns: list[str] = []
+    for item in value:
+        text = _normalize_short_text(item, max_length=80)
+        if text:
+            concerns.append(text)
+        if len(concerns) >= 4:
+            break
+    return concerns
+
+
 def _coerce_result(
     raw: dict[str, Any],
     *,
@@ -176,10 +209,10 @@ def _coerce_result(
     )
 
 
-async def _request_batch_review(
+async def _request_json_review(
     *,
-    system_prompt: str,
-    payload: dict[str, Any],
+    messages: list[dict[str, Any]],
+    max_tokens: int = 1200,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     if not is_ai_review_enabled():
         raise AIReviewError("AI review is disabled or missing credentials")
@@ -187,14 +220,8 @@ async def _request_batch_review(
     body = {
         "model": settings.AI_REVIEW_MODEL,
         "temperature": 0.1,
-        "max_tokens": 1200,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(payload, ensure_ascii=False),
-            },
-        ],
+        "max_tokens": max_tokens,
+        "messages": messages,
     }
 
     try:
@@ -213,6 +240,22 @@ async def _request_batch_review(
         raise AIReviewError(f"AI review request failed: {exc}") from exc
 
     return _extract_json_blob(_extract_message_content(response.json()))
+
+
+async def _request_batch_review(
+    *,
+    system_prompt: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | list[dict[str, Any]]:
+    return await _request_json_review(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": json.dumps(payload, ensure_ascii=False),
+            },
+        ],
+    )
 
 
 def _extract_results(raw: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -330,3 +373,94 @@ async def review_discovered_keywords(
     result_map = _coerce_result_map(raw, payloads=payloads)
     logger.info("AI discovery batch reviewed %s candidates", len(payloads))
     return result_map
+
+
+def _coerce_instagram_image_result(
+    raw: dict[str, Any] | list[dict[str, Any]],
+) -> InstagramImageReviewResult:
+    if isinstance(raw, list):
+        raise AIReviewError("Instagram image review must return a JSON object")
+
+    payload = raw.get("result") if isinstance(raw.get("result"), dict) else raw
+
+    try:
+        confidence = float(payload.get("confidence", 0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(confidence, 1.0))
+
+    reason = _normalize_short_text(payload.get("reason"), max_length=200) or "reason missing"
+
+    return InstagramImageReviewResult(
+        verdict=_normalize_verdict(payload.get("verdict")),
+        confidence=confidence,
+        reason=reason,
+        detected_subject=_normalize_short_text(
+            payload.get("detected_subject"),
+            max_length=120,
+        ),
+        concerns=_normalize_concerns(payload.get("concerns")),
+        model=settings.AI_REVIEW_MODEL,
+    )
+
+
+async def review_instagram_post_image(
+    *,
+    image_url: str,
+    trend_name: str,
+    category: str | None = None,
+    caption: str | None = None,
+) -> InstagramImageReviewResult:
+    if not image_url.strip():
+        raise AIReviewError("Instagram image review requires a public image URL")
+
+    system_prompt = (
+        "You are reviewing a single Instagram feed image for a Korean viral food trend service. "
+        "Approve only if the image is suitable for publishing as a food trend post about the named menu. "
+        "The main subject should clearly show the food or drink itself, a plated serving, packaged product, "
+        "or another close and trustworthy visual of that exact menu. "
+        "Reject storefront exteriors, street scenes, unrelated interiors, people-focused photos, posters, "
+        "menu boards, screenshots, collages, heavy watermarks, blurry images, or images where the named food "
+        "is not visible enough. Use review when the image might be related but is too ambiguous for automatic posting. "
+        "Be strict and prefer review over accept when uncertain. "
+        "Respond with JSON only using the shape "
+        '{"verdict":"accept|reject|review","confidence":0.0,"reason":"...","detected_subject":"...","concerns":["..."]}.'
+    )
+
+    review_context = {
+        "trend_name": trend_name,
+        "category": category or "",
+        "caption": caption or "",
+    }
+    raw = await _request_json_review(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Review this Instagram feed image before auto-publishing.\n"
+                            f"{json.dumps(review_context, ensure_ascii=False)}"
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url,
+                        },
+                    },
+                ],
+            },
+        ],
+        max_tokens=400,
+    )
+    result = _coerce_instagram_image_result(raw)
+    logger.info(
+        "AI Instagram image reviewed %s as %s (confidence=%.2f)",
+        trend_name,
+        result.verdict,
+        result.confidence,
+    )
+    return result

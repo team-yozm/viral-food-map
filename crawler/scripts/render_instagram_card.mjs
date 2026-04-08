@@ -303,8 +303,8 @@ function buildOverlaySvg(payload, fontCss, colors, frame, brandChip, hasPhoto) {
 
       <text
         x="104"
-        y="852"
-        font-size="104"
+        y="870"
+        font-size="96"
         font-weight="700"
         fill="${colors.white}"
         letter-spacing="-4"
@@ -312,7 +312,7 @@ function buildOverlaySvg(payload, fontCss, colors, frame, brandChip, hasPhoto) {
 
       <text
         x="104"
-        y="912"
+        y="930"
         font-size="34"
         font-weight="400"
         fill="${colors.subtitle}"
