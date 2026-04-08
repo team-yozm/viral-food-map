@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -58,9 +59,9 @@ def _normalize_hashtag(value: str) -> str:
 
 
 def _slugify(value: str) -> str:
-    normalized = re.sub(r"[^0-9A-Za-z가-힣]+", "-", value.strip())
+    normalized = re.sub(r"[^0-9A-Za-z]+", "-", value.strip())
     normalized = normalized.strip("-").lower()
-    return normalized or "trend"
+    return normalized or hashlib.sha256(value.encode()).hexdigest()[:8]
 
 
 def _truncate_text(value: str, max_length: int = 24) -> str:
