@@ -1,21 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 
 import BottomNav from "@/components/BottomNav";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
-import InstallPrompt from "@/components/InstallPrompt";
-import PushSubscribeButton from "@/components/PushSubscribeButton";
 import ScrollToTop from "@/components/ScrollToTop";
 import TrendCard from "@/components/TrendCard";
-import YomechuLauncher from "@/components/YomechuLauncher";
-import YomechuLocationPickerModal from "@/components/YomechuLocationPickerModal";
 import { getCurrentPosition } from "@/lib/native-geolocation";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
-import YomechuRevealModal from "@/components/YomechuRevealModal";
 import {
   fetchYomechuSpin,
   formatDistanceMeters,
@@ -36,6 +32,21 @@ import type {
   YomechuResultCount,
   YomechuSpinResponse,
 } from "@/lib/types";
+
+const InstallPrompt = dynamic(() => import("@/components/InstallPrompt"), {
+  ssr: false,
+});
+const PushSubscribeButton = dynamic(
+  () => import("@/components/PushSubscribeButton"),
+  { ssr: false }
+);
+const YomechuLauncher = dynamic(() => import("@/components/YomechuLauncher"));
+const YomechuLocationPickerModal = dynamic(
+  () => import("@/components/YomechuLocationPickerModal")
+);
+const YomechuRevealModal = dynamic(
+  () => import("@/components/YomechuRevealModal")
+);
 
 interface YomechuBaseLocation {
   lat: number;
@@ -163,6 +174,8 @@ export default function HomePageClient({
     ) => {
       void getAddressLabelFromCoords(coords.lat, coords.lng)
         .then((address) => {
+          const nextLabel = address ?? fallbackLabel;
+
           setYomechuBaseLocation((current) => {
             if (
               !current ||
@@ -173,9 +186,13 @@ export default function HomePageClient({
               return current;
             }
 
+            if (current.label === nextLabel) {
+              return current;
+            }
+
             return {
               ...current,
-              label: address ?? fallbackLabel,
+              label: nextLabel,
             };
           });
         })
@@ -187,6 +204,10 @@ export default function HomePageClient({
               current.lat !== coords.lat ||
               current.lng !== coords.lng
             ) {
+              return current;
+            }
+
+            if (current.label === fallbackLabel) {
               return current;
             }
 
@@ -216,7 +237,6 @@ export default function HomePageClient({
           source: "device",
         });
         setLocationStatus("granted");
-        updateBaseLocationLabel("device", nextLocation, "현재 위치");
       })
       .catch((error) => {
         setUserLoc(null);
@@ -246,7 +266,7 @@ export default function HomePageClient({
             break;
         }
       });
-  }, [updateBaseLocationLabel]);
+  }, []);
 
   const handleUsePresetLocation = useCallback((preset: YomechuLocationPreset) => {
     setYomechuBaseLocation({
@@ -276,6 +296,22 @@ export default function HomePageClient({
     },
     []
   );
+
+  useEffect(() => {
+    if (
+      !launcherOpen ||
+      yomechuBaseLocation?.source !== "device" ||
+      yomechuBaseLocation.label !== "현재 위치"
+    ) {
+      return;
+    }
+
+    updateBaseLocationLabel(
+      "device",
+      { lat: yomechuBaseLocation.lat, lng: yomechuBaseLocation.lng },
+      "현재 위치"
+    );
+  }, [launcherOpen, updateBaseLocationLabel, yomechuBaseLocation]);
 
   const fetchTrends = useCallback(async () => {
     const { data, error } = await supabase
@@ -313,7 +349,9 @@ export default function HomePageClient({
     }
 
     requestUserLocation();
-    fetchTrends();
+    if (initialTrends.length === 0) {
+      void fetchTrends();
+    }
 
     const channel = supabase
       .channel("trends-realtime")
@@ -327,7 +365,7 @@ export default function HomePageClient({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchTrends, requestUserLocation]);
+  }, [fetchTrends, initialTrends.length, requestUserLocation]);
 
   useEffect(() => {
     if (!hasUsableCoordinates(userLoc)) {
@@ -528,25 +566,27 @@ export default function HomePageClient({
           </button>
         }
         bottomSlot={
-          <YomechuLauncher
-            open={launcherOpen}
-            locationStatus={locationStatus}
-            locationSource={yomechuBaseLocation?.source ?? null}
-            locationLabel={yomechuBaseLocation?.label ?? null}
-            hasBaseLocation={Boolean(yomechuBaseLocation)}
-            selectedRadius={selectedRadius}
-            selectedCategory={selectedCategory}
-            selectedCount={selectedCount}
-            isSubmitting={yomechuLoading}
-            error={yomechuError}
-            onRadiusChange={setSelectedRadius}
-            onCategoryChange={setSelectedCategory}
-            onCountChange={setSelectedCount}
-            onSpin={spinYomechu}
-            onOpenLocationPicker={() => setLocationPickerOpen(true)}
-            onRetryLocation={requestUserLocation}
-            onUsePresetLocation={handleUsePresetLocation}
-          />
+          launcherOpen ? (
+            <YomechuLauncher
+              open={launcherOpen}
+              locationStatus={locationStatus}
+              locationSource={yomechuBaseLocation?.source ?? null}
+              locationLabel={yomechuBaseLocation?.label ?? null}
+              hasBaseLocation={Boolean(yomechuBaseLocation)}
+              selectedRadius={selectedRadius}
+              selectedCategory={selectedCategory}
+              selectedCount={selectedCount}
+              isSubmitting={yomechuLoading}
+              error={yomechuError}
+              onRadiusChange={setSelectedRadius}
+              onCategoryChange={setSelectedCategory}
+              onCountChange={setSelectedCount}
+              onSpin={spinYomechu}
+              onOpenLocationPicker={() => setLocationPickerOpen(true)}
+              onRetryLocation={requestUserLocation}
+              onUsePresetLocation={handleUsePresetLocation}
+            />
+          ) : null
         }
       />
       <main className="page-with-bottom-nav max-w-lg mx-auto px-4 py-4">
@@ -820,27 +860,33 @@ export default function HomePageClient({
         <Footer />
       </main>
       <ScrollToTop />
-      <YomechuLocationPickerModal
-        isOpen={locationPickerOpen}
-        initialCenter={locationPickerInitialCenter}
-        initialLabel={yomechuBaseLocation?.label ?? null}
-        onClose={() => setLocationPickerOpen(false)}
-        onConfirm={handleConfirmManualLocation}
-      />
-      <YomechuRevealModal
-        isOpen={revealOpen}
-        isLoading={yomechuLoading}
-        error={yomechuError}
-        result={yomechuResult}
-        onBack={handleBackToLauncher}
-        onClose={handleCloseReveal}
-        onReroll={handleReroll}
-        onOpenPlace={handleOpenPlace}
-        onShare={handleShareResult}
-        shareUrl={
-          yomechuResult?.spin_id ? buildYomechuShareUrl(yomechuResult.spin_id) : null
-        }
-      />
+      {locationPickerOpen ? (
+        <YomechuLocationPickerModal
+          isOpen={locationPickerOpen}
+          initialCenter={locationPickerInitialCenter}
+          initialLabel={yomechuBaseLocation?.label ?? null}
+          onClose={() => setLocationPickerOpen(false)}
+          onConfirm={handleConfirmManualLocation}
+        />
+      ) : null}
+      {revealOpen ? (
+        <YomechuRevealModal
+          isOpen={revealOpen}
+          isLoading={yomechuLoading}
+          error={yomechuError}
+          result={yomechuResult}
+          onBack={handleBackToLauncher}
+          onClose={handleCloseReveal}
+          onReroll={handleReroll}
+          onOpenPlace={handleOpenPlace}
+          onShare={handleShareResult}
+          shareUrl={
+            yomechuResult?.spin_id
+              ? buildYomechuShareUrl(yomechuResult.spin_id)
+              : null
+          }
+        />
+      ) : null}
       <BottomNav />
     </>
   );
