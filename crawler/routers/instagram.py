@@ -34,6 +34,7 @@ async def publish_instagram_feed(
 @router.get("/feed/runs")
 async def get_instagram_feed_runs(
     limit: int = Query(default=30, ge=1, le=100),
+    _: AdminUser = Depends(require_admin_user),
 ):
     return {
         "runs": list_instagram_feed_runs(limit=limit),
