@@ -1,4 +1,5 @@
 export const SITE_URL = "https://www.yozmeat.com";
+export const INSTAGRAM_URL = "https://www.instagram.com/yozm.eat";
 export const SITE_NAME = "요즘뭐먹";
 export const SITE_TITLE = "지금 유행하는 음식, 어디서 살까?";
 export const SITE_DESCRIPTION =
