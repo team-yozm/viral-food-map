@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from google import genai
@@ -84,6 +85,22 @@ class TrendReviewResult:
     canonical_keyword: str | None = None
     description: str | None = None
     model: str | None = None
+    grounding_used: bool = False
+    grounding_queries: list[str] = field(default_factory=list)
+    grounding_sources: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class AIReviewGroundingTrace:
+    used_google_search: bool = False
+    web_search_queries: list[str] = field(default_factory=list)
+    grounding_sources: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class GeminiTextResponse:
+    text: str
+    grounding_trace: AIReviewGroundingTrace | None = None
 
 
 @dataclass(slots=True)
@@ -188,11 +205,116 @@ def _normalize_concerns(value: Any) -> list[str]:
     return concerns
 
 
+def _get_attr_or_key(value: Any, *names: str) -> Any:
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        for name in names:
+            if name in value:
+                return value[name]
+
+    for name in names:
+        if hasattr(value, name):
+            return getattr(value, name)
+
+    return None
+
+
+def _build_grounding_result_kwargs(
+    grounding_trace: AIReviewGroundingTrace | None,
+) -> dict[str, Any]:
+    if grounding_trace is None:
+        return {}
+
+    return {
+        "grounding_used": grounding_trace.used_google_search,
+        "grounding_queries": list(grounding_trace.web_search_queries),
+        "grounding_sources": list(grounding_trace.grounding_sources),
+    }
+
+
+def _format_grounding_source(chunk: Any) -> str | None:
+    web = _get_attr_or_key(chunk, "web")
+    if web is None:
+        return None
+
+    title = _normalize_short_text(_get_attr_or_key(web, "title"), max_length=90)
+    uri = _normalize_short_text(_get_attr_or_key(web, "uri"), max_length=200)
+
+    host = ""
+    if uri:
+        host = urlparse(uri).netloc.lower().removeprefix("www.")
+
+    if title and host and host != "vertexaisearch.cloud.google.com":
+        return f"{title} ({host})"
+    if title:
+        return title
+    if host:
+        return host
+    return uri
+
+
+def _extract_grounding_trace(
+    response: genai_types.GenerateContentResponse,
+) -> AIReviewGroundingTrace | None:
+    queries: list[str] = []
+    sources: list[str] = []
+    used_google_search = False
+
+    for candidate in response.candidates or []:
+        grounding_metadata = _get_attr_or_key(
+            candidate,
+            "grounding_metadata",
+            "groundingMetadata",
+        )
+        if grounding_metadata is None:
+            continue
+
+        candidate_queries = _get_attr_or_key(
+            grounding_metadata,
+            "web_search_queries",
+            "webSearchQueries",
+        ) or []
+        candidate_chunks = _get_attr_or_key(
+            grounding_metadata,
+            "grounding_chunks",
+            "groundingChunks",
+        ) or []
+
+        if candidate_queries or candidate_chunks:
+            used_google_search = True
+
+        for query in candidate_queries:
+            normalized_query = _normalize_short_text(query, max_length=80)
+            if normalized_query and normalized_query not in queries:
+                queries.append(normalized_query)
+            if len(queries) >= 5:
+                break
+
+        for chunk in candidate_chunks:
+            source = _format_grounding_source(chunk)
+            if source and source not in sources:
+                sources.append(source)
+            if len(sources) >= 5:
+                break
+
+    if not used_google_search and not queries and not sources:
+        return None
+
+    return AIReviewGroundingTrace(
+        used_google_search=used_google_search or bool(queries or sources),
+        web_search_queries=queries,
+        grounding_sources=sources,
+    )
+
+
 def _coerce_result(
     raw: dict[str, Any],
     *,
     original_keyword: str,
     fallback_category: str,
+    grounding_trace: AIReviewGroundingTrace | None = None,
 ) -> TrendReviewResult:
     try:
         confidence = float(raw.get("confidence", 0))
@@ -218,6 +340,7 @@ def _coerce_result(
             original_keyword=original_keyword,
         ),
         model=settings.AI_REVIEW_MODEL,
+        **_build_grounding_result_kwargs(grounding_trace),
     )
 
 
@@ -276,8 +399,8 @@ async def _gemini_generate(
     user_content: str | list[genai_types.Part],
     max_output_tokens: int = 1200,
     tools: list[genai_types.Tool] | None = None,
-) -> str:
-    """Call Gemini generate_content and return the text response."""
+) -> GeminiTextResponse:
+    """Call Gemini generate_content and return the text response with trace data."""
     if not is_ai_review_enabled():
         raise AIReviewError("AI review is disabled or missing credentials")
 
@@ -306,7 +429,10 @@ async def _gemini_generate(
     text = _extract_response_text(response)
     if not text:
         raise AIReviewError("empty Gemini response")
-    return text
+    return GeminiTextResponse(
+        text=text,
+        grounding_trace=_extract_grounding_trace(response),
+    )
 
 
 async def _gemini_generate_with_grounding(
@@ -314,7 +440,7 @@ async def _gemini_generate_with_grounding(
     system_instruction: str,
     user_content: str,
     max_output_tokens: int = 1200,
-) -> str:
+) -> GeminiTextResponse:
     """Call Gemini with Google Search grounding, with automatic fallback."""
     model = settings.AI_REVIEW_MODEL
     use_grounding = settings.AI_REVIEW_GROUNDING_ENABLED
@@ -323,8 +449,8 @@ async def _gemini_generate_with_grounding(
     if use_grounding:
         tools = [genai_types.Tool(google_search=genai_types.GoogleSearch())]
 
-    async def _call(model_name: str, *, grounded: bool) -> str:
-        text = await _gemini_generate(
+    async def _call(model_name: str, *, grounded: bool) -> GeminiTextResponse:
+        response = await _gemini_generate(
             model=model_name,
             system_instruction=system_instruction,
             user_content=user_content,
@@ -336,7 +462,7 @@ async def _gemini_generate_with_grounding(
             model_name,
             grounded,
         )
-        return text
+        return response
 
     try:
         return await _call(model, grounded=use_grounding)
@@ -409,13 +535,13 @@ async def _request_text_review(
     *,
     system_prompt: str,
     payload: dict[str, Any],
-) -> dict[str, Any] | list[dict[str, Any]]:
+) -> tuple[dict[str, Any] | list[dict[str, Any]], AIReviewGroundingTrace | None]:
     """Text review via Gemini with grounding."""
-    text = await _gemini_generate_with_grounding(
+    response = await _gemini_generate_with_grounding(
         system_instruction=system_prompt,
         user_content=json.dumps(payload, ensure_ascii=False),
     )
-    return _extract_json_blob(text)
+    return _extract_json_blob(response.text), response.grounding_trace
 
 
 def _extract_results(raw: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -431,6 +557,8 @@ def _extract_results(raw: dict[str, Any] | list[dict[str, Any]]) -> list[dict[st
 
 def _fallback_result_map(
     payloads: list[TrendReviewPayload] | list[DiscoveryReviewPayload],
+    *,
+    grounding_trace: AIReviewGroundingTrace | None = None,
 ) -> dict[str, TrendReviewResult]:
     results: dict[str, TrendReviewResult] = {}
     for payload in payloads:
@@ -441,6 +569,7 @@ def _fallback_result_map(
             reason="result missing",
             description=None,
             model=settings.AI_REVIEW_MODEL,
+            **_build_grounding_result_kwargs(grounding_trace),
         )
     return results
 
@@ -449,9 +578,10 @@ def _coerce_result_map(
     raw: dict[str, Any] | list[dict[str, Any]],
     *,
     payloads: list[TrendReviewPayload] | list[DiscoveryReviewPayload],
+    grounding_trace: AIReviewGroundingTrace | None = None,
 ) -> dict[str, TrendReviewResult]:
     payload_map = {payload.keyword: payload for payload in payloads}
-    result_map = _fallback_result_map(payloads)
+    result_map = _fallback_result_map(payloads, grounding_trace=grounding_trace)
 
     for item in _extract_results(raw):
         keyword = clean_display_keyword(item.get("keyword"))
@@ -462,6 +592,7 @@ def _coerce_result_map(
             item,
             original_keyword=payload.keyword,
             fallback_category=payload.category_hint,
+            grounding_trace=grounding_trace,
         )
 
     return result_map
@@ -492,15 +623,25 @@ async def review_trend_candidates(
         "Respond with JSON only using the shape "
         '{"results":[{"keyword":"...","verdict":"accept|reject|review","confidence":0.0,"category":"...","reason":"...","canonical_keyword":"...","description":"..."}]}.'
     )
-    raw = await _request_text_review(
+    raw, grounding_trace = await _request_text_review(
         system_prompt=system_prompt,
         payload={
             "type": "trend_candidates",
             "candidates": [asdict(payload) for payload in payloads],
         },
     )
-    result_map = _coerce_result_map(raw, payloads=payloads)
-    logger.info("AI trend batch reviewed %s candidates", len(payloads))
+    result_map = _coerce_result_map(
+        raw,
+        payloads=payloads,
+        grounding_trace=grounding_trace,
+    )
+    logger.info(
+        "AI trend batch reviewed %s candidates (google_search=%s, queries=%s, sources=%s)",
+        len(payloads),
+        bool(grounding_trace and grounding_trace.used_google_search),
+        len(grounding_trace.web_search_queries) if grounding_trace else 0,
+        len(grounding_trace.grounding_sources) if grounding_trace else 0,
+    )
     return result_map
 
 
@@ -523,15 +664,25 @@ async def review_discovered_keywords(
         "Respond with JSON only using the shape "
         '{"results":[{"keyword":"...","verdict":"accept|reject|review","confidence":0.0,"category":"...","reason":"...","canonical_keyword":"..."}]}.'
     )
-    raw = await _request_text_review(
+    raw, grounding_trace = await _request_text_review(
         system_prompt=system_prompt,
         payload={
             "type": "discovered_keywords",
             "candidates": [asdict(payload) for payload in payloads],
         },
     )
-    result_map = _coerce_result_map(raw, payloads=payloads)
-    logger.info("AI discovery batch reviewed %s candidates", len(payloads))
+    result_map = _coerce_result_map(
+        raw,
+        payloads=payloads,
+        grounding_trace=grounding_trace,
+    )
+    logger.info(
+        "AI discovery batch reviewed %s candidates (google_search=%s, queries=%s, sources=%s)",
+        len(payloads),
+        bool(grounding_trace and grounding_trace.used_google_search),
+        len(grounding_trace.web_search_queries) if grounding_trace else 0,
+        len(grounding_trace.grounding_sources) if grounding_trace else 0,
+    )
     return result_map
 
 
@@ -617,14 +768,14 @@ async def review_instagram_post_image(
     ]
 
     # Image review: no grounding, just multimodal
-    text = await _gemini_generate(
+    response = await _gemini_generate(
         model=settings.AI_REVIEW_MODEL,
         system_instruction=system_prompt,
         user_content=user_parts,
         max_output_tokens=400,
     )
 
-    raw = _extract_json_blob(text)
+    raw = _extract_json_blob(response.text)
     result = _coerce_instagram_image_result(raw)
     logger.info(
         "AI Instagram image reviewed %s as %s (confidence=%.2f)",

@@ -315,13 +315,48 @@ def _build_ai_detail_line(
     confidence: float | None,
     category: str,
     reason: str,
+    grounding_queries: list[str] | None = None,
+    grounding_sources: list[str] | None = None,
 ) -> str:
     confidence_text = f"{confidence:.2f}" if confidence is not None else "n/a"
     normalized_reason = " ".join(str(reason or "").split()) or "reason missing"
-    return (
+    detail = (
         f"{keyword} (confidence={confidence_text}, category={category}): "
         f"{normalized_reason[:160]}"
     )
+    preview_parts: list[str] = []
+    if grounding_queries:
+        preview_parts.append(
+            "queries="
+            + ", ".join(" ".join(query.split())[:40] for query in grounding_queries[:2])
+        )
+    if grounding_sources:
+        preview_parts.append(
+            "sources="
+            + ", ".join(
+                " ".join(source.split())[:60] for source in grounding_sources[:2]
+            )
+        )
+    if preview_parts:
+        detail = f"{detail} | {' | '.join(preview_parts)}"
+    return detail[:320]
+
+
+def _summarize_ai_grounding(
+    review_results: dict[str, TrendReviewResult],
+) -> tuple[str | None, list[str], list[str]]:
+    if not review_results:
+        return None, [], []
+
+    for review in review_results.values():
+        if review.grounding_used or review.grounding_queries or review.grounding_sources:
+            return (
+                "used",
+                review.grounding_queries[:3],
+                review.grounding_sources[:3],
+            )
+
+    return "not_used", [], []
 
 
 def _is_ai_accept(review: TrendReviewResult) -> bool:
@@ -342,6 +377,9 @@ def _build_summary() -> dict:
         "keywords": [],
         "ai_reviewed": 0,
         "ai_accepted": 0,
+        "ai_grounding_status": None,
+        "ai_grounding_queries": [],
+        "ai_grounding_sources": [],
         "ai_rejected_details": [],
         "ai_review_details": [],
         "ai_fallback_details": [],
@@ -592,6 +630,11 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
                 review_results = await review_discovered_keywords(review_payloads)
                 summary["ai_calls_used"] = 1
                 summary["ai_reviewed"] = len(review_payloads)
+                (
+                    summary["ai_grounding_status"],
+                    summary["ai_grounding_queries"],
+                    summary["ai_grounding_sources"],
+                ) = _summarize_ai_grounding(review_results)
             except AIReviewError as exc:
                 summary["ai_fallback_details"].append(
                     _build_ai_detail_line(
@@ -628,6 +671,8 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
                         confidence=review.confidence,
                         category=category,
                         reason=review.reason,
+                        grounding_queries=review.grounding_queries,
+                        grounding_sources=review.grounding_sources,
                     )
                 )
                 continue
