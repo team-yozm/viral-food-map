@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from config import settings
 from error_reporting import install_recent_logs_handler, report_exception_to_discord
@@ -96,16 +99,24 @@ async def lifespan(app: FastAPI):
         logger.info("Server stopped")
 
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="요즘뭐먹 API",
     description="바이럴 음식 트렌드를 감지하고 판매처를 수집하는 백엔드",
     version="0.3.0",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://www.yozmeat.com",
+        "https://yozmeat.com",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

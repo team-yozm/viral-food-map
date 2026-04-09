@@ -1,10 +1,15 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+from auth import AdminUser, require_admin_user
 from database import get_client
 from franchise_checker import is_franchise
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +33,8 @@ async def list_stores(trend_id: str | None = None):
 
 
 @router.post("/report")
-async def submit_report(report: ReportRequest):
+@limiter.limit("10/minute")
+async def submit_report(request: Request, report: ReportRequest):
     """사용자 판매처 제보"""
     data = {
         "trend_id": report.trend_id,
@@ -42,7 +48,7 @@ async def submit_report(report: ReportRequest):
 
 
 @router.post("/backfill-franchise")
-async def backfill_franchise():
+async def backfill_franchise(_: AdminUser = Depends(require_admin_user)):
     """기존 매장의 is_franchise 필드를 일괄 업데이트 (배치)"""
     from franchise_checker import check_franchise_batch
 

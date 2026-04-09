@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import re
@@ -403,7 +404,7 @@ async def find_yomechu_candidates(
     external_ids = [str(doc["id"]) for doc in requested]
     existing_rows = {
         row["external_place_id"]: row
-        for row in get_yomechu_places_by_external_ids(external_ids)
+        for row in await asyncio.to_thread(get_yomechu_places_by_external_ids, external_ids)
     }
 
     merged_places: list[dict[str, Any]] = []
@@ -420,17 +421,16 @@ async def find_yomechu_candidates(
     for place in merged_places:
         place["quality_score"] = compute_quality_score(place, radius_m)
 
-    upsert_yomechu_places([to_place_row(place) for place in merged_places])
-    refreshed_rows = {
-        row["external_place_id"]: row
-        for row in get_yomechu_places_by_external_ids(
-            [place["external_place_id"] for place in merged_places]
-        )
+    upserted_rows = await asyncio.to_thread(
+        upsert_yomechu_places, [to_place_row(place) for place in merged_places]
+    )
+    upserted_by_ext_id = {
+        row["external_place_id"]: row for row in upserted_rows
     }
 
     candidates: list[dict[str, Any]] = []
     for place in merged_places:
-        refreshed = refreshed_rows.get(place["external_place_id"])
+        refreshed = upserted_by_ext_id.get(place["external_place_id"])
         if not refreshed:
             continue
         candidates.append(
@@ -476,7 +476,8 @@ async def spin_yomechu(
     primary_winner = winners[0]
     reel = build_reel(pool, primary_winner)
 
-    spin_row = insert_yomechu_spin(
+    spin_row = await asyncio.to_thread(
+        insert_yomechu_spin,
         {
             "session_id": session_id,
             "lat_rounded": round(lat, 3),
@@ -488,7 +489,7 @@ async def spin_yomechu(
             "winner_place_id": primary_winner["id"],
             "winner_place_ids": [item["id"] for item in winners],
             "reel_place_ids": [item["id"] for item in reel],
-        }
+        },
     )
 
     return {
@@ -504,8 +505,11 @@ async def spin_yomechu(
 
 async def refresh_recent_yomechu_ratings() -> dict[str, int]:
     now = datetime.now(timezone.utc)
+    all_rows = await asyncio.to_thread(
+        list_recent_yomechu_places, settings.YOMECHU_ENRICH_BATCH_SIZE
+    )
     eligible_rows = []
-    for row in list_recent_yomechu_places(settings.YOMECHU_ENRICH_BATCH_SIZE):
+    for row in all_rows:
         last_enriched = parse_iso_datetime(row.get("last_enriched_at"))
         if (
             row.get("rating") is not None
@@ -530,7 +534,7 @@ async def refresh_recent_yomechu_ratings() -> dict[str, int]:
             if rating is not None:
                 payload["rating"] = rating
                 updated += 1
-            update_yomechu_place(row["id"], payload)
+            await asyncio.to_thread(update_yomechu_place, row["id"], payload)
 
     logger.info("요메추 평점 보강 완료: scanned=%s updated=%s", scanned, updated)
     return {"scanned": scanned, "updated": updated}

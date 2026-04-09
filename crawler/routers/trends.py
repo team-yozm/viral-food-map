@@ -64,7 +64,7 @@ async def get_detection_status():
 
 
 @router.post("/discover-keywords")
-async def trigger_discovery():
+async def trigger_discovery(_: AdminUser = Depends(require_admin_user)):
     """수동 키워드 발굴 트리거"""
     summary = await run_keyword_discovery_job(trigger="manual")
     return {

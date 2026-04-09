@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from crawlers.yomechu_places import CATEGORY_CONFIG, YomechuNoResultsError, spin_yomechu
 from database import insert_yomechu_feedback
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/yomechu", tags=["yomechu"])
 
@@ -29,7 +33,8 @@ class FeedbackRequest(BaseModel):
 
 
 @router.post("/spin")
-async def create_spin(payload: SpinRequest):
+@limiter.limit("30/minute")
+async def create_spin(request: Request, payload: SpinRequest):
     if payload.category_slug not in CATEGORY_CONFIG:
         raise HTTPException(status_code=400, detail="Unsupported category")
 
@@ -49,6 +54,7 @@ async def create_spin(payload: SpinRequest):
 
 
 @router.post("/feedback")
-async def create_feedback(payload: FeedbackRequest):
+@limiter.limit("60/minute")
+async def create_feedback(request: Request, payload: FeedbackRequest):
     row = insert_yomechu_feedback(payload.model_dump())
     return {"ok": True, "feedback_id": row["id"] if row else None}

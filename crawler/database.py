@@ -288,15 +288,16 @@ def insert_ai_automation_usage(row: dict[str, Any]):
         raise
 
 
-def upsert_yomechu_places(places: list[dict[str, Any]]):
+def upsert_yomechu_places(places: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not places:
-        return None
-    return (
+        return []
+    result = (
         get_client()
         .table("yomechu_places")
         .upsert(places, on_conflict="external_place_id")
         .execute()
     )
+    return result.data or []
 
 
 def get_yomechu_places_by_external_ids(
