@@ -1,4 +1,4 @@
-import { isNative } from "./capacitor-utils";
+import { getPlatform, isNative } from "./capacitor-utils";
 
 interface Position {
   lat: number;
@@ -10,6 +10,15 @@ let cachedPosition: Position | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 30_000; // 30초: fresh
 const STALE_TTL_MS = 120_000; // 2분: 사용 가능하지만 stale
+const NATIVE_RECOVERY_TIMEOUT_MS = 5000;
+const NATIVE_PERMISSION_SETTLE_MS: Record<"android" | "ios", number> = {
+  android: 900,
+  ios: 700,
+};
+const NATIVE_RECOVERY_RETRY_DELAY_MS: Record<"android" | "ios", number> = {
+  android: 1200,
+  ios: 900,
+};
 
 // 동시 요청 중복 방지
 let inflightRequest: Promise<Position> | null = null;
@@ -17,6 +26,12 @@ let inflightRequest: Promise<Position> | null = null;
 function updateCache(pos: Position) {
   cachedPosition = pos;
   cacheTimestamp = Date.now();
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 export function invalidateLocationCache() {
@@ -70,35 +85,78 @@ async function doGetPositionNative(
   wantHighAccuracy: boolean
 ): Promise<Position> {
   const { Geolocation } = await import("@capacitor/geolocation");
+  const platform = getPlatform();
+  const permissionSettleDelay =
+    platform === "android" || platform === "ios"
+      ? NATIVE_PERMISSION_SETTLE_MS[platform]
+      : 0;
+  const recoveryRetryDelay =
+    platform === "android" || platform === "ios"
+      ? NATIVE_RECOVERY_RETRY_DELAY_MS[platform]
+      : 0;
+
+  const readNativePosition = async (requestOptions: {
+    enableHighAccuracy: boolean;
+    timeout: number;
+  }): Promise<Position> => {
+    const pos = await Geolocation.getCurrentPosition(requestOptions);
+    const result = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    updateCache(result);
+    return result;
+  };
+
+  const refreshCacheInBackground = (refreshTimeout: number) => {
+    Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: refreshTimeout,
+    })
+      .then((hiPos) => {
+        updateCache({ lat: hiPos.coords.latitude, lng: hiPos.coords.longitude });
+      })
+      .catch(() => {});
+  };
 
   // 권한 확인 → 필요 시 요청
   let perm = await Geolocation.checkPermissions();
+  let requestedPermission = false;
   if (perm.location === "prompt" || perm.location === "prompt-with-rationale") {
+    requestedPermission = true;
     perm = await Geolocation.requestPermissions();
   }
   if (perm.location === "denied") {
     throw new Error("PERMISSION_DENIED");
   }
 
-  // Phase 1: 저정밀 빠른 위치 (셀/WiFi)
-  const pos = await Geolocation.getCurrentPosition({
-    enableHighAccuracy: false,
-    timeout: Math.min(timeout, 3000),
-  });
-  const result: Position = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-  updateCache(result);
+  // 권한 허용 직후에는 위치 제공자가 준비될 시간을 조금 줍니다.
+  if (requestedPermission && permissionSettleDelay > 0) {
+    await sleep(permissionSettleDelay);
+  }
 
-  // Phase 2: 백그라운드에서 고정밀(GPS) 위치 업그레이드
-  Geolocation.getCurrentPosition({
-    enableHighAccuracy: true,
-    timeout,
-  })
-    .then((hiPos) => {
-      updateCache({ lat: hiPos.coords.latitude, lng: hiPos.coords.longitude });
-    })
-    .catch(() => {});
+  try {
+    // Phase 1: 저정밀 빠른 위치 (셀/WiFi)
+    const result = await readNativePosition({
+      enableHighAccuracy: wantHighAccuracy,
+      timeout: wantHighAccuracy ? Math.max(timeout, NATIVE_RECOVERY_TIMEOUT_MS) : Math.min(timeout, 3000),
+    });
 
-  return result;
+    // Phase 2: 백그라운드에서 고정밀(GPS) 위치 업그레이드
+    if (!wantHighAccuracy) {
+      refreshCacheInBackground(timeout);
+    }
+
+    return result;
+  } catch (error) {
+    if (recoveryRetryDelay <= 0) {
+      throw error;
+    }
+
+    await sleep(recoveryRetryDelay);
+
+    return readNativePosition({
+      enableHighAccuracy: true,
+      timeout: Math.max(timeout, NATIVE_RECOVERY_TIMEOUT_MS),
+    });
+  }
 }
 
 function doGetPositionWeb(
