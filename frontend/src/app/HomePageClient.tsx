@@ -844,7 +844,7 @@ export default function HomePageClient({
                         </div>
                       ) : null}
                     </div>
-                    <span className="text-xs font-semibold text-primary flex-shrink-0">
+                    <span className="inline-flex h-5 shrink-0 self-center items-center justify-center whitespace-nowrap pt-px text-xs font-semibold leading-none text-primary">
                       {formatDistanceMeters(
                         Math.max(Math.round(store.distance_km * 1000), 0)
                       )}

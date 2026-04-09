@@ -51,13 +51,19 @@ function StarRating({ rating }: { rating: number | null }) {
   );
 }
 
+const STORE_ACTION_BADGE_CLASS =
+  "inline-flex h-5 items-center justify-center whitespace-nowrap rounded-lg px-2 pt-px text-[10px] font-bold leading-none transition-colors";
+
+const STORE_DISTANCE_CLASS =
+  "mr-1 inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap pt-px text-xs font-semibold leading-none text-primary";
+
 function getStoreLinkInfo(store: Store): { url: string; label: string; className: string } {
   const url = store.place_url || `https://map.naver.com/p/search/${encodeURIComponent(store.name)}`;
   if (url.includes("kakao"))
-    return { url, label: "카카오", className: "bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-yellow-500 transition-colors" };
+    return { url, label: "카카오", className: `${STORE_ACTION_BADGE_CLASS} bg-yellow-400 text-black hover:bg-yellow-500` };
   if (url.includes("naver"))
-    return { url, label: "네이버", className: "bg-green-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-green-600 transition-colors" };
-  return { url, label: "지도 보기", className: "bg-gray-400 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-gray-500 transition-colors" };
+    return { url, label: "네이버", className: `${STORE_ACTION_BADGE_CLASS} bg-green-500 text-white hover:bg-green-600` };
+  return { url, label: "지도 보기", className: `${STORE_ACTION_BADGE_CLASS} bg-gray-400 text-white hover:bg-gray-500` };
 }
 
 const FILTER_OPTIONS: { value: FranchiseFilter; label: string }[] = [
@@ -163,39 +169,41 @@ export default function StoreList({
             </div>
             <p className="text-xs text-gray-400 truncate">{store.address}</p>
           </div>
-          {userLoc && (
-            <span className="text-xs text-primary font-semibold leading-none flex-shrink-0 mr-1">
-              {formatDistance(getDistance(userLoc.lat, userLoc.lng, store.lat, store.lng))}
-            </span>
-          )}
-          <div className="flex gap-1.5 flex-shrink-0">
-            {(() => {
-              const linkInfo = getStoreLinkInfo(store);
-              return (
-                <a
-                  href={linkInfo.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openExternalUrl(linkInfo.url);
-                  }}
-                  className={linkInfo.className}
-                >
-                  {linkInfo.label}
-                </a>
-              );
-            })()}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                openInstagramTag(store.name);
-              }}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:opacity-90 transition-opacity"
-            >
-              인스타
-            </button>
+          <div className="ml-auto flex shrink-0 self-center items-center gap-2">
+            {userLoc && (
+              <span className={STORE_DISTANCE_CLASS}>
+                {formatDistance(getDistance(userLoc.lat, userLoc.lng, store.lat, store.lng))}
+              </span>
+            )}
+            <div className="flex items-center gap-1.5">
+              {(() => {
+                const linkInfo = getStoreLinkInfo(store);
+                return (
+                  <a
+                    href={linkInfo.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openExternalUrl(linkInfo.url);
+                    }}
+                    className={linkInfo.className}
+                  >
+                    {linkInfo.label}
+                  </a>
+                );
+              })()}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openInstagramTag(store.name);
+                }}
+                className={`${STORE_ACTION_BADGE_CLASS} bg-gradient-to-r from-purple-500 to-pink-500 text-white transition-opacity hover:opacity-90`}
+              >
+                인스타
+              </button>
+            </div>
           </div>
         </div>
       ))}

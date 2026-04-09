@@ -297,17 +297,17 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                     </div>
                     <p className="text-xs text-gray-400 truncate">{store.address}</p>
                   </div>
-                  <div className="flex gap-1.5 flex-shrink-0">
+                  <div className="ml-auto flex shrink-0 self-center items-center gap-1.5">
                     {(() => {
                       const url = store.place_url || `https://map.naver.com/p/search/${encodeURIComponent(store.name)}`;
                       const isKakao = url.includes("kakao");
                       const isNaver = url.includes("naver");
                       const label = isKakao ? "카카오" : isNaver ? "네이버" : "지도 보기";
                       const cls = isKakao
-                        ? "bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-yellow-500 transition-colors"
+                        ? "inline-flex h-5 items-center justify-center whitespace-nowrap rounded-lg bg-yellow-400 px-2 pt-px text-[10px] font-bold leading-none text-black transition-colors hover:bg-yellow-500"
                         : isNaver
-                          ? "bg-green-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-green-600 transition-colors"
-                          : "bg-gray-400 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-gray-500 transition-colors";
+                          ? "inline-flex h-5 items-center justify-center whitespace-nowrap rounded-lg bg-green-500 px-2 pt-px text-[10px] font-bold leading-none text-white transition-colors hover:bg-green-600"
+                          : "inline-flex h-5 items-center justify-center whitespace-nowrap rounded-lg bg-gray-400 px-2 pt-px text-[10px] font-bold leading-none text-white transition-colors hover:bg-gray-500";
                       return (
                         <a
                           href={url}
@@ -335,7 +335,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                         event.stopPropagation();
                         openInstagramTag(store.name);
                       }}
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:opacity-90 transition-opacity"
+                      className="inline-flex h-5 items-center justify-center whitespace-nowrap rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-2 pt-px text-[10px] font-bold leading-none text-white transition-opacity hover:opacity-90"
                     >
                       인스타
                     </a>
