@@ -54,10 +54,10 @@ function StarRating({ rating }: { rating: number | null }) {
 function getStoreLinkInfo(store: Store): { url: string; label: string; className: string } {
   const url = store.place_url || `https://map.naver.com/p/search/${encodeURIComponent(store.name)}`;
   if (url.includes("kakao"))
-    return { url, label: "카카오", className: "bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-yellow-500 transition-colors" };
+    return { url, label: "카카오", className: "bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-yellow-500 transition-colors" };
   if (url.includes("naver"))
-    return { url, label: "네이버", className: "bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-green-600 transition-colors" };
-  return { url, label: "지도 보기", className: "bg-gray-400 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-gray-500 transition-colors" };
+    return { url, label: "네이버", className: "bg-green-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-green-600 transition-colors" };
+  return { url, label: "지도 보기", className: "bg-gray-400 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-gray-500 transition-colors" };
 }
 
 const FILTER_OPTIONS: { value: FranchiseFilter; label: string }[] = [
@@ -164,7 +164,7 @@ export default function StoreList({
             <p className="text-xs text-gray-400 truncate">{store.address}</p>
           </div>
           {userLoc && (
-            <span className="text-xs text-primary font-semibold flex-shrink-0 mr-1">
+            <span className="text-xs text-primary font-semibold leading-none flex-shrink-0 mr-1">
               {formatDistance(getDistance(userLoc.lat, userLoc.lng, store.lat, store.lng))}
             </span>
           )}
@@ -192,7 +192,7 @@ export default function StoreList({
                 e.stopPropagation();
                 openInstagramTag(store.name);
               }}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:opacity-90 transition-opacity"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:opacity-90 transition-opacity"
             >
               인스타
             </button>

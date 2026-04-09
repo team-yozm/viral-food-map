@@ -304,10 +304,10 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                       const isNaver = url.includes("naver");
                       const label = isKakao ? "카카오" : isNaver ? "네이버" : "지도 보기";
                       const cls = isKakao
-                        ? "bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-yellow-500 transition-colors"
+                        ? "bg-yellow-400 text-black text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-yellow-500 transition-colors"
                         : isNaver
-                          ? "bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-green-600 transition-colors"
-                          : "bg-gray-400 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-gray-500 transition-colors";
+                          ? "bg-green-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-green-600 transition-colors"
+                          : "bg-gray-400 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:bg-gray-500 transition-colors";
                       return (
                         <a
                           href={url}
@@ -335,7 +335,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                         event.stopPropagation();
                         openInstagramTag(store.name);
                       }}
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg hover:opacity-90 transition-opacity"
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold px-2 py-1 leading-none rounded-lg hover:opacity-90 transition-opacity"
                     >
                       인스타
                     </a>
