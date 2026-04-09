@@ -214,7 +214,7 @@ export default function YomechuSharePageClient({
                 <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-white/55">
                   추천 리스트 · {winners.length}곳
                 </p>
-                <div className="flex flex-col gap-8">
+                <div className="flex flex-col gap-3">
                   {winners.map((place, index) => (
                     <WinnerListCard
                       key={place.place_id}
