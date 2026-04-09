@@ -24,6 +24,13 @@ declare namespace kakao.maps {
     setCenter(latlng: LatLng): void;
     panTo(latlng: LatLng): void;
     setLevel(level: number): void;
+    jump(
+      latlng: LatLng,
+      level: number,
+      options?: {
+        animate?: boolean | { duration: number };
+      }
+    ): void;
     getCenter(): LatLng;
     getLevel(): number;
     setBounds(bounds: LatLngBounds): void;

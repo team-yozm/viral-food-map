@@ -391,11 +391,25 @@ export default function KakaoMap({
     openOverlayRef.current = entry.infoOverlay;
   }, [map, selectedStoreId]);
 
-  const panToLocation = (location: { lat: number; lng: number }) => {
+  const moveMapToLocation = (location: { lat: number; lng: number }) => {
     if (!map) return;
     const loc = new kakao.maps.LatLng(location.lat, location.lng);
+    const targetLevel = 4;
+
+    // Change center and zoom together when the map is zoomed out so the
+    // viewport cannot momentarily anchor to an unrelated spot.
+    if (map.getLevel() !== targetLevel) {
+      if (typeof map.jump === "function") {
+        map.jump(loc, targetLevel);
+        return;
+      }
+
+      map.setLevel(targetLevel);
+      map.setCenter(loc);
+      return;
+    }
+
     map.panTo(loc);
-    map.setLevel(4);
   };
 
   const moveToMyLocation = async () => {
@@ -403,20 +417,20 @@ export default function KakaoMap({
     if (!map) return;
 
     if (currentLocation) {
-      panToLocation(currentLocation);
+      moveMapToLocation(currentLocation);
       return;
     }
 
     if (onRequestCurrentLocation) {
       const nextLocation = await onRequestCurrentLocation();
       if (nextLocation) {
-        panToLocation(nextLocation);
+        moveMapToLocation(nextLocation);
       }
       return;
     }
 
     getCurrentPosition({ timeout: 8000 })
-      .then((loc) => panToLocation(loc))
+      .then((loc) => moveMapToLocation(loc))
       .catch(() => {});
   };
 
