@@ -215,19 +215,24 @@ def _build_ai_detail_line(
 
 def _summarize_ai_grounding(
     review_results: dict[str, TrendReviewResult],
-) -> tuple[str | None, list[str], list[str]]:
+) -> tuple[str | None, str | None, list[str], list[str]]:
     if not review_results:
-        return None, [], []
+        return None, None, [], []
 
     for review in review_results.values():
         if review.grounding_used or review.grounding_queries or review.grounding_sources:
             return (
                 "used",
+                review.grounding_detail,
                 review.grounding_queries[:3],
                 review.grounding_sources[:3],
             )
 
-    return "not_used", [], []
+    detail = next(
+        (review.grounding_detail for review in review_results.values() if review.grounding_detail),
+        None,
+    )
+    return "not_used", detail, [], []
 
 
 def _is_ai_accept(review: TrendReviewResult) -> bool:
@@ -287,6 +292,7 @@ def _build_summary() -> dict:
         "ai_reviewed": 0,
         "ai_accepted": 0,
         "ai_grounding_status": None,
+        "ai_grounding_detail": None,
         "ai_grounding_queries": [],
         "ai_grounding_sources": [],
         "ai_rejected_details": [],
@@ -775,6 +781,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 summary["ai_reviewed"] = len(review_payloads)
                 (
                     summary["ai_grounding_status"],
+                    summary["ai_grounding_detail"],
                     summary["ai_grounding_queries"],
                     summary["ai_grounding_sources"],
                 ) = _summarize_ai_grounding(review_results)

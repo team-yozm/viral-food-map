@@ -100,6 +100,10 @@ export interface TrendDetectionSummary {
   confirmed_keywords: string[];
   ai_calls_used?: number;
   ai_calls_remaining?: number;
+  ai_grounding_status?: string | null;
+  ai_grounding_detail?: string | null;
+  ai_grounding_queries?: string[];
+  ai_grounding_sources?: string[];
   alias_matches?: number;
   canonicalized_keywords?: string[];
   budget_exhausted?: boolean;

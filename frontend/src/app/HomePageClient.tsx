@@ -580,6 +580,10 @@ export default function HomePageClient({
           </div>
         </section>
 
+        <div className="mb-6 flex justify-center">
+          <PushSubscribeButton />
+        </div>
+
         <div id="trends" className="scroll-mt-24">
           {loading ? (
             <section>
@@ -804,9 +808,6 @@ export default function HomePageClient({
           <InstallPrompt />
         </div>
 
-        <div className="mb-2 mt-4 flex justify-center">
-          <PushSubscribeButton />
-        </div>
         <Footer />
       </main>
       <ScrollToTop />

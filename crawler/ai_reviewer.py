@@ -88,6 +88,7 @@ class TrendReviewResult:
     grounding_used: bool = False
     grounding_queries: list[str] = field(default_factory=list)
     grounding_sources: list[str] = field(default_factory=list)
+    grounding_detail: str | None = None
 
 
 @dataclass(slots=True)
@@ -95,6 +96,7 @@ class AIReviewGroundingTrace:
     used_google_search: bool = False
     web_search_queries: list[str] = field(default_factory=list)
     grounding_sources: list[str] = field(default_factory=list)
+    detail: str | None = None
 
 
 @dataclass(slots=True)
@@ -231,7 +233,30 @@ def _build_grounding_result_kwargs(
         "grounding_used": grounding_trace.used_google_search,
         "grounding_queries": list(grounding_trace.web_search_queries),
         "grounding_sources": list(grounding_trace.grounding_sources),
+        "grounding_detail": grounding_trace.detail,
     }
+
+
+def _with_grounding_trace_detail(
+    response: GeminiTextResponse,
+    *,
+    grounded: bool,
+    detail: str | None = None,
+) -> GeminiTextResponse:
+    if grounded:
+        if response.grounding_trace is None:
+            response.grounding_trace = AIReviewGroundingTrace(
+                detail=detail
+                or "구글검색 도구는 활성화됐지만 Gemini 응답에 검색 사용 메타데이터가 없었습니다.",
+            )
+        elif detail and not response.grounding_trace.detail:
+            response.grounding_trace.detail = detail
+        return response
+
+    if detail:
+        response.grounding_trace = AIReviewGroundingTrace(detail=detail)
+
+    return response
 
 
 def _format_grounding_source(chunk: Any) -> str | None:
@@ -457,6 +482,7 @@ async def _gemini_generate_with_grounding(
             max_output_tokens=max_output_tokens,
             tools=tools if grounded else None,
         )
+        response = _with_grounding_trace_detail(response, grounded=grounded)
         logger.info(
             "Gemini text review completed with model=%s, grounding=%s",
             model_name,
@@ -479,7 +505,11 @@ async def _gemini_generate_with_grounding(
                 original_exc,
             )
             await asyncio.sleep(_TIMEOUT_RETRY_DELAY_SECONDS)
-            return await _call(model, grounded=False)
+            return _with_grounding_trace_detail(
+                await _call(model, grounded=False),
+                grounded=False,
+                detail=f"{model} grounding 요청이 타임아웃되어 구글검색 없이 재시도했습니다.",
+            )
 
         if _is_grounding_error(original_exc):
             if fallback_model and fallback_model != model:
@@ -500,7 +530,14 @@ async def _gemini_generate_with_grounding(
                             fallback_original_exc,
                         )
                         await asyncio.sleep(_TIMEOUT_RETRY_DELAY_SECONDS)
-                        return await _call(fallback_model, grounded=False)
+                        return _with_grounding_trace_detail(
+                            await _call(fallback_model, grounded=False),
+                            grounded=False,
+                            detail=(
+                                f"{model}는 grounding 미지원, {fallback_model} grounding 요청은 "
+                                "타임아웃되어 구글검색 없이 재시도했습니다."
+                            ),
+                        )
                     if not (
                         _is_grounding_error(fallback_original_exc)
                         or _is_quota_error(fallback_original_exc)
@@ -511,14 +548,25 @@ async def _gemini_generate_with_grounding(
                         fallback_model,
                         fallback_original_exc,
                     )
-                    return await _call(fallback_model, grounded=False)
+                    return _with_grounding_trace_detail(
+                        await _call(fallback_model, grounded=False),
+                        grounded=False,
+                        detail=(
+                            f"{model}는 grounding 미지원, {fallback_model} grounding 요청도 실패해 "
+                            "구글검색 없이 재시도했습니다."
+                        ),
+                    )
 
             logger.warning(
                 "Grounding not supported on %s, retrying without grounding: %s",
                 model,
                 original_exc,
             )
-            return await _call(model, grounded=False)
+            return _with_grounding_trace_detail(
+                await _call(model, grounded=False),
+                grounded=False,
+                detail=f"{model}가 grounding을 지원하지 않아 구글검색 없이 재시도했습니다.",
+            )
 
         if _is_quota_error(original_exc):
             logger.warning(
@@ -526,7 +574,11 @@ async def _gemini_generate_with_grounding(
                 model,
                 original_exc,
             )
-            return await _call(model, grounded=False)
+            return _with_grounding_trace_detail(
+                await _call(model, grounded=False),
+                grounded=False,
+                detail=f"{model} grounding 요청이 할당량 제한에 걸려 구글검색 없이 재시도했습니다.",
+            )
 
         raise
 
