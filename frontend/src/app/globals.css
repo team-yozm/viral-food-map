@@ -65,6 +65,28 @@ html.native-app {
   overflow: hidden;
 }
 
+/* 클러스터 뱃지 */
+.kakao-cluster-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: 50%;
+  background: #9B7DD4;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(155, 125, 212, 0.4);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.kakao-cluster-badge:hover {
+  transform: scale(1.15);
+}
+
 /* 트렌드 라벨 핀 마커 */
 .kakao-trend-pin {
   display: flex;
@@ -97,6 +119,8 @@ html.native-app {
 /* CustomOverlay 기반 말풍선 */
 .kakao-store-overlay {
   position: relative;
+  /* 핀 높이(라벨 ~22px + 꼬리 6px)만큼 아래 여백 → 핀 위에 표시 */
+  padding-bottom: 30px;
 }
 
 .kakao-store-overlay__content {

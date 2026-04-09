@@ -181,8 +181,8 @@ export default function KakaoMap({
   useEffect(() => {
     if (!map || stores.length === 0) return;
 
+    const CLUSTER_MIN_LEVEL = 6;
     const allTrendIds = Object.keys(trendLabels);
-    const markerOverlays: kakao.maps.CustomOverlay[] = [];
     const bounds = new kakao.maps.LatLngBounds();
     const newMarkerMap = new Map<
       string,
@@ -196,14 +196,21 @@ export default function KakaoMap({
       }
     };
 
-    // 지도 클릭 시 오버레이 닫기
     kakao.maps.event.addListener(map, "click", closeOpenOverlay);
+
+    // 각 store에 대한 핀·정보 오버레이 생성 (아직 map에 붙이지 않음)
+    type StoreEntry = {
+      store: Store;
+      position: kakao.maps.LatLng;
+      markerOverlay: kakao.maps.CustomOverlay;
+      infoOverlay: kakao.maps.CustomOverlay;
+    };
+    const entries: StoreEntry[] = [];
 
     stores.forEach((store) => {
       const position = new kakao.maps.LatLng(store.lat, store.lng);
       bounds.extend(position);
 
-      // 트렌드 라벨 마커
       const trendName = trendLabels[store.trend_id];
       const color = getTrendColor(store.trend_id, allTrendIds);
       const label = trendName ? escapeHtml(trendName) : "📍";
@@ -221,9 +228,7 @@ export default function KakaoMap({
         yAnchor: 1,
         zIndex: 5,
       });
-      markerOverlay.setMap(map);
 
-      // 상세 정보 오버레이
       const storeName = escapeHtml(store.name);
       const storeAddress = escapeHtml(store.address);
       const storePhone = store.phone ? escapeHtml(store.phone) : null;
@@ -247,7 +252,8 @@ export default function KakaoMap({
       const infoOverlay = new kakao.maps.CustomOverlay({
         content: overlayContent,
         position,
-        yAnchor: 1.6,
+        xAnchor: 0.5,
+        yAnchor: 1,
         zIndex: 20,
       });
 
@@ -265,10 +271,73 @@ export default function KakaoMap({
       });
 
       newMarkerMap.set(store.id, { markerOverlay, infoOverlay });
-      markerOverlays.push(markerOverlay);
+      entries.push({ store, position, markerOverlay, infoOverlay });
     });
 
     markerMapRef.current = newMarkerMap;
+
+    // 클러스터링 상태 관리
+    let clusterOverlays: kakao.maps.CustomOverlay[] = [];
+
+    const renderClusters = () => {
+      // 기존 클러스터 뱃지 제거
+      clusterOverlays.forEach((o) => o.setMap(null));
+      clusterOverlays = [];
+
+      const currentLevel = map.getLevel();
+
+      if (currentLevel < CLUSTER_MIN_LEVEL) {
+        // 줌 인 상태: 개별 핀 모두 표시
+        entries.forEach((e) => e.markerOverlay.setMap(map));
+        return;
+      }
+
+      // 줌 아웃 상태: 격자 기반 클러스터링
+      const gridSize = 0.001 * Math.pow(2, currentLevel - 2);
+      const grid = new Map<string, StoreEntry[]>();
+
+      for (const entry of entries) {
+        const key = `${Math.floor(entry.store.lat / gridSize)}_${Math.floor(entry.store.lng / gridSize)}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key)!.push(entry);
+      }
+
+      for (const group of grid.values()) {
+        if (group.length === 1) {
+          // 단독 핀은 그대로 표시
+          group[0].markerOverlay.setMap(map);
+        } else {
+          // 그룹: 개별 핀 숨기고 클러스터 뱃지 표시
+          group.forEach((e) => e.markerOverlay.setMap(null));
+
+          const centerLat = group.reduce((s, e) => s + e.store.lat, 0) / group.length;
+          const centerLng = group.reduce((s, e) => s + e.store.lng, 0) / group.length;
+
+          const badgeEl = document.createElement("div");
+          badgeEl.className = "kakao-cluster-badge";
+          badgeEl.textContent = String(group.length);
+
+          // 클러스터 클릭 시 줌 인
+          badgeEl.addEventListener("click", () => {
+            map.setCenter(new kakao.maps.LatLng(centerLat, centerLng));
+            map.setLevel(Math.max(1, currentLevel - 2));
+          });
+
+          const badge = new kakao.maps.CustomOverlay({
+            content: badgeEl,
+            position: new kakao.maps.LatLng(centerLat, centerLng),
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 15,
+          });
+          badge.setMap(map);
+          clusterOverlays.push(badge);
+        }
+      }
+    };
+
+    renderClusters();
+    kakao.maps.event.addListener(map, "idle", renderClusters);
 
     if (autoFitBounds) {
       if (stores.length === 1) {
@@ -282,6 +351,8 @@ export default function KakaoMap({
     return () => {
       closeOpenOverlay();
       kakao.maps.event.removeListener(map, "click", closeOpenOverlay);
+      kakao.maps.event.removeListener(map, "idle", renderClusters);
+      clusterOverlays.forEach((o) => o.setMap(null));
       newMarkerMap.forEach(({ markerOverlay, infoOverlay }) => {
         markerOverlay.setMap(null);
         infoOverlay.setMap(null);
