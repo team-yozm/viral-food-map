@@ -7,65 +7,187 @@ const CONFETTI_EMOJIS = [
   "🔥", "⭐", "💜", "✨", "🎶", "🥂", "🍗", "🍰",
 ];
 
-interface Particle {
+const PARTICLE_COUNT = 42;
+const BASE_LIFETIME_MS = 2200;
+const MAX_DELAY_MS = 180;
+const GRAVITY = 1180;
+
+interface ParticleModel {
+  id: number;
+  emoji: string;
+  originX: number;
+  originY: number;
+  velocityX: number;
+  velocityY: number;
+  gravity: number;
+  rotationStart: number;
+  angularVelocity: number;
+  size: number;
+  delayMs: number;
+  lifetimeMs: number;
+  wobbleAmplitude: number;
+  wobbleFrequency: number;
+  wobblePhase: number;
+}
+
+interface ParticleFrame {
   id: number;
   emoji: string;
   x: number;
   y: number;
-  tx: number;
-  ty: number;
   rotation: number;
   size: number;
-  delay: number;
-  duration: number;
+  opacity: number;
 }
 
 let particleId = 0;
 
-function generateParticles(count: number): Particle[] {
-  const particles: Particle[] = [];
-  const half = Math.floor(count / 2);
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
-  for (let i = 0; i < count; i++) {
-    const fromLeft = i < half;
+function generateParticles(width: number, height: number): ParticleModel[] {
+  const particles: ParticleModel[] = [];
+  const half = Math.floor(PARTICLE_COUNT / 2);
+
+  for (let index = 0; index < PARTICLE_COUNT; index += 1) {
+    const fromLeft = index < half;
+    const horizontalDirection = fromLeft ? 1 : -1;
+
     particles.push({
       id: particleId++,
       emoji: CONFETTI_EMOJIS[Math.floor(Math.random() * CONFETTI_EMOJIS.length)],
-      x: fromLeft ? 2 + Math.random() * 8 : 90 + Math.random() * 8,
-      y: 30 + Math.random() * 40,
-      tx: (fromLeft ? 1 : -1) * (60 + Math.random() * 160),
-      ty: -(80 + Math.random() * 200),
-      rotation: (Math.random() - 0.5) * 720,
-      size: 1.1 + Math.random() * 1.2,
-      delay: Math.random() * 0.35,
-      duration: 1.0 + Math.random() * 0.8,
+      originX: fromLeft
+        ? width * (0.04 + Math.random() * 0.08)
+        : width * (0.88 + Math.random() * 0.08),
+      originY: height * (0.86 + Math.random() * 0.08),
+      velocityX: horizontalDirection * (220 + Math.random() * 260),
+      velocityY: -(760 + Math.random() * 260),
+      gravity: GRAVITY + Math.random() * 180,
+      rotationStart: (Math.random() - 0.5) * 80,
+      angularVelocity: horizontalDirection * (260 + Math.random() * 520),
+      size: 1 + Math.random() * 1.1,
+      delayMs: Math.random() * MAX_DELAY_MS,
+      lifetimeMs: BASE_LIFETIME_MS + Math.random() * 700,
+      wobbleAmplitude: 14 + Math.random() * 28,
+      wobbleFrequency: 5 + Math.random() * 3,
+      wobblePhase: Math.random() * Math.PI * 2,
     });
   }
 
   return particles;
 }
 
+function getOpacity(progress: number) {
+  if (progress <= 0.08) {
+    return progress / 0.08;
+  }
+
+  if (progress >= 0.72) {
+    return 1 - (progress - 0.72) / 0.28;
+  }
+
+  return 1;
+}
+
+function buildFrame(
+  particle: ParticleModel,
+  elapsedMs: number
+): ParticleFrame | null {
+  const activeMs = elapsedMs - particle.delayMs;
+
+  if (activeMs < 0) {
+    return {
+      id: particle.id,
+      emoji: particle.emoji,
+      x: particle.originX,
+      y: particle.originY,
+      rotation: particle.rotationStart,
+      size: particle.size,
+      opacity: 0,
+    };
+  }
+
+  if (activeMs > particle.lifetimeMs) {
+    return null;
+  }
+
+  const elapsedSeconds = activeMs / 1000;
+  const progress = clamp(activeMs / particle.lifetimeMs, 0, 1);
+  const wobble =
+    Math.sin(
+      particle.wobblePhase + elapsedSeconds * particle.wobbleFrequency
+    ) * particle.wobbleAmplitude * (1 - progress * 0.35);
+
+  return {
+    id: particle.id,
+    emoji: particle.emoji,
+    x: particle.originX + particle.velocityX * elapsedSeconds + wobble,
+    y:
+      particle.originY +
+      particle.velocityY * elapsedSeconds +
+      0.5 * particle.gravity * elapsedSeconds * elapsedSeconds,
+    rotation: particle.rotationStart + particle.angularVelocity * elapsedSeconds,
+    size: particle.size,
+    opacity: clamp(getOpacity(progress), 0, 1),
+  };
+}
+
 export default function EmojiConfetti({ fire }: { fire: boolean }) {
-  const [particles, setParticles] = useState<Particle[]>([]);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [frames, setFrames] = useState<ParticleFrame[]>([]);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!fire) {
+    if (!fire || typeof window === "undefined") {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      setFrames([]);
       return;
     }
 
-    setParticles(generateParticles(36));
+    const particles = generateParticles(window.innerWidth, window.innerHeight);
+    const startedAt = performance.now();
 
-    timerRef.current = setTimeout(() => {
-      setParticles([]);
-    }, 2400);
+    const tick = (now: number) => {
+      const elapsedMs = now - startedAt;
+      const nextFrames = particles
+        .map((particle) => buildFrame(particle, elapsedMs))
+        .filter((particle): particle is ParticleFrame => particle !== null);
+
+      setFrames(nextFrames);
+
+      if (nextFrames.length > 0) {
+        rafRef.current = window.requestAnimationFrame(tick);
+      } else {
+        rafRef.current = null;
+      }
+    };
+
+    setFrames(
+      particles.map((particle) => ({
+        id: particle.id,
+        emoji: particle.emoji,
+        x: particle.originX,
+        y: particle.originY,
+        rotation: particle.rotationStart,
+        size: particle.size,
+        opacity: 0,
+      }))
+    );
+
+    rafRef.current = window.requestAnimationFrame(tick);
 
     return () => {
-      clearTimeout(timerRef.current);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [fire]);
 
-  if (particles.length === 0) {
+  if (frames.length === 0) {
     return null;
   }
 
@@ -74,26 +196,17 @@ export default function EmojiConfetti({ fire }: { fire: boolean }) {
       aria-hidden
       className="pointer-events-none fixed inset-0 z-[90] overflow-hidden"
     >
-      {particles.map((p) => (
+      {frames.map((particle) => (
         <span
-          key={p.id}
-          className="absolute"
+          key={particle.id}
+          className="absolute left-0 top-0 select-none will-change-transform"
           style={{
-            left: `${p.x}vw`,
-            top: `${p.y}vh`,
-            fontSize: `${p.size}rem`,
-            opacity: 0,
-            animationName: "confetti-burst",
-            animationDuration: `${p.duration}s`,
-            animationTimingFunction: "ease-out",
-            animationDelay: `${p.delay}s`,
-            animationFillMode: "forwards",
-            "--tx": `${p.tx}px`,
-            "--ty": `${p.ty}px`,
-            "--rot": `${p.rotation}deg`,
-          } as React.CSSProperties}
+            fontSize: `${particle.size}rem`,
+            opacity: particle.opacity,
+            transform: `translate3d(${particle.x}px, ${particle.y}px, 0) rotate(${particle.rotation}deg)`,
+          }}
         >
-          {p.emoji}
+          {particle.emoji}
         </span>
       ))}
     </div>
