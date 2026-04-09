@@ -269,15 +269,12 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
                   key={store.id}
                   id={`store-${store.id}`}
                   onClick={() => setSelectedStoreId(store.id)}
-                  className={`bg-white rounded-xl p-3 border flex items-center gap-3 transition-all cursor-pointer ${
+                  className={`bg-white rounded-xl p-3 border flex items-start gap-3 transition-all cursor-pointer ${
                     store.id === selectedStoreId
                       ? "ring-2 ring-purple-400 border-purple-300"
                       : "border-gray-100"
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center text-lg flex-shrink-0">
-                    {store.verified ? "✅" : "📍"}
-                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h4 className="font-semibold text-sm text-gray-900 truncate">

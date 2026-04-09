@@ -816,41 +816,40 @@ export default function HomePageClient({
               {nearbyStores.map((store) => (
                 <div
                   key={store.place_url || `${store.name}-${store.address}`}
-                  className="bg-white rounded-xl p-3 border border-gray-100 flex items-center gap-3"
+                  className="bg-white rounded-xl border border-gray-100 p-3"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center text-lg flex-shrink-0">
-                    📍
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="min-w-0 flex-1 font-semibold text-sm text-gray-900 truncate">
-                        {store.name}
-                      </h4>
-                    </div>
-                    <p className="text-xs text-gray-400 truncate">{store.address}</p>
-                    {store.trend_names.length > 0 ? (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {getVisibleTrendNames(store.trend_names).map((trendName) => (
-                          <span
-                            key={trendName}
-                            className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"
-                          >
-                            {trendName}
-                          </span>
-                        ))}
-                        {store.trend_names.length > 2 ? (
-                          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-                            외 {store.trend_names.length - 2}개
-                          </span>
-                        ) : null}
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="min-w-0 flex-1 font-semibold text-sm text-gray-900 truncate">
+                          {store.name}
+                        </h4>
                       </div>
-                    ) : null}
+                      <p className="text-xs text-gray-400 truncate">{store.address}</p>
+                      {store.trend_names.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {getVisibleTrendNames(store.trend_names).map((trendName) => (
+                            <span
+                              key={trendName}
+                              className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"
+                            >
+                              {trendName}
+                            </span>
+                          ))}
+                          {store.trend_names.length > 2 ? (
+                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                              외 {store.trend_names.length - 2}개
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    <span className="text-xs font-semibold text-primary flex-shrink-0">
+                      {formatDistanceMeters(
+                        Math.max(Math.round(store.distance_km * 1000), 0)
+                      )}
+                    </span>
                   </div>
-                  <span className="text-xs text-primary font-semibold flex-shrink-0">
-                    {formatDistanceMeters(
-                      Math.max(Math.round(store.distance_km * 1000), 0)
-                    )}
-                  </span>
                 </div>
               ))}
             </div>
