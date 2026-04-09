@@ -373,6 +373,16 @@ def to_place_row(place: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in place.items() if key not in ("distance_m", "id", "quality_score")}
 
 
+def dedupe_places_by_external_id(places: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+
+    for place in places:
+        external_place_id = str(place["external_place_id"])
+        deduped.setdefault(external_place_id, place)
+
+    return list(deduped.values())
+
+
 async def find_yomechu_candidates(
     lat: float,
     lng: float,
@@ -457,6 +467,32 @@ async def _persist_spin_background(
         logger.exception("요메추 백그라운드 DB 저장 실패")
 
 
+async def _persist_spin_record(
+    places: list[dict[str, Any]],
+    spin_data: dict[str, Any],
+) -> dict[str, Any] | None:
+    upserted_rows = await asyncio.to_thread(upsert_yomechu_places, places)
+    ext_to_db_id = {
+        row["external_place_id"]: row["id"] for row in upserted_rows
+    }
+
+    payload = dict(spin_data)
+    winner_ext_ids = payload.pop("_winner_ext_ids", [])
+    reel_ext_ids = payload.pop("_reel_ext_ids", [])
+    payload["winner_place_id"] = ext_to_db_id.get(winner_ext_ids[0]) if winner_ext_ids else None
+    payload["winner_place_ids"] = [ext_to_db_id[eid] for eid in winner_ext_ids if eid in ext_to_db_id]
+    payload["reel_place_ids"] = [ext_to_db_id[eid] for eid in reel_ext_ids if eid in ext_to_db_id]
+
+    return await asyncio.to_thread(insert_yomechu_spin, payload)
+
+
+async def _persist_places_background(places: list[dict[str, Any]]) -> None:
+    try:
+        await asyncio.to_thread(upsert_yomechu_places, places)
+    except Exception:
+        logger.exception("yomechu background DB save failed")
+
+
 async def spin_yomechu(
     lat: float,
     lng: float,
@@ -487,25 +523,47 @@ async def spin_yomechu(
     primary_winner = winners[0]
     reel = build_reel(pool, primary_winner)
 
-    asyncio.create_task(
-        _persist_spin_background(
-            merged_places=[to_place_row(c) for c in candidates],
-            spin_data={
-                "session_id": session_id,
-                "lat_rounded": round(lat, 3),
-                "lng_rounded": round(lng, 3),
-                "radius_m": radius_m,
-                "category_slug": category_slug,
-                "pool_size": len(candidates),
-                "used_fallback": used_fallback,
-                "_winner_ext_ids": [item["external_place_id"] for item in winners],
-                "_reel_ext_ids": [item["external_place_id"] for item in reel],
-            },
+    spin_places = dedupe_places_by_external_id([*winners, *reel])
+    spin_place_external_ids = {
+        place["external_place_id"] for place in spin_places
+    }
+    spin_data = {
+        "session_id": session_id,
+        "lat_rounded": round(lat, 3),
+        "lng_rounded": round(lng, 3),
+        "radius_m": radius_m,
+        "category_slug": category_slug,
+        "pool_size": len(candidates),
+        "used_fallback": used_fallback,
+        "_winner_ext_ids": [item["external_place_id"] for item in winners],
+        "_reel_ext_ids": [item["external_place_id"] for item in reel],
+    }
+
+    spin_row = None
+    try:
+        spin_row = await _persist_spin_record(
+            places=[to_place_row(place) for place in spin_places],
+            spin_data=spin_data,
         )
-    )
+    except Exception:
+        logger.exception("yomechu shareable spin save failed")
+        asyncio.create_task(
+            _persist_spin_background(
+                merged_places=[to_place_row(c) for c in candidates],
+                spin_data=dict(spin_data),
+            )
+        )
+    else:
+        remaining_places = [
+            to_place_row(place)
+            for place in candidates
+            if place["external_place_id"] not in spin_place_external_ids
+        ]
+        if remaining_places:
+            asyncio.create_task(_persist_places_background(remaining_places))
 
     return {
-        "spin_id": None,
+        "spin_id": spin_row["id"] if spin_row else None,
         "pool_size": len(candidates),
         "used_fallback": used_fallback,
         "result_count": len(winners),
