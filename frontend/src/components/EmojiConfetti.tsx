@@ -31,7 +31,7 @@ function generateParticles(count: number): Particle[] {
     particles.push({
       id: particleId++,
       emoji: CONFETTI_EMOJIS[Math.floor(Math.random() * CONFETTI_EMOJIS.length)],
-      x: fromLeft ? -2 + Math.random() * 4 : 98 + Math.random() * 4,
+      x: fromLeft ? 2 + Math.random() * 8 : 90 + Math.random() * 8,
       y: 30 + Math.random() * 40,
       tx: (fromLeft ? 1 : -1) * (60 + Math.random() * 160),
       ty: -(80 + Math.random() * 200),
@@ -77,16 +77,20 @@ export default function EmojiConfetti({ fire }: { fire: boolean }) {
       {particles.map((p) => (
         <span
           key={p.id}
-          className="absolute animate-confetti-burst opacity-0"
+          className="absolute"
           style={{
             left: `${p.x}vw`,
             top: `${p.y}vh`,
             fontSize: `${p.size}rem`,
+            opacity: 0,
+            animationName: "confetti-burst",
+            animationDuration: `${p.duration}s`,
+            animationTimingFunction: "ease-out",
+            animationDelay: `${p.delay}s`,
+            animationFillMode: "forwards",
             "--tx": `${p.tx}px`,
             "--ty": `${p.ty}px`,
             "--rot": `${p.rotation}deg`,
-            "--delay": `${p.delay}s`,
-            "--dur": `${p.duration}s`,
           } as React.CSSProperties}
         >
           {p.emoji}

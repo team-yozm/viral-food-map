@@ -29,10 +29,6 @@ module.exports = {
           },
         },
       },
-      animation: {
-        "confetti-burst":
-          "confetti-burst var(--dur) ease-out var(--delay) forwards",
-      },
     },
   },
   plugins: [],
