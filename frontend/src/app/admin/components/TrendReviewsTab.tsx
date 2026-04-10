@@ -17,8 +17,27 @@ interface ReviewRow {
   score: number | null;
   acceleration: number | null;
   novelty_lift: number | null;
+  score_breakdown: Record<string, number> | null;
   created_at: string;
 }
+
+const SCORE_COLORS: Record<string, string> = {
+  acceleration: "bg-red-400",
+  novelty_lift: "bg-orange-400",
+  blog_freshness: "bg-blue-400",
+  popularity: "bg-purple-400",
+  rank: "bg-gray-400",
+  instagram: "bg-pink-400",
+};
+
+const SCORE_LABELS: Record<string, string> = {
+  acceleration: "가속도",
+  novelty_lift: "신규성",
+  blog_freshness: "블로그",
+  popularity: "인기도",
+  rank: "랭크",
+  instagram: "IG",
+};
 
 const VERDICT_STYLES: Record<string, string> = {
   accept: "bg-green-100 text-green-700",
@@ -125,8 +144,35 @@ export default function TrendReviewsTab() {
                 </p>
               )}
 
+              {r.score_breakdown && Object.values(r.score_breakdown).some((v) => v > 0) && (
+                <div className="mt-2 text-xs">
+                  <div className="flex h-2 rounded-full overflow-hidden">
+                    {Object.entries(r.score_breakdown)
+                      .filter(([, v]) => v > 0)
+                      .map(([key, value]) => (
+                        <div
+                          key={key}
+                          className={SCORE_COLORS[key] ?? "bg-gray-300"}
+                          style={{ width: `${(value / 100) * 100}%` }}
+                          title={`${SCORE_LABELS[key] ?? key}: ${value}`}
+                        />
+                      ))}
+                  </div>
+                  <div className="flex gap-2 mt-1 flex-wrap text-gray-400">
+                    {Object.entries(r.score_breakdown)
+                      .filter(([, v]) => v > 0)
+                      .map(([key, value]) => (
+                        <span key={key} className="flex items-center gap-1">
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${SCORE_COLORS[key] ?? "bg-gray-300"}`} />
+                          {SCORE_LABELS[key] ?? key} {value}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
-                {r.score != null && <span>점수 {r.score.toFixed(0)}</span>}
+                {r.score != null && <span>총점 {r.score.toFixed(0)}</span>}
                 {r.acceleration != null && (
                   <span>가속도 {r.acceleration.toFixed(1)}</span>
                 )}

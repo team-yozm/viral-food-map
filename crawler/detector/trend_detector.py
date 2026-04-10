@@ -804,18 +804,28 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 rejected_keywords.append(keyword)
                 continue
 
-        score = score_acceleration(candidate["acceleration"])
-        score += score_novelty_lift(novelty_lift)
-        score += score_blog_freshness(blog_insights)
-        score += score_popularity(candidate.get("popularity", 0.0))
-        score += score_rank(candidate.get("rank"))
+        s_accel = score_acceleration(candidate["acceleration"])
+        s_novelty = score_novelty_lift(novelty_lift)
+        s_blog = score_blog_freshness(blog_insights)
+        s_pop = score_popularity(candidate.get("popularity", 0.0))
+        s_rank = score_rank(candidate.get("rank"))
+        s_ig = 0.0
         if ig_count is not None:
             if ig_count > 10000:
-                score += 8
+                s_ig = 8
             elif ig_count > 1000:
-                score += 4
+                s_ig = 4
+        score = s_accel + s_novelty + s_blog + s_pop + s_rank + s_ig
 
         candidate["score"] = score
+        candidate["score_breakdown"] = {
+            "acceleration": s_accel,
+            "novelty_lift": s_novelty,
+            "blog_freshness": s_blog,
+            "popularity": s_pop,
+            "rank": s_rank,
+            "instagram": s_ig,
+        }
         candidate["blog_count"] = blog_insights.total_count
         candidate["blog_recent_count"] = blog_insights.recent_count
         candidate["blog_recent_ratio"] = blog_insights.recent_ratio
@@ -904,6 +914,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 "score": candidate.get("score"),
                 "acceleration": candidate.get("acceleration"),
                 "novelty_lift": candidate.get("novelty_lift"),
+                "score_breakdown": candidate.get("score_breakdown"),
             })
             summary["ai_reviews_persisted"] += 1
 
@@ -1148,6 +1159,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             "status": plan["status"],
             "detected_at": datetime.now(timezone.utc).isoformat(),
             "peak_score": representative_candidate["score"],
+            "score_breakdown": representative_candidate.get("score_breakdown"),
             "search_volume_data": _build_search_volume_map(
                 representative_candidate["data_points"]
             ),

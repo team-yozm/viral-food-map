@@ -21,6 +21,45 @@ interface TrendRow {
   ai_reviewed_at: string | null;
   ai_consecutive_accepts: number;
   ai_consecutive_rejects: number;
+  score_breakdown: Record<string, number> | null;
+}
+
+const SCORE_LABELS: Record<string, { label: string; color: string }> = {
+  acceleration: { label: "가속도", color: "bg-red-400" },
+  novelty_lift: { label: "신규성", color: "bg-orange-400" },
+  blog_freshness: { label: "블로그", color: "bg-blue-400" },
+  popularity: { label: "인기도", color: "bg-purple-400" },
+  rank: { label: "랭크", color: "bg-gray-400" },
+  instagram: { label: "IG", color: "bg-pink-400" },
+};
+
+function ScoreBreakdown({ breakdown, total }: { breakdown: Record<string, number>; total: number }) {
+  const entries = Object.entries(breakdown).filter(([, v]) => v > 0);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-2 text-xs">
+      <div className="flex h-2.5 rounded-full overflow-hidden">
+        {entries.map(([key, value]) => (
+          <div
+            key={key}
+            className={`${SCORE_LABELS[key]?.color ?? "bg-gray-300"}`}
+            style={{ width: `${(value / 100) * 100}%` }}
+            title={`${SCORE_LABELS[key]?.label ?? key}: ${value}`}
+          />
+        ))}
+      </div>
+      <div className="flex gap-3 mt-1 flex-wrap text-gray-400">
+        {entries.map(([key, value]) => (
+          <span key={key} className="flex items-center gap-1">
+            <span className={`inline-block w-2 h-2 rounded-full ${SCORE_LABELS[key]?.color ?? "bg-gray-300"}`} />
+            {SCORE_LABELS[key]?.label ?? key} {value}
+          </span>
+        ))}
+        <span className="font-semibold text-gray-600">= {total}</span>
+      </div>
+    </div>
+  );
 }
 
 const CATEGORIES = ["디저트", "음료", "식사", "간식"];
@@ -407,6 +446,9 @@ export default function TrendsTab() {
                           <p className="mt-1 text-gray-500 leading-relaxed">{t.ai_reason}</p>
                         )}
                       </div>
+                    )}
+                    {t.score_breakdown && Object.keys(t.score_breakdown).length > 0 && (
+                      <ScoreBreakdown breakdown={t.score_breakdown} total={t.peak_score} />
                     )}
                   </div>
 
