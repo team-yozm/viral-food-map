@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ADSENSE_CLIENT } from "@/lib/adsense";
 import { isNative } from "@/lib/capacitor-utils";
 
@@ -23,10 +23,16 @@ export default function AdSlot({
 }: AdSlotProps) {
   const adRef = useRef<HTMLModElement | null>(null);
   const requestedRef = useRef(false);
-  const nativeApp = typeof window !== "undefined" ? isNative() : false;
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!slot || nativeApp || requestedRef.current || !adRef.current) {
+    if (!isNative()) {
+      setReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !slot || requestedRef.current || !adRef.current) {
       return;
     }
 
@@ -36,9 +42,9 @@ export default function AdSlot({
     } catch (error) {
       console.error("AdSense slot failed to initialize", error);
     }
-  }, [nativeApp, slot]);
+  }, [ready, slot]);
 
-  if (!slot || !ADSENSE_CLIENT || nativeApp) {
+  if (!ready || !slot || !ADSENSE_CLIENT) {
     return null;
   }
 

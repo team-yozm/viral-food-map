@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import NativeInitializer from "@/components/NativeInitializer";
 import PageViewTracker from "@/components/PageViewTracker";
@@ -77,19 +78,19 @@ export default function RootLayout({
           name="naver-site-verification"
           content={NAVER_SITE_VERIFICATION}
         />
-        {ADSENSE_CLIENT ? (
-          <script
-            async
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
-            crossOrigin="anonymous"
-          />
-        ) : null}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: structuredData }}
         />
       </head>
       <body className="min-h-screen bg-[#FAFAFA]">
+        {ADSENSE_CLIENT && (
+          <Script
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
+            strategy="afterInteractive"
+            crossOrigin="anonymous"
+          />
+        )}
         <NativeInitializer />
         <PageViewTracker />
         {children}
