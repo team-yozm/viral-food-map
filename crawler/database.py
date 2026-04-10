@@ -43,7 +43,7 @@ def get_active_trends():
         get_client()
         .table("trends")
         .select("*")
-        .in_("status", ["rising", "active"])
+        .in_("status", ["rising", "active", "watchlist"])
         .execute()
         .data
     )
@@ -66,7 +66,10 @@ def get_trends_by_names(names: list[str]):
     return (
         get_client()
         .table("trends")
-        .select("id,name,category,description,image_url,status,peak_score,detected_at")
+        .select(
+            "id,name,category,description,image_url,status,peak_score,detected_at,"
+            "ai_consecutive_accepts,ai_consecutive_rejects"
+        )
         .in_("name", names)
         .execute()
         .data
@@ -175,6 +178,57 @@ def update_trend_status(trend_id: str, status: str):
         .eq("id", trend_id)
         .execute()
     )
+
+
+def update_trend_verdict_counts(
+    trend_id: str,
+    consecutive_accepts: int,
+    consecutive_rejects: int,
+):
+    return (
+        get_client()
+        .table("trends")
+        .update({
+            "ai_consecutive_accepts": consecutive_accepts,
+            "ai_consecutive_rejects": consecutive_rejects,
+        })
+        .eq("id", trend_id)
+        .execute()
+    )
+
+
+def insert_trend_review(review_data: dict):
+    try:
+        return get_client().table("trend_reviews").insert(review_data).execute()
+    except Exception as exc:
+        _warn_once(
+            "trend_review_insert",
+            "trend_reviews insert unavailable",
+            exc,
+        )
+        return None
+
+
+def get_recent_reviews_by_keyword(keyword: str, limit: int = 10) -> list[dict]:
+    try:
+        return (
+            get_client()
+            .table("trend_reviews")
+            .select("*")
+            .eq("keyword", keyword)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:
+        _warn_once(
+            "trend_review_lookup",
+            "trend_reviews lookup unavailable",
+            exc,
+        )
+        return []
 
 
 def get_keyword_aliases():

@@ -37,7 +37,9 @@ from database import (
     get_stores_by_trend_id,
     get_trends_by_names,
     insert_stores,
+    insert_trend_review,
     update_trend_status,
+    update_trend_verdict_counts,
     upsert_keyword_aliases,
     upsert_trend,
 )
@@ -65,25 +67,41 @@ DEFAULT_CATEGORY = "기타"
 
 def score_acceleration(acceleration: float) -> float:
     if acceleration >= settings.TREND_RISING_ACCELERATION_THRESHOLD:
-        return 20
+        return 30
     if acceleration >= 50:
-        return 15
+        return 22
     if acceleration >= settings.TREND_THRESHOLD:
+        return 15
+    return 0
+
+
+def score_novelty_lift(novelty_lift: float | None) -> float:
+    if novelty_lift is None:
+        return 0
+    if novelty_lift >= 100:
+        return 25
+    if novelty_lift >= 50:
+        return 20
+    if novelty_lift >= 20:
+        return 15
+    if novelty_lift >= 10:
         return 10
+    if novelty_lift >= 5:
+        return 5
     return 0
 
 
 def score_popularity(popularity: float) -> float:
     if popularity >= 140:
-        return 25
-    if popularity >= 100:
-        return 20
-    if popularity >= 70:
-        return 15
-    if popularity >= 40:
         return 10
+    if popularity >= 100:
+        return 8
+    if popularity >= 70:
+        return 6
+    if popularity >= 40:
+        return 4
     if popularity >= 20:
-        return 5
+        return 2
     return 0
 
 
@@ -91,13 +109,13 @@ def score_rank(rank: int | None) -> float:
     if rank is None:
         return 0
     if rank <= 3:
-        return 35
+        return 7
     if rank <= 5:
-        return 30
+        return 5
     if rank <= 10:
-        return 20
+        return 3
     if rank <= 20:
-        return 10
+        return 1
     return 0
 
 
@@ -120,7 +138,26 @@ def score_blog_freshness(blog_insights: BlogSearchInsights) -> float:
     return 0
 
 
-def classify_status(score: float, acceleration: float) -> str:
+def classify_status(
+    score: float,
+    acceleration: float,
+    *,
+    existing_status: str | None = None,
+    consecutive_accepts: int = 0,
+) -> str:
+    if existing_status is None:
+        return "watchlist"
+
+    if existing_status == "watchlist":
+        if consecutive_accepts >= settings.TREND_WATCHLIST_PROMOTION_ACCEPTS:
+            if (
+                acceleration >= settings.TREND_THRESHOLD
+                and score >= settings.TREND_RISING_SCORE_THRESHOLD
+            ):
+                return "rising"
+            return "active"
+        return "watchlist"
+
     if (
         acceleration >= settings.TREND_THRESHOLD
         and score >= settings.TREND_RISING_SCORE_THRESHOLD
@@ -285,7 +322,6 @@ def _build_summary() -> dict:
         "db_keywords": 0,
         "seed_keywords": 0,
         "candidates": 0,
-        "rank_candidates": 0,
         "confirmed": 0,
         "stored_trends": 0,
         "stored_stores": 0,
@@ -293,8 +329,11 @@ def _build_summary() -> dict:
         "confirmed_keywords": [],
         "new_confirmed_keywords": [],
         "deactivated_trends": [],
+        "watchlist_count": 0,
+        "promoted_from_watchlist": [],
         "ai_reviewed": 0,
         "ai_accepted": 0,
+        "ai_reviews_persisted": 0,
         "ai_grounding_status": None,
         "ai_grounding_detail": None,
         "ai_grounding_queries": [],
@@ -308,7 +347,6 @@ def _build_summary() -> dict:
         "canonicalized_keywords": [],
         "budget_exhausted": False,
         "skipped_reference_keywords": [],
-        "filtered_rank_only_keywords": [],
         "filtered_stale_keywords": [],
         "filtered_generic_keywords": [],
     }
@@ -682,10 +720,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         acceleration = calculate_acceleration(data_points)
         popularity = float(popularity_scores.get(keyword, 0.0))
         rank = popularity_ranks.get(keyword)
-        is_rank_candidate = (
-            rank is not None and rank <= settings.TREND_TOP_RANK_CANDIDATE_MAX
-        )
-        if acceleration >= settings.TREND_THRESHOLD or is_rank_candidate:
+        if acceleration >= settings.TREND_THRESHOLD:
             candidates.append(
                 {
                     "keyword": keyword,
@@ -695,8 +730,6 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     "rank": rank,
                 }
             )
-            if is_rank_candidate:
-                summary["rank_candidates"] += 1
 
     summary["candidates"] = len(candidates)
     if not candidates:
@@ -761,19 +794,6 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             rejected_keywords.append(keyword)
             continue
 
-        if (
-            candidate.get("rank") is not None
-            and candidate["rank"] <= settings.TREND_TOP_RANK_CANDIDATE_MAX
-            and candidate["acceleration"] < settings.TREND_THRESHOLD
-            and (
-                novelty_lift is None
-                or novelty_lift < settings.TREND_RANK_ONLY_MIN_LIFT_PCT
-            )
-        ):
-            summary["filtered_rank_only_keywords"].append(keyword)
-            rejected_keywords.append(keyword)
-            continue
-
         if requires_trend_revalidation(keyword):
             if (
                 novelty_lift is None
@@ -784,15 +804,16 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 rejected_keywords.append(keyword)
                 continue
 
-        score = score_rank(candidate.get("rank"))
-        score += score_popularity(candidate.get("popularity", 0.0))
-        score += score_acceleration(candidate["acceleration"])
+        score = score_acceleration(candidate["acceleration"])
+        score += score_novelty_lift(novelty_lift)
         score += score_blog_freshness(blog_insights)
+        score += score_popularity(candidate.get("popularity", 0.0))
+        score += score_rank(candidate.get("rank"))
         if ig_count is not None:
             if ig_count > 10000:
-                score += 30
+                score += 8
             elif ig_count > 1000:
-                score += 15
+                score += 4
 
         candidate["score"] = score
         candidate["blog_count"] = blog_insights.total_count
@@ -863,6 +884,29 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             if review.category != DEFAULT_CATEGORY or category == DEFAULT_CATEGORY:
                 category = review.category
 
+            # Phase 1: AI 리뷰 결과를 trend_reviews 테이블에 저장
+            existing_for_review = candidate_existing_trends.get(keyword)
+            review_trend_id = (
+                existing_for_review.get("id") if existing_for_review else None
+            )
+            insert_trend_review({
+                "trend_id": review_trend_id,
+                "keyword": keyword,
+                "verdict": review.verdict,
+                "confidence": review.confidence,
+                "reason": review.reason,
+                "category": category,
+                "model": review.model,
+                "grounding_used": review.grounding_used,
+                "grounding_queries": review.grounding_queries,
+                "grounding_sources": review.grounding_sources,
+                "trigger": trigger,
+                "score": candidate.get("score"),
+                "acceleration": candidate.get("acceleration"),
+                "novelty_lift": candidate.get("novelty_lift"),
+            })
+            summary["ai_reviews_persisted"] += 1
+
             if not _is_ai_accept(review):
                 target_key = (
                     "ai_rejected_details"
@@ -879,8 +923,33 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                         grounding_sources=review.grounding_sources,
                     )
                 )
-                rejected_keywords.append(keyword)
+
+                # Phase 3: hysteresis — 연속 카운트 기반 탈락 판정
+                prev_rejects = (
+                    existing_for_review.get("ai_consecutive_rejects", 0)
+                    if existing_for_review
+                    else 0
+                )
+                consecutive_rejects = prev_rejects + 1
+                if existing_for_review and existing_for_review.get("id"):
+                    update_trend_verdict_counts(
+                        existing_for_review["id"], 0, consecutive_rejects,
+                    )
+                if consecutive_rejects >= settings.TREND_ACTIVE_DEMOTION_REJECTS:
+                    rejected_keywords.append(keyword)
                 continue
+
+            # Phase 3: AI accept — 연속 accept 카운트 업데이트
+            prev_accepts = (
+                existing_for_review.get("ai_consecutive_accepts", 0)
+                if existing_for_review
+                else 0
+            )
+            consecutive_accepts = prev_accepts + 1
+            if existing_for_review and existing_for_review.get("id"):
+                update_trend_verdict_counts(
+                    existing_for_review["id"], consecutive_accepts, 0,
+                )
 
             summary["ai_accepted"] += 1
             confidence = review.confidence
@@ -894,12 +963,18 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 "candidates": [],
                 "ai_terms": [],
                 "confidence": None,
+                "review": None,
+                "consecutive_accepts": 0,
             },
         )
         group["candidates"].append({**candidate, "category": category})
         group["ai_terms"].extend(ai_terms)
         if confidence is not None:
             group["confidence"] = max(group["confidence"] or 0.0, confidence)
+        if review is not None:
+            group["review"] = review
+        if review is not None and existing_for_review:
+            group["consecutive_accepts"] = consecutive_accepts
 
     if not confirmed_groups:
         summary["deactivated_trends"] = _merge_deactivated_trends(
@@ -991,10 +1066,22 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             if primary_existing_trend and primary_existing_trend.get("id")
             else str(uuid.uuid4())
         )
+        existing_status = (
+            primary_existing_trend.get("status")
+            if primary_existing_trend
+            else None
+        )
+        consecutive_accepts = group.get("consecutive_accepts", 0)
         status = classify_status(
             representative_candidate["score"],
             representative_candidate["acceleration"],
+            existing_status=existing_status,
+            consecutive_accepts=consecutive_accepts,
         )
+        if status == "watchlist":
+            summary["watchlist_count"] += 1
+        elif existing_status == "watchlist" and status in ("active", "rising"):
+            summary["promoted_from_watchlist"].append(display_keyword)
         trend_plans.append(
             {
                 "trend_id": trend_id,
@@ -1005,6 +1092,8 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 "group_candidates": group_candidates,
                 "primary_existing_trend": primary_existing_trend,
                 "representative_candidate": representative_candidate,
+                "review": group.get("review"),
+                "consecutive_accepts": consecutive_accepts,
             }
         )
 
@@ -1072,7 +1161,19 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 if primary_existing_trend
                 else None
             ),
+            "ai_consecutive_accepts": plan.get("consecutive_accepts", 0),
+            "ai_consecutive_rejects": 0,
         }
+
+        # Phase 1: AI 판정 정보를 trends 테이블에 저장
+        review = plan.get("review")
+        if review is not None:
+            trend_data["ai_verdict"] = review.verdict
+            trend_data["ai_reason"] = review.reason
+            trend_data["ai_confidence"] = review.confidence
+            trend_data["ai_grounding_sources"] = review.grounding_sources
+            trend_data["ai_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+            trend_data["ai_model"] = review.model
 
         if _should_refresh_image(primary_existing_trend, display_keyword):
             image_url = await find_food_image(
@@ -1091,11 +1192,12 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         upsert_trend(trend_data)
         summary["stored_trends"] += 1
 
-        stores = await find_stores_nationwide(plan["search_terms"])
-        if stores:
-            store_records = build_store_records(plan["trend_id"], stores)
-            insert_stores(store_records)
-            summary["stored_stores"] += len(store_records)
+        if plan["status"] != "watchlist":
+            stores = await find_stores_nationwide(plan["search_terms"])
+            if stores:
+                store_records = build_store_records(plan["trend_id"], stores)
+                insert_stores(store_records)
+                summary["stored_stores"] += len(store_records)
 
     upsert_keyword_aliases(alias_rows_to_upsert)
     deduped_confirmed_keywords = dedupe_terms(confirmed_keywords)

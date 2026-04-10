@@ -53,7 +53,8 @@ def build_store_records(
 async def refresh_stores_for_active_trends() -> dict:
     logger.info("=== store refresh started ===")
 
-    trends = get_active_trends() or []
+    all_trends = get_active_trends() or []
+    trends = [t for t in all_trends if t.get("status") != "watchlist"]
     summary = {
         "target_trends": len(trends),
         "processed_trends": 0,

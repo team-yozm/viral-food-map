@@ -17,10 +17,11 @@ interface TrendRow {
 }
 
 const CATEGORIES = ["디저트", "음료", "식사", "간식"];
-const STATUSES = ["rising", "active", "declining", "inactive"];
+const STATUSES = ["rising", "active", "watchlist", "declining", "inactive"];
 const STATUS_LABELS: Record<string, string> = {
   rising: "급상승",
   active: "인기",
+  watchlist: "관찰중",
   declining: "하락",
   inactive: "종료",
 };

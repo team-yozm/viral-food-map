@@ -2,7 +2,7 @@ export interface Trend {
   id: string;
   name: string;
   category: string;
-  status: "rising" | "active" | "declining" | "inactive";
+  status: "rising" | "active" | "watchlist" | "declining" | "inactive";
   type: "viral" | "steady";
   detected_at: string;
   peak_score: number;

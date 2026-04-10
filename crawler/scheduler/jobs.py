@@ -46,14 +46,16 @@ TREND_LABELS = {
     "db_keywords": "DB 키워드",
     "seed_keywords": "시드 키워드",
     "candidates": "후보 키워드",
-    "rank_candidates": "랭크 후보",
     "confirmed": "확정 트렌드",
     "stored_trends": "저장 트렌드",
     "stored_stores": "저장 판매처",
     "confirmed_keywords": "확정 키워드",
     "deactivated_trends": "비활성 트렌드",
+    "watchlist_count": "관찰 목록",
+    "promoted_from_watchlist": "관찰→활성 승격",
     "ai_reviewed": "AI 검토 후보",
     "ai_accepted": "AI 통과 후보",
+    "ai_reviews_persisted": "AI 리뷰 저장",
     "ai_grounding_status": "AI 구글검색",
     "ai_grounding_detail": "AI 구글검색 상세",
     "ai_grounding_queries": "AI 검색 쿼리",
@@ -331,6 +333,31 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
         await send_discord_message(
             _build_job_message(job_name, trigger, "완료", summary=summary)
         )
+
+        # watchlist → active 승격 알림
+        promoted = summary.get("promoted_from_watchlist", [])
+        if promoted:
+            promoted_text = ", ".join(promoted[:10])
+            await send_discord_message(
+                f"[✅ 관찰→활성 승격] {len(promoted)}건: {promoted_text}"
+            )
+
+        # 연속 reject로 강등된 트렌드 알림
+        deactivated = summary.get("deactivated_trends", [])
+        if deactivated:
+            deactivated_text = ", ".join(deactivated[:10])
+            remaining = len(deactivated) - min(len(deactivated), 10)
+            suffix = f" 외 {remaining}건" if remaining > 0 else ""
+            await send_discord_message(
+                f"[⛔ 비활성 전환] {len(deactivated)}건: {deactivated_text}{suffix}"
+            )
+
+        # watchlist 진입 알림
+        watchlist_count = summary.get("watchlist_count", 0)
+        if watchlist_count > 0:
+            await send_discord_message(
+                f"[👀 관찰 목록] 신규 {watchlist_count}건 watchlist 진입"
+            )
 
         notification_keywords: list[str] = summary.get("new_confirmed_keywords", [])
         if notification_keywords:
