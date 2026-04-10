@@ -14,6 +14,13 @@ interface TrendRow {
   description: string | null;
   image_url: string | null;
   stores: { count: number }[];
+  ai_verdict: string | null;
+  ai_reason: string | null;
+  ai_confidence: number | null;
+  ai_model: string | null;
+  ai_reviewed_at: string | null;
+  ai_consecutive_accepts: number;
+  ai_consecutive_rejects: number;
 }
 
 const CATEGORIES = ["디저트", "음료", "식사", "간식"];
@@ -33,6 +40,7 @@ export default function TrendsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<TrendRow>>({});
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // 생성 폼
   const [newName, setNewName] = useState("");
@@ -52,6 +60,24 @@ export default function TrendsTab() {
   useEffect(() => {
     fetchTrends();
   }, []);
+
+  const filteredTrends =
+    statusFilter === "all"
+      ? trends
+      : trends.filter((t) => t.status === statusFilter);
+
+  const statusCounts: Record<string, number> = {};
+  for (const t of trends) {
+    statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
+  }
+
+  const promoteTrend = async (t: TrendRow) => {
+    await supabase
+      .from("trends")
+      .update({ status: "active", ai_consecutive_accepts: 0, ai_consecutive_rejects: 0 })
+      .eq("id", t.id);
+    await fetchTrends();
+  };
 
   const createTrend = async () => {
     const trimmed = newName.trim();
@@ -119,6 +145,37 @@ export default function TrendsTab() {
 
   return (
     <div>
+      {/* 상태별 요약 카운트 */}
+      <div className="mb-4 flex gap-2 flex-wrap">
+        <button
+          onClick={() => setStatusFilter("all")}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+            statusFilter === "all"
+              ? "bg-gray-900 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+          }`}
+        >
+          전체 {trends.length}
+        </button>
+        {STATUSES.map((s) => {
+          const count = statusCounts[s] || 0;
+          if (count === 0 && s !== statusFilter) return null;
+          return (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s === statusFilter ? "all" : s)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                statusFilter === s
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {STATUS_LABELS[s]} {count}
+            </button>
+          );
+        })}
+      </div>
+
       {/* 생성 버튼 / 폼 */}
       <div className="mb-4">
         {showCreateForm ? (
@@ -200,10 +257,12 @@ export default function TrendsTab() {
 
       {/* 트렌드 목록 */}
       <div className="flex flex-col gap-3">
-        {trends.length === 0 ? (
-          <p className="text-center text-gray-400 py-12">등록된 트렌드가 없습니다</p>
+        {filteredTrends.length === 0 ? (
+          <p className="text-center text-gray-400 py-12">
+            {statusFilter === "all" ? "등록된 트렌드가 없습니다" : `${STATUS_LABELS[statusFilter]} 트렌드가 없습니다`}
+          </p>
         ) : (
-          trends.map((t) => (
+          filteredTrends.map((t) => (
             <div
               key={t.id}
               className="bg-white rounded-xl p-4 border border-gray-100"
@@ -323,9 +382,43 @@ export default function TrendsTab() {
                       <span>판매처 {t.stores?.[0]?.count ?? 0}곳</span>
                       <span>{new Date(t.detected_at).toLocaleDateString("ko-KR")}</span>
                     </div>
+                    {t.ai_verdict && (
+                      <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-block rounded-full px-2 py-0.5 font-semibold ${
+                            t.ai_verdict === "accept"
+                              ? "bg-green-100 text-green-700"
+                              : t.ai_verdict === "reject"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-yellow-100 text-yellow-700"
+                          }`}>
+                            AI: {t.ai_verdict}
+                          </span>
+                          {t.ai_confidence != null && (
+                            <span className="text-gray-500">
+                              신뢰도 {(t.ai_confidence * 100).toFixed(0)}%
+                            </span>
+                          )}
+                          <span className="text-gray-400">
+                            연속 accept {t.ai_consecutive_accepts ?? 0} / reject {t.ai_consecutive_rejects ?? 0}
+                          </span>
+                        </div>
+                        {t.ai_reason && (
+                          <p className="mt-1 text-gray-500 leading-relaxed">{t.ai_reason}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-2 flex-shrink-0">
+                    {t.status === "watchlist" && (
+                      <button
+                        onClick={() => promoteTrend(t)}
+                        className="px-3 py-1.5 bg-green-50 text-green-600 text-xs font-medium rounded-lg hover:bg-green-100 transition-colors"
+                      >
+                        승격
+                      </button>
+                    )}
                     <button
                       onClick={() => startEdit(t)}
                       className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"

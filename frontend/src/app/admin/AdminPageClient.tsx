@@ -10,11 +10,13 @@ import ReportsTab from "./components/ReportsTab";
 import StoresTab from "./components/StoresTab";
 import YomechuTab from "./components/YomechuTab";
 import AiAliasesTab from "./components/AiAliasesTab";
+import TrendReviewsTab from "./components/TrendReviewsTab";
 import { supabase } from "@/lib/supabase";
 
 type AdminTab =
   | "dashboard"
   | "trends"
+  | "trend-reviews"
   | "keywords"
   | "ai-aliases"
   | "reports"
@@ -24,6 +26,7 @@ type AdminTab =
 const TABS: { key: AdminTab; label: string }[] = [
   { key: "dashboard", label: "대시보드" },
   { key: "trends", label: "트렌드" },
+  { key: "trend-reviews", label: "AI 리뷰" },
   { key: "keywords", label: "키워드" },
   { key: "ai-aliases", label: "AI/동의어" },
   { key: "reports", label: "제보 관리" },
@@ -129,6 +132,7 @@ export default function AdminPageClient() {
       <main className="mx-auto max-w-4xl px-4 py-6">
         {tab === "dashboard" && <DashboardTab />}
         {tab === "trends" && <TrendsTab />}
+        {tab === "trend-reviews" && <TrendReviewsTab />}
         {tab === "keywords" && <KeywordsTab />}
         {tab === "ai-aliases" && <AiAliasesTab />}
         {tab === "reports" && <ReportsTab />}
