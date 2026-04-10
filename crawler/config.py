@@ -136,7 +136,8 @@ class Settings:
         "TREND_GENERIC_REVIEW_KEYWORDS",
         (
             "마라탕,마라샹궈,하이볼,호떡,츄러스,탕후루,마카롱,"
-            "흑당버블티,약과,장인약과,우삼겹덮밥,엽떡"
+            "흑당버블티,약과,장인약과,우삼겹덮밥,엽떡,"
+            "레몬에이드,딸기라떼,크림라떼"
         ),
     )
     ACTIVE_TREND_TTL_HOURS: int = int(os.getenv("ACTIVE_TREND_TTL_HOURS", "24"))
