@@ -1,7 +1,7 @@
 import re
 
 from config import settings
-from franchise_checker import is_franchise
+from franchise_checker import is_franchise, strip_leading_franchise_brand
 
 SEED_KEYWORDS = {
     "디저트": [
@@ -423,6 +423,61 @@ META_KEYWORD_PATTERNS = (
     "핫푸드",
     "음식추천",
     "간식거리",
+    "후기",
+    "내돈내산",
+    "먹어봄",
+    "먹어본",
+    "먹어봤",
+)
+
+GENERIC_CATEGORY_SUFFIXES = (
+    "음식",
+    "음료",
+    "간식",
+    "디저트",
+    "식사",
+    "먹거리",
+    "메뉴",
+    "푸드",
+)
+
+GENERIC_DESCRIPTOR_TERMS = frozenset(
+    {
+        "보라색",
+        "핑크",
+        "분홍",
+        "초록",
+        "녹색",
+        "파랑",
+        "파란",
+        "파란색",
+        "파랑색",
+        "노랑",
+        "노란",
+        "노란색",
+        "노랑색",
+        "빨강",
+        "빨간",
+        "빨간색",
+        "빨강색",
+        "검정",
+        "검은",
+        "검은색",
+        "하양",
+        "하얀",
+        "하얀색",
+        "하늘색",
+        "컬러",
+        "색깔",
+        "이색",
+        "여름",
+        "겨울",
+        "가을",
+        "봄",
+        "요즘",
+        "신상",
+        "핫한",
+    }
 )
 
 GENERIC_FOOD_KEYWORDS = frozenset({
@@ -504,6 +559,13 @@ _DISCOVERY_SUFFIX_NOISE_TERMS = tuple(
     sorted(
         {
             "제품제공",
+            "솔직후기",
+            "내돈내산",
+            "먹어봤어요",
+            "먹어봤다",
+            "먹어본",
+            "먹어봄",
+            "후기",
             "추천",
             "리뷰",
             "먹방",
@@ -755,6 +817,31 @@ def canonicalize_discovered_keyword(keyword: str) -> str | None:
     return best_candidate
 
 
+def normalize_discovery_keyword(keyword: str) -> str | None:
+    """발견용 텍스트를 실제 추적 키워드 형태로 정규화."""
+    cleaned = _strip_discovery_noise(keyword)
+    if len(cleaned) < 2:
+        return None
+
+    stripped_brand = _strip_discovery_noise(strip_leading_franchise_brand(cleaned))
+    if stripped_brand and stripped_brand != cleaned:
+        canonical = canonicalize_discovered_keyword(stripped_brand)
+        if canonical and not is_generic_keyword(canonical):
+            return canonical
+        if is_food_specific_keyword(stripped_brand):
+            return stripped_brand
+        return None
+
+    canonical = canonicalize_discovered_keyword(cleaned)
+    if canonical and not is_generic_keyword(canonical):
+        return canonical
+    if is_brand_keyword(cleaned):
+        return None
+    if is_food_specific_keyword(cleaned):
+        return cleaned
+    return None
+
+
 def is_brand_keyword(keyword: str) -> bool:
     normalized = normalize_keyword(keyword)
     if not normalized:
@@ -787,6 +874,30 @@ def is_food_like_token(token: str, tag: str = "NNG") -> bool:
     return False
 
 
+def _is_descriptor_prefixed_generic(keyword: str) -> bool:
+    normalized = normalize_keyword(keyword)
+    if not normalized:
+        return True
+
+    for suffix in GENERIC_CATEGORY_SUFFIXES:
+        if not normalized.endswith(suffix):
+            continue
+
+        prefix = normalized[: -len(suffix)]
+        if not prefix:
+            return True
+        if len(prefix) < 2:
+            return True
+        if prefix in STOPWORDS or prefix in GENERIC_DESCRIPTOR_TERMS:
+            return True
+        if any(pattern in prefix for pattern in META_KEYWORD_PATTERNS):
+            return True
+        if not has_food_signal(prefix) and prefix not in _SEED_KEYWORD_SET:
+            return True
+
+    return False
+
+
 def is_generic_keyword(keyword: str) -> bool:
     normalized = normalize_keyword(keyword)
     if not normalized:
@@ -794,6 +905,8 @@ def is_generic_keyword(keyword: str) -> bool:
     if is_brand_keyword(normalized):
         return True
     if normalized in STOPWORDS or normalized in GENERIC_FOOD_KEYWORDS:
+        return True
+    if _is_descriptor_prefixed_generic(normalized):
         return True
     # 1단어 일반 메뉴명은 제외하고, 수식어가 붙은 구체 키워드만 허용
     if (

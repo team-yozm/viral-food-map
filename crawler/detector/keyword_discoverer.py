@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 
 import httpx
 from kiwipiepy import Kiwi
@@ -35,12 +35,13 @@ from detector.keyword_manager import (
     CATEGORY_SIGNALS,
     FOOD_CONTEXT_WORDS,
     STOPWORDS,
-    canonicalize_discovered_keyword,
     get_flat_keywords,
     has_food_signal,
     is_food_like_token,
     is_food_specific_keyword,
+    normalize_discovery_keyword,
 )
+from franchise_checker import is_franchise
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ CATEGORY_PATTERNS = {
     ),
 }
 YOUTUBE_HASHTAG_RE = re.compile(r"#([0-9A-Za-z\uAC00-\uD7A3_]+)")
+SURFACE_TERM_RE = re.compile(r"[0-9A-Za-z\uAC00-\uD7A3#_]{2,24}")
 YOUTUBE_IGNORED_TAG_KEYS = {
     normalize_keyword_text(tag)
     for tag in (
@@ -189,6 +191,25 @@ def extract_nouns(text: str) -> list[str]:
 
 
 def classify_category(noun: str, context_nouns: Counter) -> str:
+    normalized_noun = normalize_keyword_text(noun)
+
+    direct_scores = {
+        category: sum(
+            len(normalize_keyword_text(signal))
+            for signal in signals
+            if len(normalize_keyword_text(signal)) >= 2
+            and normalize_keyword_text(signal) in normalized_noun
+        )
+        for category, signals in CATEGORY_SIGNALS.items()
+    }
+    direct_best_category = max(direct_scores, key=direct_scores.get)
+    if direct_scores[direct_best_category] > 0:
+        return direct_best_category
+
+    for category, pattern in CATEGORY_PATTERNS.items():
+        if pattern.search(noun):
+            return category
+
     scores = {
         category: sum(context_nouns.get(signal, 0) for signal in signals)
         for category, signals in CATEGORY_SIGNALS.items()
@@ -196,10 +217,6 @@ def classify_category(noun: str, context_nouns: Counter) -> str:
     best_category = max(scores, key=scores.get)
     if scores[best_category] > 0:
         return best_category
-
-    for category, pattern in CATEGORY_PATTERNS.items():
-        if pattern.search(noun):
-            return category
 
     return DEFAULT_CATEGORY
 
@@ -233,24 +250,58 @@ def merge_evidence_snippets(*groups: list[str]) -> list[str]:
     return snippets
 
 
+def _clean_candidate_term(term: str) -> str:
+    return clean_display_keyword(term).replace("#", "").replace("_", "")
+
+
 def normalize_discovered_term(term: str) -> str:
-    cleaned = clean_display_keyword(term).replace("#", "").replace("_", "")
+    cleaned = _clean_candidate_term(term)
     if not cleaned:
         return ""
-    canonical = canonicalize_discovered_keyword(cleaned)
-    return clean_display_keyword(canonical or cleaned)
+    normalized = normalize_discovery_keyword(cleaned)
+    return clean_display_keyword(normalized or "")
+
+
+def extract_surface_terms(text: str) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw_term in SURFACE_TERM_RE.findall(text):
+        cleaned = _clean_candidate_term(raw_term)
+        term_key = normalize_keyword_text(cleaned)
+        if not cleaned or not term_key or term_key in seen:
+            continue
+        seen.add(term_key)
+        terms.append(cleaned)
+    return terms
+
+
+def build_brand_surface_aliases(surface_terms: list[str]) -> dict[str, set[str]]:
+    aliases: dict[str, set[str]] = defaultdict(set)
+    for index, brand in enumerate(surface_terms[:-1]):
+        next_term = surface_terms[index + 1]
+        if not brand or not next_term or not is_franchise(brand):
+            continue
+
+        normalized = normalize_discovered_term(next_term)
+        if not normalized:
+            continue
+
+        aliases[normalized].add(f"{brand} {next_term}")
+        aliases[normalized].add(f"{brand}{next_term}")
+
+    return aliases
 
 
 def extract_youtube_candidate_terms(text: str) -> dict[str, dict]:
     candidates: dict[str, dict] = {}
 
     def add_candidate(raw_term: str) -> None:
-        cleaned_raw = clean_display_keyword(raw_term).replace("#", "").replace("_", "")
+        cleaned_raw = _clean_candidate_term(raw_term)
         raw_key = normalize_keyword_text(cleaned_raw)
         if not cleaned_raw or not raw_key or raw_key in YOUTUBE_IGNORED_TAG_KEYS:
             return
 
-        canonical = canonicalize_discovered_keyword(cleaned_raw)
+        canonical = normalize_discovered_term(cleaned_raw)
         canonical_key = normalize_keyword_text(canonical)
         if not canonical or not canonical_key or canonical_key in YOUTUBE_IGNORED_TAG_KEYS:
             return
@@ -272,6 +323,13 @@ def extract_youtube_candidate_terms(text: str) -> dict[str, dict]:
 
     for noun in extract_nouns(text):
         add_candidate(noun)
+
+    surface_terms = extract_surface_terms(text)
+    for surface_term in surface_terms:
+        add_candidate(surface_term)
+    for raw_terms in build_brand_surface_aliases(surface_terms).values():
+        for raw_term in raw_terms:
+            add_candidate(raw_term)
 
     return candidates
 
@@ -488,9 +546,25 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
 
     noun_counter = Counter()
     food_co_occurrence = Counter()
+    blog_raw_terms: dict[str, set[str]] = defaultdict(set)
     for text in blog_texts:
-        nouns = extract_nouns(text)
-        unique_nouns = {normalize_discovered_term(noun) for noun in nouns if noun}
+        surface_terms = extract_surface_terms(text)
+        brand_aliases = build_brand_surface_aliases(surface_terms)
+        raw_terms = [*extract_nouns(text), *surface_terms]
+        unique_nouns: set[str] = set()
+        for raw_term in raw_terms:
+            normalized = normalize_discovered_term(raw_term)
+            if not normalized:
+                continue
+            unique_nouns.add(normalized)
+            blog_raw_terms[normalized].add(_clean_candidate_term(raw_term))
+
+        for normalized, aliases in brand_aliases.items():
+            if not normalized:
+                continue
+            unique_nouns.add(normalized)
+            blog_raw_terms[normalized].update(aliases)
+
         unique_nouns.discard("")
         noun_counter.update(unique_nouns)
         if unique_nouns & FOOD_CONTEXT_WORDS:
@@ -549,6 +623,16 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         food_ratio = food_co_occurrence.get(noun, 0) / frequency if frequency > 0 else 0
         score = frequency * (1.5 if food_ratio > 0.3 else 1.0)
         score += lead_score
+        raw_terms = dedupe_terms(
+            [
+                *sorted(blog_raw_terms.get(noun, [])),
+                *(
+                    sorted(lead_entry.get("raw_terms", []))
+                    if lead_entry
+                    else []
+                ),
+            ]
+        )
         candidates.append(
             {
                 "noun": noun,
@@ -558,7 +642,7 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
                 "category": classify_category(noun, noun_counter),
                 "lead_score": round(lead_score, 2),
                 "lead_sources": sorted(lead_entry.get("lead_sources", [])) if lead_entry else [],
-                "raw_terms": sorted(lead_entry.get("raw_terms", [])) if lead_entry else [],
+                "raw_terms": raw_terms,
                 "evidence_snippets": merge_evidence_snippets(
                     lead_entry.get("lead_evidence", []) if lead_entry else [],
                     collect_candidate_snippets(noun, evidence_texts),

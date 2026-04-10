@@ -107,6 +107,26 @@ def is_franchise(store_name: str) -> bool:
     return False
 
 
+def strip_leading_franchise_brand(text: str) -> str:
+    """문자열 앞의 프랜차이즈 브랜드명을 제거한 나머지를 반환."""
+    compact_text = _compact(text)
+    if not compact_text:
+        return ""
+
+    for brand in _get_sorted_brands():
+        compact_brand = _compact(brand)
+        if len(compact_brand) < 2:
+            continue
+        if compact_text == compact_brand or not compact_text.startswith(compact_brand):
+            continue
+
+        remainder = compact_text[len(compact_brand):].strip()
+        if len(remainder) >= 2:
+            return remainder
+
+    return ""
+
+
 def check_franchise_batch(store_names: list[str]) -> dict[str, bool]:
     """여러 매장명을 한 번에 판별."""
     return {name: is_franchise(name) for name in store_names}
