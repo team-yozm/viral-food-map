@@ -584,6 +584,21 @@ async def _gemini_generate(
 
     await _wait_for_ai_request_slot()
 
+    user_content_str = (
+        user_content if isinstance(user_content, str)
+        else f"[{len(user_content)} parts]"
+    )
+    logger.info(
+        "Gemini request → model=%s, grounding=%s, mime=%s\n"
+        "--- system_instruction ---\n%s\n"
+        "--- user_content ---\n%s",
+        model,
+        bool(tools),
+        config_kwargs.get("response_mime_type", "none"),
+        system_instruction[:1000],
+        user_content_str[:2000],
+    )
+
     try:
         response = await client.aio.models.generate_content(
             model=model,
@@ -616,10 +631,12 @@ async def _gemini_generate(
     text = _extract_response_text(response)
     response_detail = _build_response_detail(response)
     if not text:
+        logger.warning("Gemini response ← EMPTY (%s)", response_detail)
         raise AIReviewError(
             _append_response_detail("empty Gemini response", response_detail),
             request_count=1,
         )
+    logger.info("Gemini response ← %s\n%s", response_detail, text[:2000])
     return GeminiTextResponse(
         text=text,
         grounding_trace=_extract_grounding_trace(response),
@@ -873,6 +890,10 @@ def _extract_results(raw: dict[str, Any] | list[dict[str, Any]]) -> list[dict[st
     if isinstance(results, list):
         return [item for item in results if isinstance(item, dict)]
 
+    # Grounding 응답이 단일 객체로 올 경우 배열로 감싸서 반환
+    if "keyword" in raw:
+        return [raw]
+
     raise AIReviewError("AI response missing results array")
 
 
@@ -883,6 +904,10 @@ def _extract_description_results(raw: dict[str, Any] | list[dict[str, Any]]) -> 
     results = raw.get("results")
     if isinstance(results, list):
         return [item for item in results if isinstance(item, dict)]
+
+    # Grounding 응답이 단일 객체로 올 경우 배열로 감싸서 반환
+    if "keyword" in raw:
+        return [raw]
 
     raise AIReviewError("AI response missing description results array")
 
