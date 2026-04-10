@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getCrawlerBaseUrl, triggerKeywordDiscovery } from "@/lib/crawler";
 
 interface KeywordRow {
   id: string;
@@ -13,6 +14,8 @@ interface KeywordRow {
   created_at: string;
 }
 
+type DiscoveryStatus = "idle" | "loading" | "success" | "error";
+
 const CATEGORIES = ["디저트", "음료", "식사", "간식"];
 
 export default function KeywordsTab() {
@@ -20,6 +23,8 @@ export default function KeywordsTab() {
   const [loading, setLoading] = useState(true);
   const [newKeyword, setNewKeyword] = useState("");
   const [newCategory, setNewCategory] = useState(CATEGORIES[0]);
+  const [discoveryStatus, setDiscoveryStatus] = useState<DiscoveryStatus>("idle");
+  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
 
   const fetchKeywords = async () => {
     const { data } = await supabase
@@ -71,6 +76,33 @@ export default function KeywordsTab() {
     await fetchKeywords();
   };
 
+  const triggerDiscovery = async () => {
+    const apiUrl = getCrawlerBaseUrl();
+    if (!apiUrl) return;
+
+    setDiscoveryStatus("loading");
+    setDiscoveryMessage("키워드 발굴을 실행하고 있습니다...");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        throw new Error("관리자 로그인 세션이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+
+      const result = await triggerKeywordDiscovery(accessToken);
+      setDiscoveryStatus("success");
+      setDiscoveryMessage(result.message);
+      await fetchKeywords();
+      setTimeout(() => setDiscoveryStatus("idle"), 3000);
+    } catch (error) {
+      setDiscoveryStatus("error");
+      setDiscoveryMessage(
+        error instanceof Error ? error.message : "키워드 발굴 실행에 실패했습니다."
+      );
+      setTimeout(() => setDiscoveryStatus("idle"), 5000);
+    }
+  };
+
   if (loading) {
     return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
   }
@@ -82,8 +114,56 @@ export default function KeywordsTab() {
     간식: "bg-yellow-100 text-yellow-700",
   };
 
+  const apiUrl = getCrawlerBaseUrl();
+
   return (
     <div>
+      {/* 키워드 발굴 */}
+      <div className="bg-white rounded-xl p-4 border border-gray-100 mb-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">키워드 자동 발굴</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              AI가 새로운 트렌드 키워드를 탐색하고 자동으로 등록합니다
+            </p>
+            {discoveryMessage && (
+              <p
+                className={`text-xs mt-2 ${
+                  discoveryStatus === "error"
+                    ? "text-red-500"
+                    : discoveryStatus === "success"
+                      ? "text-green-600"
+                      : "text-gray-500"
+                }`}
+              >
+                {discoveryMessage}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={triggerDiscovery}
+            disabled={!apiUrl || discoveryStatus === "loading"}
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 shrink-0 ${
+              discoveryStatus === "success"
+                ? "bg-green-500 text-white"
+                : discoveryStatus === "error"
+                  ? "bg-red-500 text-white"
+                  : "bg-primary text-white hover:bg-purple-600"
+            }`}
+          >
+            {discoveryStatus === "loading"
+              ? "발굴 중..."
+              : discoveryStatus === "success"
+                ? "완료!"
+                : discoveryStatus === "error"
+                  ? "실패"
+                  : !apiUrl
+                    ? "API URL 미설정"
+                    : "키워드 발굴"}
+          </button>
+        </div>
+      </div>
+
       {/* 추가 폼 */}
       <div className="bg-white rounded-xl p-4 border border-gray-100 mb-4">
         <div className="flex gap-2">

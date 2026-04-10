@@ -291,6 +291,41 @@ export async function publishInstagramFeed(
   return response.json();
 }
 
+export interface KeywordDiscoveryResponse {
+  message: string;
+  summary: {
+    new_keywords: number;
+    [key: string]: unknown;
+  };
+}
+
+export async function triggerKeywordDiscovery(
+  accessToken: string
+): Promise<KeywordDiscoveryResponse> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(
+    `${CRAWLER_BASE_URL}/api/trends/discover-keywords`,
+    {
+      method: "POST",
+      headers: getAdminCrawlerHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getCrawlerResponseErrorMessage(
+        response,
+        "키워드 발굴 실행에 실패했습니다."
+      )
+    );
+  }
+
+  return response.json();
+}
+
 export async function fetchCrawlerHealth(): Promise<CrawlerHealthResponse> {
   if (!CRAWLER_BASE_URL) {
     throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
