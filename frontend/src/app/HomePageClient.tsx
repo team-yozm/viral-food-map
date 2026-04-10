@@ -398,14 +398,20 @@ export default function HomePageClient({
     fetchNearby();
   }, [trends, userLoc]);
 
-  const lastUpdatedLabel = lastUpdated
-    ? new Date(lastUpdated).toLocaleString("ko-KR", {
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
+  const [lastUpdatedLabel, setLastUpdatedLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (lastUpdated) {
+      setLastUpdatedLabel(
+        new Date(lastUpdated).toLocaleString("ko-KR", {
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      );
+    }
+  }, [lastUpdated]);
 
   const showLocationNotice =
     locationStatus === "denied" ||
