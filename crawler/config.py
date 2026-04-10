@@ -184,10 +184,6 @@ class Settings:
         "YOMECHU_ENRICH_ENABLED",
         default=False,
     )
-    AI_REVIEW_API_URL: str = os.getenv(
-        "AI_REVIEW_API_URL",
-        "https://api.openai.com/v1/chat/completions",
-    )
     AI_REVIEW_API_KEY: str = os.getenv("AI_REVIEW_API_KEY", "")
     AI_REVIEW_MODEL: str = os.getenv(
         "AI_REVIEW_MODEL", "gemini-2.5-flash"
