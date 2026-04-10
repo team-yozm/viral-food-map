@@ -47,17 +47,28 @@ logger = logging.getLogger(__name__)
 NAVER_BLOG_URL = "https://openapi.naver.com/v1/search/blog"
 DEFAULT_CATEGORY = "기타"
 
+_CURRENT_YEAR = str(__import__("datetime").datetime.now().year)
+
 META_QUERIES = [
-    "요즘 핫한 음식 트렌드",
-    "SNS 인기 음식 2026",
-    "요즘 뭐 먹어 추천",
-    "최신 바이럴 음식",
-    "요즘 뜨는 디저트",
-    "요즘 유행하는 간식 길거리음식",
-    "핫한 맛집 메뉴 신메뉴",
-    "요즘 핫한 음료 카페 신메뉴",
-    "요즘 뜨는 분식 길거리",
-    "인스타 유행 먹거리",
+    # 일반 트렌드
+    f"{_CURRENT_YEAR} 음식 트렌드",
+    "이번달 뜨는 음식",
+    "요즘 핫한 먹거리",
+    # 카테고리별
+    "신상 디저트 카페 추천",
+    "요즘 뜨는 음료 신메뉴",
+    "길거리 간식 요즘 인기",
+    "신메뉴 출시 편의점",
+    # SNS/바이럴
+    "틱톡 음식 유행",
+    "인스타 릴스 먹방 화제",
+    "유튜브 쇼츠 음식 핫",
+    # 구체적 탐색
+    "줄서서 먹는 맛집 메뉴",
+    "오픈런 디저트",
+    "품절대란 음식",
+    f"{_CURRENT_YEAR} 편의점 신상",
+    "요즘 핫한 빵 베이커리",
 ]
 
 CATEGORY_PATTERNS = {
