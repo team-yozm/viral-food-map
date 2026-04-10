@@ -117,6 +117,7 @@ class AIReviewGroundingTrace:
 class GeminiTextResponse:
     text: str
     grounding_trace: AIReviewGroundingTrace | None = None
+    grounded: bool = False
     request_count: int = 1
     response_detail: str | None = None
 
@@ -358,6 +359,8 @@ def _with_grounding_trace_detail(
     grounded: bool,
     detail: str | None = None,
 ) -> GeminiTextResponse:
+    response.grounded = grounded
+
     if grounded:
         if response.grounding_trace is None:
             response.grounding_trace = AIReviewGroundingTrace(
@@ -549,16 +552,20 @@ async def _gemini_generate(
 
     client = _get_client()
 
-    config = genai_types.GenerateContentConfig(
-        system_instruction=system_instruction,
-        temperature=0.1,
-        candidate_count=1,
-        max_output_tokens=max_output_tokens,
-        response_mime_type="application/json",
-        http_options=genai_types.HttpOptions(
+    config_kwargs: dict[str, Any] = {
+        "system_instruction": system_instruction,
+        "temperature": 0.1,
+        "candidate_count": 1,
+        "max_output_tokens": max_output_tokens,
+        "http_options": genai_types.HttpOptions(
             timeout=settings.AI_REVIEW_TIMEOUT_SECONDS * 1000,
         ),
-    )
+    }
+    # Gemini rejects response_mime_type="application/json" when tool use is enabled.
+    if not tools:
+        config_kwargs["response_mime_type"] = "application/json"
+
+    config = genai_types.GenerateContentConfig(**config_kwargs)
     if tools:
         config.tools = tools
 
@@ -733,13 +740,52 @@ async def _request_text_review(
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any] | list[dict[str, Any]], AIReviewGroundingTrace | None, int]:
     """Text review via Gemini with grounding."""
+    user_content = json.dumps(payload, ensure_ascii=False)
     response = await _gemini_generate_with_grounding(
         system_instruction=system_prompt,
-        user_content=json.dumps(payload, ensure_ascii=False),
+        user_content=user_content,
     )
     try:
         raw = _extract_json_blob(response.text)
     except AIReviewError as exc:
+        if response.grounded:
+            logger.warning(
+                "Grounded Gemini response returned invalid JSON, retrying without grounding: %s",
+                exc,
+            )
+            try:
+                retry_response = await _gemini_generate(
+                    model=settings.AI_REVIEW_MODEL,
+                    system_instruction=system_prompt,
+                    user_content=user_content,
+                )
+            except AIReviewError as retry_exc:
+                raise AIReviewError(
+                    _append_response_detail(
+                        f"{str(exc)}; no-grounding retry failed: {retry_exc}",
+                        response.response_detail,
+                    ),
+                    request_count=response.request_count + retry_exc.request_count,
+                ) from retry_exc
+            total_request_count = response.request_count + retry_response.request_count
+            retry_response = _with_grounding_trace_detail(
+                retry_response,
+                grounded=False,
+                detail="Grounded response returned invalid JSON, retried without grounding.",
+            )
+            try:
+                raw = _extract_json_blob(retry_response.text)
+            except AIReviewError as retry_exc:
+                raise AIReviewError(
+                    _append_response_detail(
+                        f"{str(exc)}; no-grounding retry also failed JSON parsing: {retry_exc}",
+                        retry_response.response_detail,
+                    ),
+                    request_count=total_request_count,
+                ) from retry_exc
+
+            return raw, retry_response.grounding_trace, total_request_count
+
         raise AIReviewError(
             _append_response_detail(str(exc), response.response_detail),
             request_count=response.request_count,
