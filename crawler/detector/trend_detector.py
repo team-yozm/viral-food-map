@@ -805,7 +805,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             existing_trend,
         )
         candidate["category_hint"] = category_hint
-        if review_statuses.get(normalize_keyword_text(keyword)) == "rejected":
+        if review_statuses.get(normalize_keyword_text(keyword)) in {"pending", "rejected"}:
             continue
 
         if not is_food_specific_keyword(keyword):
