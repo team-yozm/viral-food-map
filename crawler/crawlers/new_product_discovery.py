@@ -37,6 +37,8 @@ BRAND_ALIAS_SOURCE_KEYS = {
     "컴포즈": "composecoffee_event",
     "버거킹코리아": "burgerking_event_feed",
     "공차코리아": "gongcha_event_list",
+    "푸라닭": "puradak_event_list",
+    "푸라닭치킨": "puradak_event_list",
 }
 RESULT_HOST_BLOCKLIST = {
     "blog.naver.com",
