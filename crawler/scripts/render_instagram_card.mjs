@@ -50,9 +50,9 @@ const CANVAS_SIZE = 1080;
 
 const GLASS_PANEL = {
   x: 40,
-  y: 700,
+  y: 740,
   w: 1000,
-  h: 340,
+  h: 300,
   r: 32,
 };
 
@@ -220,8 +220,25 @@ function buildBaseBackground(colors) {
           <stop offset="0%" stop-color="${colors.bgTop}" />
           <stop offset="100%" stop-color="${colors.bgBottom}" />
         </linearGradient>
+        <radialGradient id="purpleGlow" cx="18%" cy="14%" r="50%">
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.44" />
+          <stop offset="52%" stop-color="${colors.accentStart}" stop-opacity="0.16" />
+          <stop offset="100%" stop-color="${colors.accentStart}" stop-opacity="0" />
+        </radialGradient>
+        <radialGradient id="blueGlow" cx="82%" cy="82%" r="48%">
+          <stop offset="0%" stop-color="${colors.accentEnd}" stop-opacity="0.30" />
+          <stop offset="55%" stop-color="${colors.accentEnd}" stop-opacity="0.10" />
+          <stop offset="100%" stop-color="${colors.accentEnd}" stop-opacity="0" />
+        </radialGradient>
+        <radialGradient id="ambientHalo" cx="50%" cy="72%" r="58%">
+          <stop offset="0%" stop-color="${colors.white}" stop-opacity="0.07" />
+          <stop offset="100%" stop-color="${colors.white}" stop-opacity="0" />
+        </radialGradient>
       </defs>
       <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#bg)" />
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#purpleGlow)" />
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#blueGlow)" />
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#ambientHalo)" />
     </svg>
   `);
 }
@@ -254,9 +271,21 @@ function buildGradientOverlay(colors) {
           <stop offset="72%" stop-color="${colors.overlayDark}" stop-opacity="0.40"/>
           <stop offset="100%" stop-color="${colors.overlayDark}" stop-opacity="0.65"/>
         </linearGradient>
+        <radialGradient id="brandWashTop" cx="15%" cy="10%" r="55%">
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.24"/>
+          <stop offset="60%" stop-color="${colors.accentStart}" stop-opacity="0.08"/>
+          <stop offset="100%" stop-color="${colors.accentStart}" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="brandWashBottom" cx="78%" cy="88%" r="50%">
+          <stop offset="0%" stop-color="${colors.accentEnd}" stop-opacity="0.20"/>
+          <stop offset="58%" stop-color="${colors.accentEnd}" stop-opacity="0.06"/>
+          <stop offset="100%" stop-color="${colors.accentEnd}" stop-opacity="0"/>
+        </radialGradient>
       </defs>
       <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#topV)"/>
       <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#botV)"/>
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#brandWashTop)"/>
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#brandWashBottom)"/>
     </svg>
   `);
 }
@@ -300,6 +329,10 @@ function buildOverlaySvg(payload, fontCss, colors) {
   const innerPad = 36;
   const textX = p.x + innerPad;
   const textRight = p.x + p.w - innerPad;
+  const accentY = p.y + 38;
+  const titleY = p.y + 130;
+  const subtitleY = p.y + 186;
+  const watermarkY = p.y + p.h - 28;
 
   const pad = 56;
 
@@ -344,14 +377,28 @@ function buildOverlaySvg(payload, fontCss, colors) {
           <stop offset="100%" stop-color="${colors.accentEnd}"/>
         </linearGradient>
         <linearGradient id="glassTint" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#000000" stop-opacity="0.22"/>
-          <stop offset="100%" stop-color="#000000" stop-opacity="0.42"/>
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.18"/>
+          <stop offset="42%" stop-color="${colors.accentEnd}" stop-opacity="0.10"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.38"/>
         </linearGradient>
         <linearGradient id="chromaEdge" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.18"/>
           <stop offset="40%" stop-color="${colors.accentEnd}" stop-opacity="0.12"/>
           <stop offset="70%" stop-color="${colors.accentStart}" stop-opacity="0.06"/>
           <stop offset="100%" stop-color="${colors.accentEnd}" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="panelBrandTint" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.18"/>
+          <stop offset="55%" stop-color="${colors.accentEnd}" stop-opacity="0.12"/>
+          <stop offset="100%" stop-color="${colors.white}" stop-opacity="0.04"/>
+        </linearGradient>
+        <linearGradient id="badgeFill" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="${colors.accentEnd}" stop-opacity="0.24"/>
+        </linearGradient>
+        <linearGradient id="chipStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="${colors.accentEnd}" stop-opacity="0.20"/>
         </linearGradient>
       </defs>
 
@@ -363,6 +410,12 @@ function buildOverlaySvg(payload, fontCss, colors) {
         width="${p.w}" height="${p.h}"
         rx="${p.r}"
         fill="url(#glassTint)"
+      />
+      <rect
+        x="${p.x}" y="${p.y}"
+        width="${p.w}" height="${p.h}"
+        rx="${p.r}"
+        fill="url(#panelBrandTint)"
       />
 
       <!-- Chromatic edge (liquid glass light leak) -->
@@ -400,26 +453,26 @@ function buildOverlaySvg(payload, fontCss, colors) {
       />
 
       <!-- ===== Badge pill (glass + gradient border) ===== -->
-      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="${colors.white}" fill-opacity="0.12"/>
+      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="url(#badgeFill)"/>
       <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="none" stroke="url(#badgeGrad)" stroke-opacity="0.70" stroke-width="1.5"/>
       <circle cx="${dotCx}" cy="${dotCy}" r="${dotR}" fill="url(#badgeGrad)"/>
       <text x="${badgeTextX}" y="${badgeTextY}" font-size="22" font-weight="700" fill="${colors.white}">${escapeXml(badge)}</text>
 
       <!-- ===== Brand chip (glass) ===== -->
-      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="${colors.white}" fill-opacity="0.12"/>
-      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="none" stroke="${colors.white}" stroke-opacity="0.20" stroke-width="1"/>
+      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="${colors.white}" fill-opacity="0.10"/>
+      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="none" stroke="url(#chipStroke)" stroke-opacity="0.75" stroke-width="1"/>
       <text x="${chipTextX}" y="${chipTextY}" font-size="22" font-weight="700" fill="${colors.white}" fill-opacity="0.92" text-anchor="middle">${escapeXml(brandLabel)}</text>
 
       <!-- ===== Text content on glass panel ===== -->
 
       <!-- Accent line -->
-      <rect x="${textX}" y="744" width="72" height="4" rx="2" fill="url(#accentLine)"/>
+      <rect x="${textX}" y="${accentY}" width="72" height="4" rx="2" fill="url(#accentLine)"/>
 
       <!-- Title -->
       <text
         class="title-text"
         x="${textX}"
-        y="840"
+        y="${titleY}"
         font-size="80"
         font-weight="700"
         fill="${colors.white}"
@@ -429,7 +482,7 @@ function buildOverlaySvg(payload, fontCss, colors) {
       <!-- Subtitle -->
       <text
         x="${textX}"
-        y="900"
+        y="${subtitleY}"
         font-size="30"
         font-weight="400"
         fill="${colors.white}"
@@ -439,7 +492,7 @@ function buildOverlaySvg(payload, fontCss, colors) {
       <!-- URL watermark -->
       <text
         x="${textRight}"
-        y="1010"
+        y="${watermarkY}"
         font-size="20"
         font-weight="400"
         fill="${colors.white}"
