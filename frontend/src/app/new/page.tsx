@@ -13,10 +13,10 @@ import {
 import { buildMetadata } from "@/lib/seo";
 
 interface NewProductsPageProps {
-  searchParams?: {
+  searchParams?: Promise<{
     period?: string;
     source?: string;
-  };
+  }>;
 }
 
 const PERIOD_OPTIONS: Array<{ key: NewProductsPeriod; label: string }> = [
@@ -102,8 +102,9 @@ export const revalidate = 300;
 export default async function NewProductsPage({
   searchParams,
 }: NewProductsPageProps) {
-  const period = normalizePeriod(searchParams?.period);
-  const source = normalizeSource(searchParams?.source);
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const period = normalizePeriod(resolvedSearchParams.period);
+  const source = normalizeSource(resolvedSearchParams.source);
   const pageData = await getNewProductsPageData({ period, sourceType: source });
 
   return (
