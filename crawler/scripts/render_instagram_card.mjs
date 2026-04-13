@@ -6,8 +6,28 @@ import sharp from "sharp";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
+const bundledPretendardPath = path.join(
+  rootDir,
+  "assets",
+  "fonts",
+  "PretendardVariable.ttf"
+);
+const bundledGmarketTitlePath = path.join(
+  rootDir,
+  "assets",
+  "fonts",
+  "GmarketSansTTFBold.ttf"
+);
 
 const FONT_CANDIDATES = [
+  {
+    regular: bundledPretendardPath,
+    bold: bundledPretendardPath,
+  },
+  {
+    regular: "C:/Windows/Fonts/PretendardVariable.ttf",
+    bold: "C:/Windows/Fonts/PretendardVariable.ttf",
+  },
   {
     regular: "C:/Windows/Fonts/malgun.ttf",
     bold: "C:/Windows/Fonts/malgunbd.ttf",
@@ -27,6 +47,14 @@ const FONT_CANDIDATES = [
 ];
 
 const CANVAS_SIZE = 1080;
+
+const GLASS_PANEL = {
+  x: 40,
+  y: 700,
+  w: 1000,
+  h: 340,
+  r: 32,
+};
 
 function parseArgs(argv) {
   const args = {};
@@ -69,6 +97,28 @@ function toBase64(buffer) {
   return buffer.toString("base64");
 }
 
+function inferFontFormat(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".otf") {
+    return "opentype";
+  }
+  if (ext === ".ttf" || ext === ".ttc") {
+    return "truetype";
+  }
+  return "truetype";
+}
+
+function buildFontFaceCss(familyName, fontBuffer, filePath, weight) {
+  return `
+    @font-face {
+      font-family: '${familyName}';
+      src: url(data:font/${inferFontFormat(filePath)};charset=utf-8;base64,${toBase64(fontBuffer)}) format('${inferFontFormat(filePath)}');
+      font-weight: ${weight};
+      font-style: normal;
+    }
+  `;
+}
+
 async function loadFonts() {
   const fontPair = await resolveFontPair();
   const [regular, bold] = await Promise.all([
@@ -77,19 +127,35 @@ async function loadFonts() {
   ]);
 
   return `
-    @font-face {
-      font-family: 'RendererSans';
-      src: url(data:font/truetype;charset=utf-8;base64,${toBase64(regular)}) format('truetype');
-      font-weight: 400;
-      font-style: normal;
-    }
-    @font-face {
-      font-family: 'RendererSans';
-      src: url(data:font/truetype;charset=utf-8;base64,${toBase64(bold)}) format('truetype');
-      font-weight: 700;
-      font-style: normal;
-    }
+    ${buildFontFaceCss("RendererSans", regular, fontPair.regular, 400)}
+    ${buildFontFaceCss("RendererSans", bold, fontPair.bold, 700)}
   `;
+}
+
+function resolveMaybeAbsolutePath(filePath) {
+  if (!filePath) {
+    return "";
+  }
+  return path.isAbsolute(filePath) ? filePath : path.resolve(rootDir, filePath);
+}
+
+async function loadOptionalTitleFont(titleFontPath) {
+  const candidatePaths = [
+    resolveMaybeAbsolutePath(titleFontPath),
+    bundledGmarketTitlePath,
+  ].filter(Boolean);
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      await ensureFileExists(candidatePath);
+      const titleFont = await readFile(candidatePath);
+      return buildFontFaceCss("RendererTitle", titleFont, candidatePath, 700);
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
 }
 
 function escapeXml(value) {
@@ -179,20 +245,45 @@ function buildGradientOverlay(colors) {
     <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="topV" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="${colors.overlayDark}" stop-opacity="0.55"/>
+          <stop offset="0%" stop-color="${colors.overlayDark}" stop-opacity="0.50"/>
           <stop offset="18%" stop-color="${colors.overlayDark}" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="botV" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stop-color="${colors.overlayDark}" stop-opacity="0"/>
           <stop offset="48%" stop-color="${colors.overlayDark}" stop-opacity="0"/>
-          <stop offset="72%" stop-color="${colors.overlayDark}" stop-opacity="0.55"/>
-          <stop offset="100%" stop-color="${colors.overlayDark}" stop-opacity="0.92"/>
+          <stop offset="72%" stop-color="${colors.overlayDark}" stop-opacity="0.40"/>
+          <stop offset="100%" stop-color="${colors.overlayDark}" stop-opacity="0.65"/>
         </linearGradient>
       </defs>
       <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#topV)"/>
       <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#botV)"/>
     </svg>
   `);
+}
+
+async function buildFrostedGlassLayer(sourceBuffer, panel) {
+  const blurred = await sharp(sourceBuffer)
+    .ensureAlpha()
+    .blur(35)
+    .toBuffer();
+
+  const maskSvg = Buffer.from(`
+    <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
+      <rect
+        x="${panel.x}" y="${panel.y}"
+        width="${panel.w}" height="${panel.h}"
+        rx="${panel.r}"
+        fill="white"
+      />
+    </svg>
+  `);
+
+  const maskPng = await sharp(maskSvg).ensureAlpha().png().toBuffer();
+
+  return sharp(blurred)
+    .composite([{ input: maskPng, blend: "dest-in" }])
+    .png()
+    .toBuffer();
 }
 
 function buildOverlaySvg(payload, fontCss, colors) {
@@ -204,6 +295,11 @@ function buildOverlaySvg(payload, fontCss, colors) {
     `${payload.category || "\uAC04\uC2DD"} \uCE74\uD14C\uACE0\uB9AC\uC5D0\uC11C \uAC80\uC0C9\uB7C9\uC774 \uC624\uB978 \uBA54\uB274\uC608\uC694.`;
   const title = payload.title;
   const brandLabel = payload.brandLabel || "\uC694\uC998\uBB50\uBA39";
+
+  const p = GLASS_PANEL;
+  const innerPad = 36;
+  const textX = p.x + innerPad;
+  const textRight = p.x + p.w - innerPad;
 
   const pad = 56;
 
@@ -233,7 +329,10 @@ function buildOverlaySvg(payload, fontCss, colors) {
         <style>
           ${fontCss}
           text {
-            font-family: 'RendererSans', 'Malgun Gothic', 'Segoe UI', sans-serif;
+            font-family: 'Pretendard Variable', 'Pretendard', 'RendererSans', 'Malgun Gothic', 'Segoe UI', sans-serif;
+          }
+          .title-text {
+            font-family: 'RendererTitle', 'Pretendard Variable', 'Pretendard', 'RendererSans', 'Malgun Gothic', 'Segoe UI', sans-serif;
           }
         </style>
         <linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -244,24 +343,83 @@ function buildOverlaySvg(payload, fontCss, colors) {
           <stop offset="0%" stop-color="${colors.accentStart}"/>
           <stop offset="100%" stop-color="${colors.accentEnd}"/>
         </linearGradient>
+        <linearGradient id="glassTint" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#000000" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.42"/>
+        </linearGradient>
+        <linearGradient id="chromaEdge" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="${colors.accentStart}" stop-opacity="0.18"/>
+          <stop offset="40%" stop-color="${colors.accentEnd}" stop-opacity="0.12"/>
+          <stop offset="70%" stop-color="${colors.accentStart}" stop-opacity="0.06"/>
+          <stop offset="100%" stop-color="${colors.accentEnd}" stop-opacity="0"/>
+        </linearGradient>
       </defs>
 
-      <!-- Badge pill -->
-      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="url(#badgeGrad)"/>
-      <circle cx="${dotCx}" cy="${dotCy}" r="${dotR}" fill="${colors.white}" fill-opacity="0.92"/>
+      <!-- ===== Glass panel effects ===== -->
+
+      <!-- Dark tint over frosted area -->
+      <rect
+        x="${p.x}" y="${p.y}"
+        width="${p.w}" height="${p.h}"
+        rx="${p.r}"
+        fill="url(#glassTint)"
+      />
+
+      <!-- Chromatic edge (liquid glass light leak) -->
+      <rect
+        x="${p.x + 2}" y="${p.y + 1}"
+        width="${p.w - 4}" height="3"
+        rx="1.5"
+        fill="url(#chromaEdge)"
+      />
+
+      <!-- Specular highlight at top edge -->
+      <rect
+        x="${p.x + 40}" y="${p.y + 1}"
+        width="${p.w - 80}" height="1.5"
+        rx="0.75"
+        fill="${colors.white}" fill-opacity="0.40"
+      />
+
+      <!-- Glass border -->
+      <rect
+        x="${p.x}" y="${p.y}"
+        width="${p.w}" height="${p.h}"
+        rx="${p.r}"
+        fill="none"
+        stroke="${colors.white}" stroke-opacity="0.16" stroke-width="1.5"
+      />
+
+      <!-- Inner glow ring -->
+      <rect
+        x="${p.x + 1.5}" y="${p.y + 1.5}"
+        width="${p.w - 3}" height="${p.h - 3}"
+        rx="${p.r - 1}"
+        fill="none"
+        stroke="${colors.white}" stroke-opacity="0.06" stroke-width="1"
+      />
+
+      <!-- ===== Badge pill (glass + gradient border) ===== -->
+      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="${colors.white}" fill-opacity="0.12"/>
+      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="none" stroke="url(#badgeGrad)" stroke-opacity="0.70" stroke-width="1.5"/>
+      <circle cx="${dotCx}" cy="${dotCy}" r="${dotR}" fill="url(#badgeGrad)"/>
       <text x="${badgeTextX}" y="${badgeTextY}" font-size="22" font-weight="700" fill="${colors.white}">${escapeXml(badge)}</text>
 
-      <!-- Brand chip -->
-      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="${colors.white}" fill-opacity="0.16"/>
+      <!-- ===== Brand chip (glass) ===== -->
+      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="${colors.white}" fill-opacity="0.12"/>
+      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="none" stroke="${colors.white}" stroke-opacity="0.20" stroke-width="1"/>
       <text x="${chipTextX}" y="${chipTextY}" font-size="22" font-weight="700" fill="${colors.white}" fill-opacity="0.92" text-anchor="middle">${escapeXml(brandLabel)}</text>
 
+      <!-- ===== Text content on glass panel ===== -->
+
       <!-- Accent line -->
-      <rect x="${pad}" y="790" width="72" height="4" rx="2" fill="url(#accentLine)"/>
+      <rect x="${textX}" y="744" width="72" height="4" rx="2" fill="url(#accentLine)"/>
 
       <!-- Title -->
       <text
-        x="${pad}"
-        y="870"
+        class="title-text"
+        x="${textX}"
+        y="840"
         font-size="80"
         font-weight="700"
         fill="${colors.white}"
@@ -270,8 +428,8 @@ function buildOverlaySvg(payload, fontCss, colors) {
 
       <!-- Subtitle -->
       <text
-        x="${pad}"
-        y="932"
+        x="${textX}"
+        y="900"
         font-size="30"
         font-weight="400"
         fill="${colors.white}"
@@ -280,12 +438,12 @@ function buildOverlaySvg(payload, fontCss, colors) {
 
       <!-- URL watermark -->
       <text
-        x="${CANVAS_SIZE - pad}"
-        y="1044"
+        x="${textRight}"
+        y="1010"
         font-size="20"
         font-weight="400"
         fill="${colors.white}"
-        fill-opacity="0.38"
+        fill-opacity="0.35"
         text-anchor="end"
       >yozmeat.com</text>
     </svg>
@@ -309,6 +467,9 @@ function resolvePayload(rawPayload) {
     status: rawPayload.status ? String(rawPayload.status) : "rising",
     imageUrl: rawPayload.imageUrl ? String(rawPayload.imageUrl) : "",
     outputPath: path.resolve(rootDir, String(rawPayload.outputPath)),
+    titleFontPath: rawPayload.titleFontPath
+      ? String(rawPayload.titleFontPath)
+      : "",
     brandLabel: rawPayload.brandLabel
       ? String(rawPayload.brandLabel)
       : "\uC694\uC998\uBB50\uBA39",
@@ -323,13 +484,19 @@ async function readJsonPayload(payloadPath) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.payload) {
-    throw new Error("Usage: node scripts/render_instagram_card.mjs --payload <json-path>");
+    throw new Error(
+      "Usage: node scripts/render_instagram_card.mjs --payload <json-path>"
+    );
   }
 
   const payload = resolvePayload(
     await readJsonPayload(path.resolve(rootDir, args.payload))
   );
-  const fontCss = await loadFonts();
+  const [baseFontCss, titleFontCss] = await Promise.all([
+    loadFonts(),
+    loadOptionalTitleFont(payload.titleFontPath),
+  ]);
+  const fontCss = `${baseFontCss}\n${titleFontCss}`;
 
   const colors = {
     bgTop: "#1A0E2E",
@@ -352,6 +519,15 @@ async function main() {
   }
 
   const photoLayer = photoBuffer || buildFallbackPhotoSvg(colors);
+
+  const glassSource = photoBuffer
+    ? photoBuffer
+    : await sharp(buildFallbackPhotoSvg(colors)).png().toBuffer();
+
+  const frostedGlassLayer = await buildFrostedGlassLayer(
+    glassSource,
+    GLASS_PANEL
+  );
 
   await mkdir(path.dirname(payload.outputPath), { recursive: true });
 
@@ -376,6 +552,11 @@ async function main() {
       },
       {
         input: buildGradientOverlay(colors),
+        top: 0,
+        left: 0,
+      },
+      {
+        input: frostedGlassLayer,
         top: 0,
         left: 0,
       },
