@@ -56,7 +56,7 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
     const { data, error } = await supabase
       .from("trends")
       .select("id, name, category, status")
-      .in("status", ["rising", "active"])
+      .in("status", ["rising", "active", "declining"])
       .order("peak_score", { ascending: false });
 
     if (error) {

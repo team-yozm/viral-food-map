@@ -28,7 +28,7 @@ export const getActiveTrends = cache(async (): Promise<TrendWithStoreCount[]> =>
   const { data } = await supabase
     .from("trends")
     .select("*, stores(count)")
-    .in("status", ["rising", "active"])
+    .in("status", ["rising", "active", "declining"])
     .order("peak_score", { ascending: false });
 
   return (

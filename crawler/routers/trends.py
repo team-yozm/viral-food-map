@@ -20,7 +20,7 @@ async def list_trends():
         get_client()
         .table("trends")
         .select("*, stores(count)")
-        .in_("status", ["rising", "active"])
+        .in_("status", ["rising", "active", "declining"])
         .order("peak_score", desc=True)
         .execute()
         .data

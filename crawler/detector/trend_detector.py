@@ -169,6 +169,15 @@ def classify_status(
             return "active"
         return "watchlist"
 
+    # declining → score 회복 시 active 복귀, 아니면 watchlist로 강등
+    if existing_status == "declining":
+        if meets_active:
+            return "active"
+        if rank is not None and rank <= settings.TREND_TOP_RANK_CANDIDATE_MAX:
+            return "declining"
+        return "watchlist"
+
+    # rising/active 상태 재분류
     if (
         acceleration >= settings.TREND_THRESHOLD
         and score >= settings.TREND_RISING_SCORE_THRESHOLD
@@ -178,6 +187,11 @@ def classify_status(
         return "rising"
     if meets_active:
         return "active"
+
+    # score 부족 시 바로 watchlist 대신 declining으로 완충
+    if existing_status in ("rising", "active"):
+        return "declining"
+
     if rank is not None and rank <= settings.TREND_TOP_RANK_CANDIDATE_MAX:
         return "watchlist"
     return "watchlist"
@@ -602,7 +616,11 @@ def _deactivate_rejected_active_trends(rejected_keywords: list[str]) -> list[str
         if normalize_keyword_text(keyword) not in rejected_keys:
             continue
 
-        update_trend_status(trend_id, "inactive")
+        current_status = trend.get("status")
+        if current_status in ("rising", "active"):
+            update_trend_status(trend_id, "declining")
+        else:
+            update_trend_status(trend_id, "inactive")
         deactivated_trends.append(keyword)
 
     return dedupe_terms(deactivated_trends)

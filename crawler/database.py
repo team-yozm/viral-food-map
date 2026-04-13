@@ -43,7 +43,7 @@ def get_active_trends():
         get_client()
         .table("trends")
         .select("*")
-        .in_("status", ["rising", "active", "watchlist"])
+        .in_("status", ["rising", "active", "declining", "watchlist"])
         .execute()
         .data
     )

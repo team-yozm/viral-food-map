@@ -101,7 +101,7 @@ class Settings:
     VAPID_CONTACT: str = os.getenv("VAPID_CONTACT", "mailto:support@yozmeat.com")
 
     TREND_THRESHOLD: float = float(os.getenv("TREND_THRESHOLD", "20"))
-    TREND_SCORE_THRESHOLD: float = float(os.getenv("TREND_SCORE_THRESHOLD", "15"))
+    TREND_SCORE_THRESHOLD: float = float(os.getenv("TREND_SCORE_THRESHOLD", "12"))
     TREND_RISING_SCORE_THRESHOLD: float = float(
         os.getenv("TREND_RISING_SCORE_THRESHOLD", "35")
     )
@@ -141,9 +141,9 @@ class Settings:
         os.getenv("TREND_WATCHLIST_PROMOTION_ACCEPTS", "2")
     )
     TREND_ACTIVE_DEMOTION_REJECTS: int = int(
-        os.getenv("TREND_ACTIVE_DEMOTION_REJECTS", "2")
+        os.getenv("TREND_ACTIVE_DEMOTION_REJECTS", "3")
     )
-    ACTIVE_TREND_TTL_HOURS: int = int(os.getenv("ACTIVE_TREND_TTL_HOURS", "24"))
+    ACTIVE_TREND_TTL_HOURS: int = int(os.getenv("ACTIVE_TREND_TTL_HOURS", "72"))
     CRAWL_INTERVAL_MINUTES: int = int(os.getenv("CRAWL_INTERVAL_MINUTES", "30"))
     STORE_UPDATE_INTERVAL_MINUTES: int = int(
         os.getenv("STORE_UPDATE_INTERVAL_MINUTES", "60")

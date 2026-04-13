@@ -59,7 +59,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     const { data } = await supabase
       .from("trends")
       .select("*")
-      .in("status", ["rising", "active"])
+      .in("status", ["rising", "active", "declining"])
       .order("peak_score", { ascending: false });
 
     if (data) {

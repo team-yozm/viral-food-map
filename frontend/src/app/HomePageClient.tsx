@@ -319,7 +319,7 @@ export default function HomePageClient({
     const { data, error } = await supabase
       .from("trends")
       .select("*, stores(count)")
-      .in("status", ["rising", "active"])
+      .in("status", ["rising", "active", "declining"])
       .order("peak_score", { ascending: false });
 
     if (error || !data) {
