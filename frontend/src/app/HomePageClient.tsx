@@ -761,13 +761,11 @@ export default function HomePageClient({
                           {restTop.map((trend, index) => {
                             const rank = index + 2;
                             return (
-                              <div key={trend.id} className="flex gap-3">
-                                <div className="flex flex-col items-center pt-3 w-8 shrink-0">
-                                  <span className="text-lg font-bold text-gray-800">{rank}</span>
+                              <div key={trend.id} className="relative">
+                                <TrendCard trend={trend} />
+                                <div className="absolute -top-2 -left-2 z-10 flex items-center gap-1">
+                                  <span className="bg-white shadow text-xs font-black w-6 h-6 rounded-full flex items-center justify-center text-gray-800 border border-gray-100">{rank}</span>
                                   <RankDelta trend={trend} rank={rank} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <TrendCard trend={trend} />
                                 </div>
                               </div>
                             );
