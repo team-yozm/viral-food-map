@@ -44,8 +44,62 @@ BRAND_SITE_HINT_URLS = {
     "베스킨라빈스": ("https://www.baskinrobbins.co.kr/",),
     "배스킨라빈스": ("https://www.baskinrobbins.co.kr/",),
     "베라": ("https://www.baskinrobbins.co.kr/",),
+    "baskinrobbins": ("https://www.baskinrobbins.co.kr/",),
     "프랭크버거": ("https://www.frankburger.co.kr/index_brand.html",),
     "frankburger": ("https://www.frankburger.co.kr/index_brand.html",),
+    "피자헛": ("https://www.pizzahut.co.kr/",),
+    "pizzahut": ("https://www.pizzahut.co.kr/",),
+    "버거킹": ("https://www.burgerking.co.kr/",),
+    "버거킹코리아": ("https://www.burgerking.co.kr/",),
+    "burgerking": ("https://www.burgerking.co.kr/",),
+    "burger king": ("https://www.burgerking.co.kr/",),
+    "맘스터치": ("https://www.momstouch.co.kr/",),
+    "momstouch": ("https://www.momstouch.co.kr/",),
+    "moms touch": ("https://www.momstouch.co.kr/",),
+    "도미노": ("https://web.dominos.co.kr/",),
+    "도미노피자": ("https://web.dominos.co.kr/",),
+    "dominos": ("https://web.dominos.co.kr/",),
+    "domino's": ("https://web.dominos.co.kr/",),
+    "스타벅스": ("https://www.starbucks.co.kr/",),
+    "스벅": ("https://www.starbucks.co.kr/",),
+    "starbucks": ("https://www.starbucks.co.kr/",),
+    "맥도날드": ("https://www.mcdonalds.co.kr/",),
+    "맥날": ("https://www.mcdonalds.co.kr/",),
+    "mcdonalds": ("https://www.mcdonalds.co.kr/",),
+    "케이에프씨": ("https://www.kfckorea.com/",),
+    "kfc": ("https://www.kfckorea.com/",),
+    "공차": ("https://www.gong-cha.co.kr/",),
+    "gongcha": ("https://www.gong-cha.co.kr/",),
+    "컴포즈": ("https://composecoffee.com/",),
+    "컴포즈커피": ("https://composecoffee.com/",),
+    "compose": ("https://composecoffee.com/",),
+    "composecoffee": ("https://composecoffee.com/",),
+    "메가커피": ("https://www.mega-mgccoffee.com/",),
+    "메가mgc": ("https://www.mega-mgccoffee.com/",),
+    "메가mgc커피": ("https://www.mega-mgccoffee.com/",),
+    "메가mgccoffee": ("https://www.mega-mgccoffee.com/",),
+    "mega": ("https://www.mega-mgccoffee.com/",),
+    "mega coffee": ("https://www.mega-mgccoffee.com/",),
+    "빽다방": ("https://paikdabang.com/",),
+    "백다방": ("https://paikdabang.com/",),
+    "paikdabang": ("https://paikdabang.com/",),
+    "푸라닭": ("https://www.puradakchicken.com/",),
+    "푸라닭치킨": ("https://www.puradakchicken.com/",),
+    "puradak": ("https://www.puradakchicken.com/",),
+    "롯데리아": ("https://www.lotteeatz.com/",),
+    "엔제리너스": ("https://www.lotteeatz.com/",),
+    "크리스피크림": ("https://www.lotteeatz.com/",),
+    "lotteria": ("https://www.lotteeatz.com/",),
+    "angelinus": ("https://www.lotteeatz.com/",),
+    "krispykreme": ("https://www.lotteeatz.com/",),
+    "서브웨이": ("https://www.subway.co.kr/",),
+    "subway": ("https://www.subway.co.kr/",),
+    "파파존스": ("https://www.pji.co.kr/",),
+    "papajohns": ("https://www.pji.co.kr/",),
+    "미스터피자": ("https://www.mrpizza.co.kr/",),
+    "mrpizza": ("https://www.mrpizza.co.kr/",),
+    "노브랜드버거": ("https://www.nobrandburger.co.kr/",),
+    "nobrandburger": ("https://www.nobrandburger.co.kr/",),
 }
 DISCOVERY_NON_FOOD_KEYWORDS = (
     "굿즈",
@@ -234,6 +288,25 @@ def _extract_search_result_urls(html: str) -> list[str]:
     return urls
 
 
+def _extract_bing_result_urls(html: str) -> list[str]:
+    soup = BeautifulSoup(html, "html.parser")
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    for link in soup.select("li.b_algo h2 a[href], .b_algo h2 a[href]"):
+        href = link.get("href")
+        if not href or not _is_supported_result_url(href):
+            continue
+
+        normalized = _normalize_url(href)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        urls.append(href)
+
+    return urls
+
+
 async def _search_candidate_urls(
     client: httpx.AsyncClient,
     *,
@@ -251,6 +324,8 @@ async def _search_candidate_urls(
     for keyword in query_keywords:
         query = f"{brand} {keyword}"
         queries.append(query)
+        extracted_urls: list[str] = []
+
         try:
             response = await client.get(
                 "https://html.duckduckgo.com/html/",
@@ -258,10 +333,23 @@ async def _search_candidate_urls(
                 headers=REQUEST_HEADERS,
             )
             response.raise_for_status()
+            extracted_urls.extend(_extract_search_result_urls(response.text))
         except httpx.HTTPError:
-            continue
+            pass
 
-        for url in _extract_search_result_urls(response.text)[:SEARCH_RESULT_LIMIT]:
+        if not extracted_urls:
+            try:
+                bing_response = await client.get(
+                    "https://www.bing.com/search",
+                    params={"q": query},
+                    headers=REQUEST_HEADERS,
+                )
+                bing_response.raise_for_status()
+                extracted_urls.extend(_extract_bing_result_urls(bing_response.text))
+            except httpx.HTTPError:
+                pass
+
+        for url in extracted_urls[:SEARCH_RESULT_LIMIT]:
             for candidate in (url, _get_root_url(url)):
                 normalized = _normalize_url(candidate)
                 if normalized in seen:
@@ -307,6 +395,9 @@ def _looks_like_builtin_brand(brand: str, source_type: str) -> NewProductSourceD
             return _clone_source(aliased)
 
     brand_key = _normalize_brand_key(brand)
+    if not brand_key:
+        return None
+
     for source in SOURCE_DEFINITIONS:
         if source.source_type != source_type:
             continue
