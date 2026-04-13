@@ -100,9 +100,9 @@ BRAND_SITE_HINT_URLS = {
     "mrpizza": ("https://www.mrpizza.co.kr/",),
     "노브랜드버거": ("https://www.nobrandburger.co.kr/",),
     "nobrandburger": ("https://www.nobrandburger.co.kr/",),
-    "두찜": ("https://www.twozzim.com/",),
-    "2찜": ("https://www.twozzim.com/",),
-    "twozzim": ("https://www.twozzim.com/",),
+    "두찜": ("https://www.twozzim.com/bbs/board.php?bo_table=news", "https://www.twozzim.com/"),
+    "2찜": ("https://www.twozzim.com/bbs/board.php?bo_table=news", "https://www.twozzim.com/"),
+    "twozzim": ("https://www.twozzim.com/bbs/board.php?bo_table=news", "https://www.twozzim.com/"),
 }
 DISCOVERY_NON_FOOD_KEYWORDS = (
     "굿즈",
