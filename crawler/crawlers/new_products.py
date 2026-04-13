@@ -36,7 +36,9 @@ EMART24_MAX_PAGES = 3
 LOTTEEATZ_MAX_ITEMS = 40
 PAIKDABANG_MAX_ITEMS = 40
 KFC_MAX_ITEMS = 20
+MAMSTOUCH_MAX_PAGES = 3
 MCDONALDS_MAX_ITEMS = 20
+DOMINOS_MAX_ITEMS = 20
 MEGA_MAX_ITEMS = 12
 STARBUCKS_DRINK_CATEGORY_CODES = (
     "W0000171",
@@ -147,6 +149,24 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         crawl_url="https://www.kfckorea.com/promotion/newMenu",
     ),
     NewProductSourceDefinition(
+        source_key="momstouch_new_menu",
+        title="맘스터치 New 메뉴",
+        brand="맘스터치",
+        source_type="franchise",
+        channel="메뉴",
+        site_url="https://www.momstouch.co.kr/menu/new.php?s_sect1=new",
+        crawl_url="https://www.momstouch.co.kr/menu/new.php?s_sect1=new",
+    ),
+    NewProductSourceDefinition(
+        source_key="dominos_new_menu",
+        title="도미노피자 NEW 메뉴",
+        brand="도미노피자",
+        source_type="franchise",
+        channel="메뉴",
+        site_url="https://web.dominos.co.kr/goods/list?dsp_ctgr=C0101",
+        crawl_url="https://web.dominos.co.kr/goods/list?dsp_ctgr=C0101",
+    ),
+    NewProductSourceDefinition(
         source_key="mcdonalds_promotion",
         title="맥도날드 프로모션",
         brand="맥도날드",
@@ -237,6 +257,22 @@ def _parse_compact_date_end(value: str | None) -> str | None:
     return date_value.replace(hour=23, minute=59, second=59).isoformat()
 
 
+def _parse_unix_seconds(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    normalized = value.strip()
+    if not normalized.isdigit():
+        return None
+
+    try:
+        parsed = datetime.fromtimestamp(int(normalized), tz=timezone.utc)
+    except (ValueError, OSError):
+        return None
+
+    return parsed.isoformat()
+
+
 def _parse_month_day_range(value: str | None) -> tuple[str | None, str | None]:
     if not value:
         return None, None
@@ -298,6 +334,18 @@ def _normalize_brand_label(label: str) -> str:
 
 def _normalize_text(value: str | None) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _extract_direct_text(element: BeautifulSoup | Any) -> str:
+    if not element:
+        return ""
+
+    direct_text = "".join(
+        text
+        for text in element.find_all(string=True, recursive=False)
+        if isinstance(text, str)
+    )
+    return _normalize_text(direct_text) or _normalize_text(element.get_text(" ", strip=True))
 
 
 def _is_recent_or_active(
@@ -469,6 +517,54 @@ def _parse_mega_uploaded_at(image_url: str | None) -> str | None:
         return None
 
     return _parse_compact_date(match.group(1))
+
+
+def _parse_momstouch_uploaded_at(image_url: str | None) -> str | None:
+    if not image_url:
+        return None
+
+    match = re.search(r"/(\d{10})-[A-Z0-9]+\.", image_url)
+    if not match:
+        return None
+
+    return _parse_unix_seconds(match.group(1))
+
+
+def _parse_dominos_uploaded_at(image_url: str | None) -> str | None:
+    if not image_url:
+        return None
+
+    match = re.search(r"/(\d{8})_[A-Za-z0-9]+\.", image_url)
+    if not match:
+        return None
+
+    return _parse_compact_date(match.group(1))
+
+
+def _extract_background_image_url(style: str | None) -> str | None:
+    if not style:
+        return None
+
+    match = re.search(r"url\((['\"]?)([^'\")]+)\1\)", style)
+    if not match:
+        return None
+
+    return match.group(2)
+
+
+def _extract_dominos_detail_url(href: str | None, *, base_url: str) -> str | None:
+    if not href:
+        return None
+
+    relative_match = re.search(r"(/goods/detail\?[^'\")]+)", href)
+    if relative_match:
+        return _build_absolute_url(base_url, relative_match.group(1))
+
+    detail_match = re.search(r"(detail\?[^'\")]+)", href)
+    if detail_match:
+        return urljoin("https://web.dominos.co.kr/goods/", detail_match.group(1))
+
+    return _build_absolute_url(base_url, href)
 
 
 def _open_ended_datetime() -> str:
@@ -746,6 +842,162 @@ async def _crawl_kfc_new_menu(
     return products
 
 
+async def _crawl_momstouch_new_menu(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    products_by_id: dict[str, ParsedNewProduct] = {}
+
+    for page in range(1, MAMSTOUCH_MAX_PAGES + 1):
+        html = await _fetch_text(client, f"{source.crawl_url}&pageNo={page}")
+        soup = BeautifulSoup(html, "html.parser")
+        items = soup.select('.menu-list li a[href*="go_view"]')
+        if not items:
+            break
+
+        added_in_page = 0
+        for item in items:
+            href = item.get("href", "")
+            match = re.search(r"go_view\('?(?P<id>\d+)'?\)", href)
+            if not match:
+                continue
+
+            external_id = match.group("id")
+            category_text = _normalize_text(
+                item.select_one(".sub-text").get_text(" ", strip=True)
+                if item.select_one(".sub-text")
+                else "신제품 메뉴"
+            )
+            title_element = item.select_one("h3")
+            name = _extract_direct_text(title_element)
+            english_name = _normalize_text(
+                title_element.select_one("span").get_text(" ", strip=True)
+                if title_element and title_element.select_one("span")
+                else ""
+            )
+            summary_elements = item.find_all("p")
+            summary = _normalize_text(summary_elements[-1].get_text(" ", strip=True)) if summary_elements else ""
+            image_url = _build_absolute_url(
+                source.site_url,
+                _extract_background_image_url(
+                    item.select_one("figure span").get("style", "")
+                    if item.select_one("figure span")
+                    else None
+                ),
+            )
+            published_at = _parse_momstouch_uploaded_at(image_url)
+            if not name or not _looks_like_food(name):
+                continue
+            if published_at and not _is_recent_or_active(published_at):
+                continue
+
+            detail_url = (
+                f"https://www.momstouch.co.kr/menu/view.php?idx={external_id}"
+            )
+            products_by_id[external_id] = ParsedNewProduct(
+                external_id=external_id,
+                name=name,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category=category_text or "신제품 메뉴",
+                summary=summary or f"{source.brand} 공식 신제품 메뉴",
+                image_url=image_url,
+                product_url=detail_url,
+                published_at=published_at,
+                available_from=published_at,
+                available_to=None,
+                is_limited=False,
+                is_food=True,
+                raw_payload={
+                    "page": page,
+                    "english_name": english_name or None,
+                    "published_at_source": "asset_upload_unix",
+                },
+            )
+            added_in_page += 1
+
+        if added_in_page == 0:
+            break
+
+    return list(products_by_id.values())
+
+
+async def _crawl_dominos_new_menu(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    soup = await _fetch_soup(client, source.crawl_url)
+    products_by_id: dict[str, ParsedNewProduct] = {}
+
+    for item in soup.select("div.menu-list ul li")[:DOMINOS_MAX_ITEMS * 4]:
+        new_label = item.select_one(".label.sale")
+        if not new_label or "NEW" not in new_label.get_text(" ", strip=True).upper():
+            continue
+
+        image_link = item.select_one(".prd-img a[href]")
+        href = image_link.get("href") if image_link else None
+        detail_url = _extract_dominos_detail_url(href, base_url=source.site_url)
+        external_id_match = re.search(r"code_01=([A-Z0-9]+)", detail_url or "")
+        if not external_id_match:
+            continue
+
+        external_id = external_id_match.group(1)
+        if external_id in products_by_id:
+            continue
+
+        image_element = item.select_one("img")
+        image_url = _build_absolute_url(
+            source.site_url,
+            (image_element.get("data-src") or image_element.get("src"))
+            if image_element
+            else None,
+        )
+        published_at = _parse_dominos_uploaded_at(image_url)
+        if published_at and not _is_recent_or_active(published_at):
+            continue
+
+        name = _extract_direct_text(item.select_one(".subject"))
+        hashtags = [
+            _normalize_text(tag.get_text(" ", strip=True))
+            for tag in item.select(".hashtag span")
+            if _normalize_text(tag.get_text(" ", strip=True))
+        ]
+        if not name or not _looks_like_food(name):
+            continue
+
+        category_heading = item.find_previous(["h3", "h4"])
+        category = (
+            _normalize_text(category_heading.get_text(" ", strip=True))
+            if category_heading
+            else "피자"
+        )
+        if "침착맨" in category or "먹어본" in category or len(category) > 18:
+            category = "피자"
+        products_by_id[external_id] = ParsedNewProduct(
+            external_id=external_id,
+            name=name,
+            brand=source.brand,
+            source_type=source.source_type,
+            channel=source.channel,
+            category=category or "피자",
+            summary=" ".join(hashtags[:2]) or f"{source.brand} 공식 NEW 메뉴",
+            image_url=image_url,
+            product_url=detail_url or source.site_url,
+            published_at=published_at,
+            available_from=published_at,
+            available_to=None,
+            is_limited=False,
+            is_food=True,
+            raw_payload={
+                "hashtags": hashtags,
+                "published_at_source": "asset_upload_ymd",
+            },
+        )
+
+    return list(products_by_id.values())
+
+
 async def _crawl_mcdonalds_promotion(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
@@ -994,6 +1246,10 @@ async def _crawl_source(
         return await _crawl_paikdabang_news(client, source)
     if source.source_key == "kfc_new_menu":
         return await _crawl_kfc_new_menu(client, source)
+    if source.source_key == "momstouch_new_menu":
+        return await _crawl_momstouch_new_menu(client, source)
+    if source.source_key == "dominos_new_menu":
+        return await _crawl_dominos_new_menu(client, source)
     if source.source_key == "mcdonalds_promotion":
         return await _crawl_mcdonalds_promotion(client, source)
     if source.source_key == "starbucks_menu":
