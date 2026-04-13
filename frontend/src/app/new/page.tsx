@@ -44,7 +44,7 @@ export const metadata: Metadata = buildMetadata({
 function normalizePeriod(period?: string): NewProductsPeriod {
   return PERIOD_OPTIONS.some((option) => option.key === period)
     ? (period as NewProductsPeriod)
-    : "7d";
+    : "30d";
 }
 
 function normalizeSource(source?: string): NewProductsSourceFilter {
@@ -59,7 +59,7 @@ function buildFilterHref(
 ) {
   const params = new URLSearchParams();
 
-  if (period !== "7d") {
+  if (period !== "30d") {
     params.set("period", period);
   }
 
@@ -90,7 +90,7 @@ function formatUpdatedAt(value: string | null) {
 }
 
 function getPeriodLabel(period: NewProductsPeriod) {
-  return PERIOD_OPTIONS.find((option) => option.key === period)?.label ?? "7일";
+  return PERIOD_OPTIONS.find((option) => option.key === period)?.label ?? "30일";
 }
 
 function getSourceLabel(source: NewProductsSourceFilter) {

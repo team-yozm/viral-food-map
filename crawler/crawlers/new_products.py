@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass
@@ -14,7 +13,10 @@ from bs4 import BeautifulSoup
 from config import settings
 from database import (
     create_new_product_crawl_run,
+    expire_new_products,
+    expire_new_products_by_source_id,
     get_new_products_by_source_id,
+    list_new_product_sources,
     update_new_product_crawl_run,
     update_new_product_source,
     upsert_new_product_source,
@@ -29,11 +31,11 @@ REQUEST_HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0 Safari/537.36"
     )
 }
-GS25_PAGE_SIZE = 8
-GS25_MAX_PAGES = 5
 EMART24_MAX_PAGES = 3
 LOTTEEATZ_MAX_ITEMS = 40
-LOTTEEATZ_NEW_KEYWORDS = ("출시", "신메뉴", "신제품", "런칭")
+PAIKDABANG_MAX_ITEMS = 40
+KFC_MAX_ITEMS = 20
+NEW_PRODUCT_KEYWORDS = ("출시", "신메뉴", "신제품", "런칭", "론칭")
 NON_FOOD_KEYWORDS = (
     "굿즈",
     "머그",
@@ -44,7 +46,7 @@ NON_FOOD_KEYWORDS = (
     "할인",
     "단체주문",
     "안내",
-    "이벤트",
+    "결과 발표",
 )
 
 
@@ -89,22 +91,31 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         crawl_url="https://www.emart24.co.kr/goods/ff",
     ),
     NewProductSourceDefinition(
-        source_key="gs25_event_goods",
-        title="GS25 행사상품",
-        brand="GS25",
-        source_type="convenience",
-        channel="행사상품",
-        site_url="https://gs25.gsretail.com/gscvs/ko/products/event-goods",
-        crawl_url="https://gs25.gsretail.com/gscvs/ko/products/event-goods-search",
-    ),
-    NewProductSourceDefinition(
         source_key="lotteeatz_launch_events",
         title="LOTTE EATZ 신제품 이벤트",
-        brand="롯데리아",
+        brand="LOTTE EATZ",
         source_type="franchise",
         channel="이벤트",
         site_url="https://www.lotteeatz.com/event/main",
         crawl_url="https://www.lotteeatz.com/event/main",
+    ),
+    NewProductSourceDefinition(
+        source_key="paikdabang_news",
+        title="빽다방 신메뉴 소식",
+        brand="빽다방",
+        source_type="franchise",
+        channel="소식",
+        site_url="https://paikdabang.com/news/",
+        crawl_url="https://paikdabang.com/news/",
+    ),
+    NewProductSourceDefinition(
+        source_key="kfc_new_menu",
+        title="KFC 신메뉴",
+        brand="KFC",
+        source_type="franchise",
+        channel="신메뉴",
+        site_url="https://www.kfckorea.com/promotion/newMenu",
+        crawl_url="https://www.kfckorea.com/promotion/newMenu",
     ),
 )
 
@@ -135,8 +146,61 @@ def _parse_dot_date(value: str | None) -> str | None:
     return _parse_datetime(value, ("%Y.%m.%d",))
 
 
-def _parse_gs25_datetime(value: str | None) -> str | None:
-    return _parse_datetime(value, ("%b %d, %Y %I:%M:%S %p",))
+def _parse_dot_date_end(value: str | None) -> str | None:
+    parsed = _parse_dot_date(value)
+    if not parsed:
+        return None
+
+    date_value = datetime.fromisoformat(parsed)
+    return date_value.replace(hour=23, minute=59, second=59).isoformat()
+
+
+def _parse_dash_date(value: str | None) -> str | None:
+    return _parse_datetime(value, ("%Y-%m-%d",))
+
+
+def _parse_month_day_range(value: str | None) -> tuple[str | None, str | None]:
+    if not value:
+        return None, None
+
+    match = re.search(
+        r"(?P<start_month>\d{1,2})\s*/\s*(?P<start_day>\d{1,2})\s*~\s*"
+        r"(?P<end_month>\d{1,2})\s*/\s*(?P<end_day>\d{1,2})",
+        value,
+    )
+    if not match:
+        return None, None
+
+    now = datetime.now(timezone.utc)
+    start_month = int(match.group("start_month"))
+    start_day = int(match.group("start_day"))
+    end_month = int(match.group("end_month"))
+    end_day = int(match.group("end_day"))
+
+    start_year = now.year
+    if start_month - now.month > 6:
+        start_year -= 1
+
+    end_year = start_year
+    if (end_month, end_day) < (start_month, start_day):
+        end_year += 1
+
+    start_at = datetime(
+        start_year,
+        start_month,
+        start_day,
+        tzinfo=timezone.utc,
+    ).isoformat()
+    end_at = datetime(
+        end_year,
+        end_month,
+        end_day,
+        23,
+        59,
+        59,
+        tzinfo=timezone.utc,
+    ).isoformat()
+    return start_at, end_at
 
 
 def _looks_like_food(name: str) -> bool:
@@ -144,15 +208,86 @@ def _looks_like_food(name: str) -> bool:
     return not any(keyword in normalized for keyword in NON_FOOD_KEYWORDS)
 
 
+def _has_new_product_keyword(text: str) -> bool:
+    return any(keyword in text for keyword in NEW_PRODUCT_KEYWORDS)
+
+
 def _normalize_brand_label(label: str) -> str:
     normalized = re.sub(r"\s+", " ", label).strip()
-    return normalized.split(" 픽업")[0].strip()
+    normalized = re.sub(r"\s+(배달.*|픽업.*|매장.*)$", "", normalized).strip()
+    return normalized
+
+
+def _is_recent_or_active(
+    published_at: str | None,
+    available_to: str | None = None,
+) -> bool:
+    if available_to and datetime.fromisoformat(available_to) >= datetime.now(timezone.utc):
+        return True
+
+    if not published_at:
+        return True
+
+    published_dt = datetime.fromisoformat(published_at)
+    return (
+        datetime.now(timezone.utc) - published_dt
+    ).days <= settings.NEW_PRODUCTS_LOOKBACK_DAYS
+
+
+def _build_absolute_url(base_url: str, maybe_relative_url: str | None) -> str | None:
+    if not maybe_relative_url:
+        return None
+    return urljoin(base_url, maybe_relative_url)
 
 
 async def _fetch_text(client: httpx.AsyncClient, url: str) -> str:
     response = await client.get(url, headers=REQUEST_HEADERS)
     response.raise_for_status()
     return response.text
+
+
+async def _fetch_soup(client: httpx.AsyncClient, url: str) -> BeautifulSoup:
+    html = await _fetch_text(client, url)
+    return BeautifulSoup(html, "html.parser")
+
+
+def _extract_first_matching_image(
+    soup: BeautifulSoup,
+    *,
+    base_url: str,
+    markers: tuple[str, ...],
+) -> str | None:
+    for image in soup.find_all("img", src=True):
+        src = image.get("src", "").strip()
+        if not src:
+            continue
+        if markers and not any(marker in src for marker in markers):
+            continue
+        return _build_absolute_url(base_url, src)
+
+    return None
+
+
+def _extract_meta_image(soup: BeautifulSoup, *, base_url: str) -> str | None:
+    meta_image = soup.select_one('meta[property="og:image"]')
+    if not meta_image:
+        return None
+
+    image_url = meta_image.get("content", "").strip()
+    return _build_absolute_url(base_url, image_url)
+
+
+def _extract_kfc_summary(soup: BeautifulSoup) -> str | None:
+    text = soup.get_text("\n", strip=True)
+    launch_menu_match = re.search(r"\*출시 메뉴:\s*([^\n*]+)", text)
+    if launch_menu_match:
+        return f"출시 메뉴: {launch_menu_match.group(1).strip()}"
+
+    launch_channel_match = re.search(r"\*출시 채널:\s*([^\n*]+)", text)
+    if launch_channel_match:
+        return f"출시 채널: {launch_channel_match.group(1).strip()}"
+
+    return None
 
 
 async def _crawl_emart24_fresh_food(
@@ -184,7 +319,10 @@ async def _crawl_emart24_fresh_food(
             if not name:
                 continue
 
-            image_url = image_element.get("src") if image_element else None
+            image_url = _build_absolute_url(
+                source.site_url,
+                image_element.get("src") if image_element else None,
+            )
             external_id = (
                 (image_url or "").rstrip("/").rsplit("/", 1)[-1]
                 or f"emart24::{page}::{name}"
@@ -222,85 +360,13 @@ async def _crawl_emart24_fresh_food(
     return products
 
 
-def _decode_gs25_payload(payload: Any) -> dict[str, Any]:
-    if isinstance(payload, str):
-        return json.loads(payload)
-    return payload
-
-
-async def _crawl_gs25_event_goods(
-    client: httpx.AsyncClient,
-    source: NewProductSourceDefinition,
-) -> list[ParsedNewProduct]:
-    products: list[ParsedNewProduct] = []
-
-    for page in range(1, GS25_MAX_PAGES + 1):
-        response = await client.get(
-            source.crawl_url,
-            params={"pageNum": page, "pageSize": GS25_PAGE_SIZE},
-            headers={**REQUEST_HEADERS, "X-Requested-With": "XMLHttpRequest"},
-        )
-        response.raise_for_status()
-
-        payload = _decode_gs25_payload(response.json())
-        results = payload.get("results") or []
-        if not results:
-            break
-
-        for item in results:
-            name = str(item.get("goodsNm") or "").strip()
-            if not name or not _looks_like_food(name):
-                continue
-
-            published_at = (
-                _parse_gs25_datetime(item.get("imageFileAppDt"))
-                or _parse_gs25_datetime(item.get("goodsStatAppDt"))
-                or _parse_gs25_datetime(item.get("priceApplyDate"))
-            )
-            if published_at:
-                published_dt = datetime.fromisoformat(published_at)
-                if (
-                    datetime.now(timezone.utc) - published_dt
-                ).days > settings.NEW_PRODUCTS_LOOKBACK_DAYS:
-                    continue
-
-            price = item.get("price")
-            event_type = str(item.get("eventTypeNm") or "").strip()
-            gift_name = str(item.get("giftGoodsNm") or "").strip()
-            summary_parts = [part for part in [event_type, f"{int(price):,}원" if price else None] if part]
-            if gift_name:
-                summary_parts.append(f"증정 {gift_name}")
-
-            products.append(
-                ParsedNewProduct(
-                    external_id=str(item.get("attFileId") or name),
-                    name=name,
-                    brand=source.brand,
-                    source_type=source.source_type,
-                    channel=source.channel,
-                    category=event_type or "행사상품",
-                    summary=" · ".join(summary_parts) or source.title,
-                    image_url=item.get("attFileNm"),
-                    product_url=source.site_url,
-                    published_at=published_at,
-                    available_from=published_at,
-                    available_to=None,
-                    is_limited=True,
-                    is_food=True,
-                    raw_payload=item,
-                )
-            )
-
-    return products
-
-
 def _parse_lotteeatz_period(period_text: str) -> tuple[str | None, str | None]:
     parts = [part.strip() for part in period_text.split("~", 1)]
     if len(parts) != 2:
         return None, None
 
     start_at = _parse_dot_date(parts[0])
-    end_at = _parse_dot_date(parts[1])
+    end_at = _parse_dot_date_end(parts[1])
     if parts[1].startswith(("2999", "9999")):
         end_at = None
 
@@ -311,8 +377,7 @@ async def _crawl_lotteeatz_launch_events(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
 ) -> list[ParsedNewProduct]:
-    html = await _fetch_text(client, source.crawl_url)
-    soup = BeautifulSoup(html, "html.parser")
+    soup = await _fetch_soup(client, source.crawl_url)
     products: list[ParsedNewProduct] = []
 
     for item in soup.select("li.grid-item")[:LOTTEEATZ_MAX_ITEMS]:
@@ -323,7 +388,7 @@ async def _crawl_lotteeatz_launch_events(
         badge_element = item.select_one('[class*="badge"]')
 
         title = title_element.get_text(" ", strip=True) if title_element else ""
-        if not title or not any(keyword in title for keyword in LOTTEEATZ_NEW_KEYWORDS):
+        if not title or not _has_new_product_keyword(title):
             continue
         if not _looks_like_food(title):
             continue
@@ -336,22 +401,27 @@ async def _crawl_lotteeatz_launch_events(
         available_from, available_to = _parse_lotteeatz_period(
             period_element.get_text(" ", strip=True) if period_element else ""
         )
+        if not _is_recent_or_active(available_from, available_to):
+            continue
 
         products.append(
             ParsedNewProduct(
                 external_id=external_id,
                 name=title,
-                brand=brand,
+                brand=brand or source.brand,
                 source_type=source.source_type,
                 channel=source.channel,
                 category="신제품 이벤트",
-                summary=f"{brand} 공식 이벤트",
-                image_url=image_element.get("src") if image_element else None,
-                product_url=urljoin(source.site_url, href) if href else source.site_url,
+                summary=f"{brand or source.brand} 공식 신제품 공지",
+                image_url=_build_absolute_url(
+                    source.site_url,
+                    image_element.get("src") if image_element else None,
+                ),
+                product_url=_build_absolute_url(source.site_url, href) or source.site_url,
                 published_at=available_from,
                 available_from=available_from,
                 available_to=available_to,
-                is_limited=True,
+                is_limited=available_to is not None,
                 is_food=True,
                 raw_payload={
                     "period": period_element.get_text(" ", strip=True)
@@ -367,16 +437,142 @@ async def _crawl_lotteeatz_launch_events(
     return products
 
 
+async def _crawl_paikdabang_news(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    soup = await _fetch_soup(client, source.crawl_url)
+    products: list[ParsedNewProduct] = []
+
+    for row in soup.select(".board_wrap table tbody tr")[:PAIKDABANG_MAX_ITEMS]:
+        cells = row.find_all("td")
+        if len(cells) < 4:
+            continue
+
+        category_text = cells[1].get_text(" ", strip=True)
+        title_link = cells[2].find("a", href=True)
+        title = title_link.get_text(" ", strip=True) if title_link else ""
+        published_at = _parse_dash_date(cells[3].get_text(" ", strip=True))
+        if category_text != "소식":
+            continue
+        if not title or not _has_new_product_keyword(title):
+            continue
+        if not _looks_like_food(title):
+            continue
+        if not _is_recent_or_active(published_at):
+            continue
+
+        detail_url = _build_absolute_url(source.site_url, title_link.get("href")) if title_link else None
+        detail_soup = await _fetch_soup(client, detail_url) if detail_url else None
+        image_url = (
+            _extract_first_matching_image(
+                detail_soup,
+                base_url=detail_url or source.site_url,
+                markers=("/wp-content/uploads/",),
+            )
+            if detail_soup
+            else None
+        )
+        external_id = (
+            (detail_url or "").rstrip("/").rsplit("/", 1)[-1]
+            or f"paikdabang::{title}"
+        )
+
+        products.append(
+            ParsedNewProduct(
+                external_id=external_id,
+                name=title,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category="신메뉴 소식",
+                summary=f"{source.brand} 공식 소식",
+                image_url=image_url,
+                product_url=detail_url or source.site_url,
+                published_at=published_at,
+                available_from=published_at,
+                available_to=None,
+                is_limited=False,
+                is_food=True,
+                raw_payload={
+                    "row_category": category_text,
+                    "listed_at": cells[3].get_text(" ", strip=True),
+                },
+            )
+        )
+
+    return products
+
+
+async def _crawl_kfc_new_menu(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    soup = await _fetch_soup(client, source.crawl_url)
+    products: list[ParsedNewProduct] = []
+
+    for item in soup.select('.list li a[href*="/promotion/newMenu/detail/"]')[:KFC_MAX_ITEMS]:
+        title_element = item.select_one(".title")
+        date_element = item.select_one(".date")
+
+        title = title_element.get_text(" ", strip=True) if title_element else ""
+        period_text = date_element.get_text(" ", strip=True) if date_element else ""
+        if not title or not _has_new_product_keyword(title):
+            continue
+        if not _looks_like_food(title):
+            continue
+
+        available_from, available_to = _parse_month_day_range(period_text)
+        if not _is_recent_or_active(available_from, available_to):
+            continue
+
+        detail_url = _build_absolute_url(source.site_url, item.get("href")) or source.site_url
+        detail_soup = await _fetch_soup(client, detail_url)
+        image_url = _extract_meta_image(detail_soup, base_url=detail_url) or _extract_first_matching_image(
+            detail_soup,
+            base_url=detail_url,
+            markers=("/nas/event/",),
+        )
+        summary = _extract_kfc_summary(detail_soup) or f"{source.brand} 공식 신메뉴"
+        external_id = detail_url.rstrip("/").rsplit("/", 1)[-1] or title
+
+        products.append(
+            ParsedNewProduct(
+                external_id=external_id,
+                name=title,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category="신메뉴",
+                summary=summary,
+                image_url=image_url,
+                product_url=detail_url,
+                published_at=available_from,
+                available_from=available_from,
+                available_to=available_to,
+                is_limited=available_to is not None,
+                is_food=True,
+                raw_payload={
+                    "listed_period": period_text,
+                },
+            )
+        )
+
+    return products
+
+
 async def _crawl_source(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
 ) -> list[ParsedNewProduct]:
     if source.source_key == "emart24_fresh_food":
         return await _crawl_emart24_fresh_food(client, source)
-    if source.source_key == "gs25_event_goods":
-        return await _crawl_gs25_event_goods(client, source)
     if source.source_key == "lotteeatz_launch_events":
         return await _crawl_lotteeatz_launch_events(client, source)
+    if source.source_key == "paikdabang_news":
+        return await _crawl_paikdabang_news(client, source)
+    if source.source_key == "kfc_new_menu":
+        return await _crawl_kfc_new_menu(client, source)
     return []
 
 
@@ -393,6 +589,25 @@ def _build_source_payload(source: NewProductSourceDefinition) -> dict[str, Any]:
     }
 
 
+def _deactivate_retired_sources(active_source_keys: set[str], timestamp: str) -> None:
+    for source_row in list_new_product_sources():
+        source_key = str(source_row.get("source_key") or "").strip()
+        source_id = str(source_row.get("id") or "").strip()
+        if not source_key or not source_id:
+            continue
+        if source_key in active_source_keys:
+            continue
+
+        expire_new_products_by_source_id(source_id)
+        update_new_product_source(
+            source_id,
+            {
+                "is_active": False,
+                "last_crawled_at": timestamp,
+            },
+        )
+
+
 async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
     started_at = _utc_now_iso()
     summary: dict[str, Any] = {
@@ -403,6 +618,9 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
         "visible_products": 0,
         "source_summaries": [],
     }
+
+    active_source_keys = {source.source_key for source in SOURCE_DEFINITIONS}
+    _deactivate_retired_sources(active_source_keys, started_at)
 
     timeout = httpx.Timeout(30.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -436,6 +654,7 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
                 }
                 existing_ids = set(existing_lookup)
                 parsed_products = await _crawl_source(client, source)
+                current_external_ids = {product.external_id for product in parsed_products}
                 payloads = [
                     {
                         "source_id": source_id,
@@ -454,9 +673,10 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
                         "last_seen_at": started_at,
                         "is_food": product.is_food,
                         "is_limited": product.is_limited,
-                        "status": str(
-                            existing_lookup.get(product.external_id, {}).get("status")
-                            or "visible"
+                        "status": (
+                            "hidden"
+                            if existing_lookup.get(product.external_id, {}).get("status") == "hidden"
+                            else "visible"
                         ),
                         "raw_payload": product.raw_payload,
                     }
@@ -464,16 +684,26 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
                     if product.is_food
                 ]
 
+                expired_product_ids = [
+                    str(row.get("id"))
+                    for row in existing_rows
+                    if row.get("id")
+                    and row.get("status") == "visible"
+                    and str(row.get("external_id") or "") not in current_external_ids
+                ]
+
                 inserted_count = sum(
                     1 for payload in payloads if payload["external_id"] not in existing_ids
                 )
                 updated_count = max(len(payloads) - inserted_count, 0)
                 upsert_new_products(payloads)
+                expire_new_products(expired_product_ids)
 
                 finished_at = _utc_now_iso()
                 update_new_product_source(
                     source_id,
                     {
+                        "is_active": True,
                         "last_crawled_at": finished_at,
                         "last_success_at": finished_at,
                     },
@@ -490,6 +720,7 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
                             "summary": {
                                 "title": source.title,
                                 "source_type": source.source_type,
+                                "expired": len(expired_product_ids),
                             },
                             "finished_at": finished_at,
                         },
@@ -501,6 +732,7 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
                     "fetched": len(parsed_products),
                     "inserted": inserted_count,
                     "updated": updated_count,
+                    "expired": len(expired_product_ids),
                     "visible": len(payloads),
                 }
                 summary["sources"] += 1

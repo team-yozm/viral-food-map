@@ -810,6 +810,17 @@ def update_new_product_source(
     return data[0] if data else None
 
 
+def list_new_product_sources() -> list[dict[str, Any]]:
+    return (
+        get_client()
+        .table("new_product_sources")
+        .select("id, source_key, is_active")
+        .execute()
+        .data
+        or []
+    )
+
+
 def get_new_products_by_source_id(source_id: str) -> list[dict[str, Any]]:
     return (
         get_client()
@@ -829,6 +840,32 @@ def upsert_new_products(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         get_client()
         .table("new_products")
         .upsert(rows, on_conflict="source_id,external_id")
+        .execute()
+    )
+    return result.data or []
+
+
+def expire_new_products(product_ids: list[str]) -> list[dict[str, Any]]:
+    if not product_ids:
+        return []
+
+    result = (
+        get_client()
+        .table("new_products")
+        .update({"status": "expired"})
+        .in_("id", product_ids)
+        .execute()
+    )
+    return result.data or []
+
+
+def expire_new_products_by_source_id(source_id: str) -> list[dict[str, Any]]:
+    result = (
+        get_client()
+        .table("new_products")
+        .update({"status": "expired"})
+        .eq("source_id", source_id)
+        .neq("status", "expired")
         .execute()
     )
     return result.data or []

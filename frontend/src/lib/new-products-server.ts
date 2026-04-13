@@ -10,6 +10,7 @@ export interface NewProductListItem extends NewProduct {
     "id" | "source_key" | "title" | "brand" | "source_type" | "channel" | "site_url"
   > | null;
   effective_at: string;
+  filter_at: string | null;
   date_label: "공개일" | "첫 수집";
 }
 
@@ -32,12 +33,22 @@ const PERIOD_DAYS: Record<Exclude<NewProductsPeriod, "all">, number> = {
   "30d": 30,
 };
 
-function getEffectiveDate(product: Pick<NewProduct, "published_at" | "first_seen_at">) {
-  return product.published_at || product.first_seen_at;
+function getFilterDate(
+  product: Pick<NewProduct, "published_at" | "available_from">
+): string | null {
+  return product.published_at || product.available_from || null;
 }
 
-function getDateLabel(product: Pick<NewProduct, "published_at">): "공개일" | "첫 수집" {
-  return product.published_at ? "공개일" : "첫 수집";
+function getEffectiveDate(
+  product: Pick<NewProduct, "published_at" | "available_from" | "first_seen_at">
+) {
+  return getFilterDate(product) || product.first_seen_at;
+}
+
+function getDateLabel(
+  product: Pick<NewProduct, "published_at" | "available_from">
+): "공개일" | "첫 수집" {
+  return getFilterDate(product) ? "공개일" : "첫 수집";
 }
 
 function sortByEffectiveDateDesc(a: NewProductListItem, b: NewProductListItem) {
@@ -78,16 +89,19 @@ export async function getNewProductsPageData({
   const cutoffMs =
     period === "all" ? null : now - PERIOD_DAYS[period] * 24 * 60 * 60 * 1000;
 
-  const mapped = ((data as (NewProduct & {
+  const rows = ((data as (NewProduct & {
     source?: Pick<
       NewProductSource,
       "id" | "source_key" | "title" | "brand" | "source_type" | "channel" | "site_url"
     > | null;
-  })[]) ?? [])
+  })[]) ?? []);
+
+  const mapped = rows
     .map((product) => ({
       ...product,
       source: product.source ?? null,
       effective_at: getEffectiveDate(product),
+      filter_at: getFilterDate(product),
       date_label: getDateLabel(product),
     }))
     .filter((product) => {
@@ -99,7 +113,11 @@ export async function getNewProductsPageData({
         return true;
       }
 
-      return new Date(product.effective_at).getTime() >= cutoffMs;
+      if (!product.filter_at) {
+        return false;
+      }
+
+      return new Date(product.filter_at).getTime() >= cutoffMs;
     })
     .sort(sortByEffectiveDateDesc);
 
@@ -115,6 +133,6 @@ export async function getNewProductsPageData({
     products: mapped,
     sourceCounts,
     totalCount: mapped.length,
-    lastUpdated: mapped[0]?.last_seen_at ?? null,
+    lastUpdated: rows[0]?.last_seen_at ?? null,
   };
 }
