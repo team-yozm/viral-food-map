@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -35,6 +36,34 @@ EMART24_MAX_PAGES = 3
 LOTTEEATZ_MAX_ITEMS = 40
 PAIKDABANG_MAX_ITEMS = 40
 KFC_MAX_ITEMS = 20
+MCDONALDS_MAX_ITEMS = 20
+MEGA_MAX_ITEMS = 12
+STARBUCKS_DRINK_CATEGORY_CODES = (
+    "W0000171",
+    "W0000060",
+    "W0000003",
+    "W0000004",
+    "W0000005",
+    "W0000422",
+    "W0000061",
+    "W0000075",
+    "W0000053",
+    "W0000062",
+)
+STARBUCKS_FOOD_CATEGORY_CODES = (
+    "W0000013",
+    "W0000032",
+    "W0000033",
+    "W0000054",
+    "W0000055",
+    "W0000056",
+    "W0000064",
+    "W0000554",
+    "W0000126",
+    "W0000074",
+    "W0000347",
+)
+STARBUCKS_CATEGORY_CODES = STARBUCKS_DRINK_CATEGORY_CODES + STARBUCKS_FOOD_CATEGORY_CODES
 NEW_PRODUCT_KEYWORDS = ("출시", "신메뉴", "신제품", "런칭", "론칭")
 NON_FOOD_KEYWORDS = (
     "굿즈",
@@ -117,6 +146,33 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         site_url="https://www.kfckorea.com/promotion/newMenu",
         crawl_url="https://www.kfckorea.com/promotion/newMenu",
     ),
+    NewProductSourceDefinition(
+        source_key="mcdonalds_promotion",
+        title="맥도날드 프로모션",
+        brand="맥도날드",
+        source_type="franchise",
+        channel="프로모션",
+        site_url="https://www.mcdonalds.co.kr/kor/promotion/list",
+        crawl_url="https://www.mcdonalds.co.kr/kor/promotion/list",
+    ),
+    NewProductSourceDefinition(
+        source_key="starbucks_menu",
+        title="스타벅스 신규 메뉴",
+        brand="스타벅스",
+        source_type="franchise",
+        channel="메뉴",
+        site_url="https://www.starbucks.co.kr/menu/drink_list.do",
+        crawl_url="https://www.starbucks.co.kr/menu/drink_list.do",
+    ),
+    NewProductSourceDefinition(
+        source_key="mega_seasonal_menu",
+        title="메가MGC 시즌 신메뉴",
+        brand="메가MGC커피",
+        source_type="franchise",
+        channel="메인",
+        site_url="https://www.mega-mgccoffee.com/",
+        crawl_url="https://www.mega-mgccoffee.com/",
+    ),
 )
 
 
@@ -157,6 +213,28 @@ def _parse_dot_date_end(value: str | None) -> str | None:
 
 def _parse_dash_date(value: str | None) -> str | None:
     return _parse_datetime(value, ("%Y-%m-%d",))
+
+
+def _parse_dash_date_end(value: str | None) -> str | None:
+    parsed = _parse_dash_date(value)
+    if not parsed:
+        return None
+
+    date_value = datetime.fromisoformat(parsed)
+    return date_value.replace(hour=23, minute=59, second=59).isoformat()
+
+
+def _parse_compact_date(value: str | None) -> str | None:
+    return _parse_datetime(value, ("%Y%m%d",))
+
+
+def _parse_compact_date_end(value: str | None) -> str | None:
+    parsed = _parse_compact_date(value)
+    if not parsed:
+        return None
+
+    date_value = datetime.fromisoformat(parsed)
+    return date_value.replace(hour=23, minute=59, second=59).isoformat()
 
 
 def _parse_month_day_range(value: str | None) -> tuple[str | None, str | None]:
@@ -216,6 +294,10 @@ def _normalize_brand_label(label: str) -> str:
     normalized = re.sub(r"\s+", " ", label).strip()
     normalized = re.sub(r"\s+(배달.*|픽업.*|매장.*)$", "", normalized).strip()
     return normalized
+
+
+def _normalize_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
 
 
 def _is_recent_or_active(
@@ -288,6 +370,109 @@ def _extract_kfc_summary(soup: BeautifulSoup) -> str | None:
         return f"출시 채널: {launch_channel_match.group(1).strip()}"
 
     return None
+
+
+def _extract_text_lines_from_html(content_html: str | None) -> list[str]:
+    if not content_html:
+        return []
+
+    soup = BeautifulSoup(content_html, "html.parser")
+    text = soup.get_text("\n", strip=True)
+    return [
+        normalized
+        for line in text.splitlines()
+        if (normalized := _normalize_text(line))
+    ]
+
+
+def _extract_mcdonalds_summary(content_html: str | None) -> str | None:
+    new_product_lines: list[str] = []
+    for line in _extract_text_lines_from_html(content_html):
+        if "신제품" not in line:
+            continue
+
+        summary_line = _normalize_text(line.replace("신제품", ""))
+        if not summary_line:
+            continue
+        if summary_line in new_product_lines:
+            continue
+        new_product_lines.append(summary_line)
+
+    if new_product_lines:
+        return f"출시 메뉴: {' · '.join(new_product_lines[:3])}"
+
+    return None
+
+
+def _resolve_nuxt_reference(
+    value: Any,
+    root: list[Any],
+    cache: dict[int, Any],
+    stack: set[int] | None = None,
+) -> Any:
+    if isinstance(value, bool) or value is None:
+        return value
+
+    if stack is None:
+        stack = set()
+
+    if isinstance(value, int) and 0 <= value < len(root):
+        if value in cache:
+            return cache[value]
+        if value in stack:
+            return root[value]
+
+        stack.add(value)
+        resolved = _resolve_nuxt_reference(root[value], root, cache, stack)
+        stack.remove(value)
+        cache[value] = resolved
+        return resolved
+
+    if isinstance(value, list):
+        return [_resolve_nuxt_reference(item, root, cache, stack) for item in value]
+
+    if isinstance(value, dict):
+        return {
+            key: _resolve_nuxt_reference(item, root, cache, stack)
+            for key, item in value.items()
+        }
+
+    return value
+
+
+def _extract_mcdonalds_promotions(html: str) -> list[dict[str, Any]]:
+    soup = BeautifulSoup(html, "html.parser")
+    payload_element = soup.select_one("#__NUXT_DATA__")
+    if not payload_element:
+        return []
+
+    payload = json.loads(payload_element.get_text())
+    if not isinstance(payload, list) or len(payload) < 4:
+        return []
+
+    promotion_ref = payload[3].get("promotionData") if isinstance(payload[3], dict) else None
+    if promotion_ref is None:
+        return []
+
+    resolved = _resolve_nuxt_reference(promotion_ref, payload, cache={})
+    result_object = resolved.get("resultObject") if isinstance(resolved, dict) else None
+    items = result_object.get("list") if isinstance(result_object, dict) else None
+    return items if isinstance(items, list) else []
+
+
+def _parse_mega_uploaded_at(image_url: str | None) -> str | None:
+    if not image_url:
+        return None
+
+    match = re.search(r"/(\d{8})\d{6}_", image_url)
+    if not match:
+        return None
+
+    return _parse_compact_date(match.group(1))
+
+
+def _open_ended_datetime() -> str:
+    return datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc).isoformat()
 
 
 async def _crawl_emart24_fresh_food(
@@ -561,6 +746,242 @@ async def _crawl_kfc_new_menu(
     return products
 
 
+async def _crawl_mcdonalds_promotion(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    html = await _fetch_text(client, source.crawl_url)
+    products: list[ParsedNewProduct] = []
+
+    for item in _extract_mcdonalds_promotions(html)[:MCDONALDS_MAX_ITEMS]:
+        title = BeautifulSoup(str(item.get("title") or ""), "html.parser").get_text(
+            " ",
+            strip=True,
+        )
+        content_html = str(item.get("pcKorContent") or "")
+        content_text = _normalize_text(
+            BeautifulSoup(content_html, "html.parser").get_text(" ", strip=True)
+        )
+        code = _normalize_text(str(item.get("code") or ""))
+        detail_url = (
+            f"https://www.mcdonalds.co.kr/kor/promotion/detail/{code}"
+            if code
+            else source.site_url
+        )
+        image_url = _build_absolute_url(source.site_url, str(item.get("pcKorImageUrl") or ""))
+        extracted_summary = _extract_mcdonalds_summary(content_html)
+        combined_text = f"{title} {extracted_summary or ''} {content_text}".strip()
+        if not title or not _looks_like_food(f"{title} {extracted_summary or ''}"):
+            continue
+        if "NEW" not in combined_text.upper() and not _has_new_product_keyword(combined_text):
+            continue
+
+        published_at = _parse_dash_date(
+            str(item.get("promotionStartDay") or item.get("regDate") or "")
+        )
+        end_day = str(item.get("promotionEndDay") or "").strip()
+        is_open_ended = end_day.startswith("9999")
+        available_to = _open_ended_datetime() if is_open_ended else _parse_dash_date_end(end_day)
+        if not _is_recent_or_active(published_at, available_to):
+            continue
+        summary = extracted_summary or f"{source.brand} 공식 신제품 프로모션"
+
+        products.append(
+            ParsedNewProduct(
+                external_id=code or str(item.get("seq") or title),
+                name=title,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category="프로모션",
+                summary=summary,
+                image_url=image_url,
+                product_url=detail_url,
+                published_at=published_at,
+                available_from=published_at,
+                available_to=available_to,
+                is_limited=available_to is not None and not is_open_ended,
+                is_food=True,
+                raw_payload={
+                    "seq": item.get("seq"),
+                    "reg_date": item.get("regDate"),
+                    "promotion_end_day": end_day or None,
+                },
+            )
+        )
+
+    return products
+
+
+async def _crawl_starbucks_menu(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    products_by_id: dict[str, ParsedNewProduct] = {}
+
+    for category_code in STARBUCKS_CATEGORY_CODES:
+        response = await client.post(
+            f"https://www.starbucks.co.kr/upload/json/menu/{category_code}.js",
+            data={
+                "CATE_CD": category_code,
+                "SOLD_OUT": "1",
+            },
+            headers={
+                **REQUEST_HEADERS,
+                "Referer": source.crawl_url,
+            },
+        )
+        response.raise_for_status()
+        items = response.json().get("list") or []
+
+        for item in items:
+            external_id = _normalize_text(str(item.get("product_CD") or ""))
+            name = _normalize_text(str(item.get("product_NM") or ""))
+            if not external_id or not name:
+                continue
+            if not _looks_like_food(name):
+                continue
+
+            published_at = _parse_compact_date(str(item.get("new_SDATE") or ""))
+            available_to = _parse_compact_date_end(str(item.get("new_EDATE") or ""))
+            if item.get("newicon") != "Y" and not published_at:
+                continue
+            if not _is_recent_or_active(published_at, available_to):
+                continue
+
+            category = _normalize_text(
+                str(item.get("cate_NAME") or item.get("sell_CAT") or "신규 메뉴")
+            ) or "신규 메뉴"
+            summary = _normalize_text(str(item.get("content") or ""))
+            listing_url = (
+                "https://www.starbucks.co.kr/menu/food_list.do"
+                if category_code in STARBUCKS_FOOD_CATEGORY_CODES
+                else source.crawl_url
+            )
+
+            parsed_product = ParsedNewProduct(
+                external_id=external_id,
+                name=name,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category=category,
+                summary=summary or f"{category} · {source.brand} 신규 메뉴",
+                image_url=_build_absolute_url(
+                    source.site_url,
+                    str(item.get("file_PATH") or ""),
+                ),
+                product_url=listing_url,
+                published_at=published_at,
+                available_from=published_at,
+                available_to=available_to,
+                is_limited=available_to is not None,
+                is_food=True,
+                raw_payload={
+                    "category_code": category_code,
+                    "newicon": item.get("newicon"),
+                    "new_sdate": item.get("new_SDATE"),
+                    "new_edate": item.get("new_EDATE"),
+                },
+            )
+
+            existing = products_by_id.get(external_id)
+            if not existing:
+                products_by_id[external_id] = parsed_product
+                continue
+
+            existing_published_at = existing.published_at or ""
+            current_published_at = parsed_product.published_at or ""
+            if current_published_at > existing_published_at:
+                products_by_id[external_id] = parsed_product
+
+    return list(products_by_id.values())
+
+
+async def _crawl_mega_seasonal_menu(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    soup = await _fetch_soup(client, source.crawl_url)
+    season_title_element = next(
+        (
+            element
+            for element in soup.select(".cont_title_info")
+            if "신메뉴" in element.get_text(" ", strip=True)
+        ),
+        None,
+    )
+    if not season_title_element:
+        return []
+
+    season_header_item = season_title_element.find_parent("li")
+    products_item = season_header_item.find_next_sibling("li") if season_header_item else None
+    if not season_header_item or not products_item:
+        return []
+
+    season_label = _normalize_text(season_title_element.get_text(" ", strip=True))
+    campaign_title = _normalize_text(
+        season_header_item.select_one(".cont_title_bg").get_text(" ", strip=True)
+        if season_header_item.select_one(".cont_title_bg")
+        else ""
+    )
+    campaign_intro = _normalize_text(
+        season_header_item.select_one(".cont_text_title b").get_text(" ", strip=True)
+        if season_header_item.select_one(".cont_text_title b")
+        else ""
+    )
+
+    products: list[ParsedNewProduct] = []
+    for slide in products_item.select(".swiper-slide")[:MEGA_MAX_ITEMS]:
+        name_element = slide.select_one(".cont_text_title b")
+        summary_element = slide.select_one(".text2")
+        image_element = slide.select_one("img")
+
+        name = _normalize_text(name_element.get_text(" ", strip=True) if name_element else "")
+        if not name or not _looks_like_food(name):
+            continue
+
+        image_url = _build_absolute_url(
+            source.site_url,
+            image_element.get("src") if image_element else None,
+        )
+        inferred_uploaded_at = _parse_mega_uploaded_at(image_url)
+        external_id = (
+            (image_url or "").rstrip("/").rsplit("/", 1)[-1].split("?", 1)[0]
+            or f"mega::{name}"
+        )
+
+        products.append(
+            ParsedNewProduct(
+                external_id=external_id,
+                name=name,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category="시즌 신메뉴",
+                summary=_normalize_text(
+                    summary_element.get_text(" ", strip=True) if summary_element else ""
+                )
+                or f"{season_label} · {campaign_title or source.brand}",
+                image_url=image_url,
+                product_url="https://www.mega-mgccoffee.com/menu/",
+                published_at=None,
+                available_from=None,
+                available_to=None,
+                is_limited=True,
+                is_food=True,
+                raw_payload={
+                    "season_label": season_label,
+                    "campaign_title": campaign_title or None,
+                    "campaign_intro": campaign_intro or None,
+                    "inferred_uploaded_at": inferred_uploaded_at,
+                },
+            )
+        )
+
+    return products
+
+
 async def _crawl_source(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
@@ -573,6 +994,12 @@ async def _crawl_source(
         return await _crawl_paikdabang_news(client, source)
     if source.source_key == "kfc_new_menu":
         return await _crawl_kfc_new_menu(client, source)
+    if source.source_key == "mcdonalds_promotion":
+        return await _crawl_mcdonalds_promotion(client, source)
+    if source.source_key == "starbucks_menu":
+        return await _crawl_starbucks_menu(client, source)
+    if source.source_key == "mega_seasonal_menu":
+        return await _crawl_mega_seasonal_menu(client, source)
     return []
 
 
