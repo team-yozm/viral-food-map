@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 
+import { shouldUseUnoptimizedImage } from "@/lib/image-optimization";
 import type { NewProductListItem } from "@/lib/new-products-server";
 
 interface NewProductCardProps {
@@ -34,6 +35,7 @@ function buildSummary(product: NewProductListItem) {
 
 export default function NewProductCard({ product }: NewProductCardProps) {
   const officialUrl = product.product_url || product.source?.site_url || null;
+  const useUnoptimizedImage = shouldUseUnoptimizedImage(product.image_url);
 
   const imageFallback = (
     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary to-[#8BACD8] text-4xl text-white">
@@ -50,6 +52,7 @@ export default function NewProductCard({ product }: NewProductCardProps) {
             alt={product.name}
             fill
             sizes="(max-width: 512px) 100vw, 512px"
+            unoptimized={useUnoptimizedImage}
             className="object-cover"
           />
         ) : (

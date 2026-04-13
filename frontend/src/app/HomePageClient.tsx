@@ -20,6 +20,7 @@ import {
   sendYomechuFeedback,
 } from "@/lib/crawler";
 import { openExternalUrl } from "@/lib/external-links";
+import { shouldUseUnoptimizedImage } from "@/lib/image-optimization";
 import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
 import { DEFAULT_MAP_CENTER, hasUsableCoordinates } from "@/lib/location";
 import { SITE_URL } from "@/lib/site";
@@ -721,6 +722,7 @@ export default function HomePageClient({
                                     alt={topTrend.name}
                                     fill
                                     sizes="(max-width: 512px) 100vw, 512px"
+                                    unoptimized={shouldUseUnoptimizedImage(topTrend.image_url)}
                                     className="object-cover"
                                     priority
                                   />
