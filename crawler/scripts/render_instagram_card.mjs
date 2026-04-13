@@ -101,53 +101,6 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-function buildFrameMask(frame) {
-  return Buffer.from(`
-    <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
-      <rect
-        x="${frame.x}"
-        y="${frame.y}"
-        width="${frame.width}"
-        height="${frame.height}"
-        rx="${frame.radius}"
-        ry="${frame.radius}"
-        fill="#ffffff"
-      />
-    </svg>
-  `);
-}
-
-function buildBaseBackground(colors) {
-  return Buffer.from(`
-    <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${colors.backgroundTop}" />
-          <stop offset="100%" stop-color="${colors.backgroundBottom}" />
-        </linearGradient>
-      </defs>
-      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#bg)" />
-    </svg>
-  `);
-}
-
-function buildShadowLayer(frame, colors) {
-  return Buffer.from(`
-    <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
-      <rect
-        x="${frame.x + 8}"
-        y="${frame.y + 12}"
-        width="${frame.width}"
-        height="${frame.height}"
-        rx="${frame.radius}"
-        ry="${frame.radius}"
-        fill="${colors.shadow}"
-        opacity="0.46"
-      />
-    </svg>
-  `);
-}
-
 function validateImageUrl(rawUrl) {
   const parsed = new URL(rawUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
@@ -168,7 +121,7 @@ function validateImageUrl(rawUrl) {
   }
 }
 
-async function fetchPhotoBuffer(imageUrl, frame) {
+async function fetchPhotoBuffer(imageUrl) {
   if (!imageUrl) {
     return null;
   }
@@ -184,8 +137,8 @@ async function fetchPhotoBuffer(imageUrl, frame) {
 
   return sharp(Buffer.from(arrayBuffer))
     .resize({
-      width: frame.width,
-      height: frame.height,
+      width: CANVAS_SIZE,
+      height: CANVAS_SIZE,
       fit: "cover",
       position: sharp.strategy.attention,
     })
@@ -193,79 +146,56 @@ async function fetchPhotoBuffer(imageUrl, frame) {
     .toBuffer();
 }
 
-async function buildPhotoLayer(photoBuffer, frame, colors) {
-  if (!photoBuffer) {
-    return null;
-  }
-
-  const frameMask = await sharp({
-    create: {
-      width: CANVAS_SIZE,
-      height: CANVAS_SIZE,
-      channels: 4,
-      background: colors.backgroundTop,
-    },
-  })
-    .composite([
-      {
-        input: buildFrameMask(frame),
-        top: 0,
-        left: 0,
-        blend: "dest-in",
-      },
-    ])
-    .png()
-    .toBuffer();
-
-  return sharp({
-    create: {
-      width: CANVAS_SIZE,
-      height: CANVAS_SIZE,
-      channels: 4,
-      background: colors.backgroundTop,
-    },
-  })
-    .composite([
-      {
-        input: photoBuffer,
-        top: frame.y,
-        left: frame.x,
-      },
-      {
-        input: frameMask,
-        top: 0,
-        left: 0,
-        blend: "dest-in",
-      },
-    ])
-    .png()
-    .toBuffer();
-}
-
-function buildFallbackPhotoSvg(frame, colors) {
+function buildBaseBackground(colors) {
   return Buffer.from(`
     <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="fallbackPhoto" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${colors.fallbackTop}" />
-          <stop offset="100%" stop-color="${colors.fallbackBottom}" />
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${colors.bgTop}" />
+          <stop offset="100%" stop-color="${colors.bgBottom}" />
         </linearGradient>
       </defs>
-      <rect
-        x="${frame.x}"
-        y="${frame.y}"
-        width="${frame.width}"
-        height="${frame.height}"
-        rx="${frame.radius}"
-        ry="${frame.radius}"
-        fill="url(#fallbackPhoto)"
-      />
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#bg)" />
     </svg>
   `);
 }
 
-function buildOverlaySvg(payload, fontCss, colors, frame, brandChip, hasPhoto) {
-  const eyebrow = payload.eyebrow || "\uC624\uB298\uC758 \uAE09\uC0C1\uC2B9 \uC74C\uC2DD";
+function buildFallbackPhotoSvg(colors) {
+  return Buffer.from(`
+    <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="fallback" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${colors.fallbackTop}" />
+          <stop offset="100%" stop-color="${colors.fallbackBottom}" />
+        </linearGradient>
+      </defs>
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#fallback)" />
+    </svg>
+  `);
+}
+
+function buildGradientOverlay(colors) {
+  return Buffer.from(`
+    <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="topV" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="${colors.overlayDark}" stop-opacity="0.55"/>
+          <stop offset="18%" stop-color="${colors.overlayDark}" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="botV" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="${colors.overlayDark}" stop-opacity="0"/>
+          <stop offset="48%" stop-color="${colors.overlayDark}" stop-opacity="0"/>
+          <stop offset="72%" stop-color="${colors.overlayDark}" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="${colors.overlayDark}" stop-opacity="0.92"/>
+        </linearGradient>
+      </defs>
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#topV)"/>
+      <rect width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" fill="url(#botV)"/>
+    </svg>
+  `);
+}
+
+function buildOverlaySvg(payload, fontCss, colors) {
   const badge =
     payload.badge ||
     (payload.status === "active" ? "\uC778\uAE30" : "\uAE09\uC0C1\uC2B9");
@@ -273,8 +203,29 @@ function buildOverlaySvg(payload, fontCss, colors, frame, brandChip, hasPhoto) {
     payload.subtitle ||
     `${payload.category || "\uAC04\uC2DD"} \uCE74\uD14C\uACE0\uB9AC\uC5D0\uC11C \uAC80\uC0C9\uB7C9\uC774 \uC624\uB978 \uBA54\uB274\uC608\uC694.`;
   const title = payload.title;
-  const photoFadeOpacity = hasPhoto ? 0.72 : 0.16;
-  const panelFillOpacity = hasPhoto ? 0.58 : 0.82;
+  const brandLabel = payload.brandLabel || "\uC694\uC998\uBB50\uBA39";
+
+  const pad = 56;
+
+  const badgeH = 46;
+  const badgeX = pad;
+  const badgeY = 52;
+  const badgeRx = badgeH / 2;
+  const dotR = 5;
+  const dotCx = badgeX + 20 + dotR;
+  const dotCy = badgeY + badgeH / 2;
+  const badgeTextX = dotCx + dotR + 10;
+  const badgeTextY = badgeY + 30;
+  const badgeW = 20 + dotR * 2 + 10 + badge.length * 24 + 20;
+
+  const chipH = 46;
+  const chipRx = chipH / 2;
+  const chipPadX = 24;
+  const chipW = chipPadX * 2 + brandLabel.length * 24;
+  const chipX = CANVAS_SIZE - pad - chipW;
+  const chipY = 52;
+  const chipTextX = chipX + chipW / 2;
+  const chipTextY = chipY + 30;
 
   return Buffer.from(`
     <svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" viewBox="0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
@@ -285,95 +236,58 @@ function buildOverlaySvg(payload, fontCss, colors, frame, brandChip, hasPhoto) {
             font-family: 'RendererSans', 'Malgun Gothic', 'Segoe UI', sans-serif;
           }
         </style>
-        <linearGradient id="photoFade" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#000000" stop-opacity="0" />
-          <stop offset="58%" stop-color="#000000" stop-opacity="0" />
-          <stop offset="100%" stop-color="#000000" stop-opacity="${photoFadeOpacity}" />
+        <linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="${colors.accentStart}"/>
+          <stop offset="100%" stop-color="${colors.accentEnd}"/>
+        </linearGradient>
+        <linearGradient id="accentLine" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="${colors.accentStart}"/>
+          <stop offset="100%" stop-color="${colors.accentEnd}"/>
         </linearGradient>
       </defs>
 
-      <rect
-        x="${frame.x}"
-        y="${frame.y}"
-        width="${frame.width}"
-        height="${frame.height}"
-        rx="${frame.radius}"
-        fill="url(#photoFade)"
-      />
+      <!-- Badge pill -->
+      <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${badgeRx}" fill="url(#badgeGrad)"/>
+      <circle cx="${dotCx}" cy="${dotCy}" r="${dotR}" fill="${colors.white}" fill-opacity="0.92"/>
+      <text x="${badgeTextX}" y="${badgeTextY}" font-size="22" font-weight="700" fill="${colors.white}">${escapeXml(badge)}</text>
 
-      <text x="92" y="118" font-size="26" font-weight="700" fill="${colors.eyebrow}" fill-opacity="0.96">${escapeXml(eyebrow)}</text>
+      <!-- Brand chip -->
+      <rect x="${chipX}" y="${chipY}" width="${chipW}" height="${chipH}" rx="${chipRx}" fill="${colors.white}" fill-opacity="0.16"/>
+      <text x="${chipTextX}" y="${chipTextY}" font-size="22" font-weight="700" fill="${colors.white}" fill-opacity="0.92" text-anchor="middle">${escapeXml(brandLabel)}</text>
 
-      <rect
-        x="80"
-        y="708"
-        width="920"
-        height="244"
-        rx="34"
-        fill="${colors.panel}"
-        fill-opacity="${panelFillOpacity}"
-        stroke="${colors.stroke}"
-        stroke-opacity="0.12"
-        stroke-width="1.5"
-      />
+      <!-- Accent line -->
+      <rect x="${pad}" y="790" width="72" height="4" rx="2" fill="url(#accentLine)"/>
 
-      <rect
-        x="104"
-        y="734"
-        width="144"
-        height="54"
-        rx="27"
-        fill="${colors.badge}"
-        fill-opacity="0.98"
-      />
-      <text x="176" y="769" font-size="26" font-weight="700" fill="${colors.white}" text-anchor="middle">${escapeXml(badge)}</text>
-
+      <!-- Title -->
       <text
-        x="104"
+        x="${pad}"
         y="870"
-        font-size="96"
+        font-size="80"
         font-weight="700"
         fill="${colors.white}"
-        letter-spacing="-4"
+        letter-spacing="-3"
       >${escapeXml(title)}</text>
 
+      <!-- Subtitle -->
       <text
-        x="104"
-        y="930"
-        font-size="34"
+        x="${pad}"
+        y="932"
+        font-size="30"
         font-weight="400"
-        fill="${colors.subtitle}"
-        fill-opacity="0.96"
+        fill="${colors.white}"
+        fill-opacity="0.75"
       >${escapeXml(subtitle)}</text>
 
-      <rect
-        x="${brandChip.x}"
-        y="${brandChip.y}"
-        width="${brandChip.width}"
-        height="${brandChip.height}"
-        rx="24"
-        fill="${colors.white}"
-        fill-opacity="0.88"
-      />
+      <!-- URL watermark -->
       <text
-        x="${brandChip.x + brandChip.width / 2}"
-        y="${brandChip.y + 42}"
-        font-size="28"
-        font-weight="700"
-        text-anchor="middle"
-        fill="${colors.brand}"
-      >${escapeXml(payload.brandLabel || "\uC694\uC998\uBB50\uBA39")}</text>
-
-      <rect
-        x="${frame.x}"
-        y="${frame.y}"
-        width="${frame.width}"
-        height="${frame.height}"
-        rx="${frame.radius}"
-        fill="none"
-        stroke="${colors.stroke}"
-        stroke-opacity="0.28"
-        stroke-width="2"
-      />
+        x="${CANVAS_SIZE - pad}"
+        y="1044"
+        font-size="20"
+        font-weight="400"
+        fill="${colors.white}"
+        fill-opacity="0.38"
+        text-anchor="end"
+      >yozmeat.com</text>
     </svg>
   `);
 }
@@ -417,48 +331,27 @@ async function main() {
   );
   const fontCss = await loadFonts();
 
-  const frame = {
-    x: 52,
-    y: 52,
-    width: 976,
-    height: 976,
-    radius: 48,
-  };
-
-  const brandChip = {
-    x: 794,
-    y: 84,
-    width: 186,
-    height: 60,
-  };
-
   const colors = {
-    backgroundTop: "#FBF7F2",
-    backgroundBottom: "#F2ECE4",
-    fallbackTop: "#F3E8FF",
-    fallbackBottom: "#E7DDF6",
-    shadow: "#DDD4CA",
-    panel: "#171311",
-    badge: "#8E76C8",
-    eyebrow: "#2D2622",
-    subtitle: "#F3ECE4",
-    brand: "#8E76C8",
+    bgTop: "#1A0E2E",
+    bgBottom: "#0D0715",
+    fallbackTop: "#2D1B69",
+    fallbackBottom: "#0F0A1A",
+    overlayDark: "#0F0A1A",
+    accentStart: "#9B7DD4",
+    accentEnd: "#8BACD8",
     white: "#FFFFFF",
-    stroke: "#FFFFFF",
   };
 
   let photoBuffer = null;
   let photoLoadError = null;
 
   try {
-    photoBuffer = await fetchPhotoBuffer(payload.imageUrl, frame);
+    photoBuffer = await fetchPhotoBuffer(payload.imageUrl);
   } catch (error) {
     photoLoadError = error;
   }
 
-  const photoLayer = photoBuffer
-    ? await buildPhotoLayer(photoBuffer, frame, colors)
-    : buildFallbackPhotoSvg(frame, colors);
+  const photoLayer = photoBuffer || buildFallbackPhotoSvg(colors);
 
   await mkdir(path.dirname(payload.outputPath), { recursive: true });
 
@@ -467,7 +360,7 @@ async function main() {
       width: CANVAS_SIZE,
       height: CANVAS_SIZE,
       channels: 4,
-      background: colors.backgroundTop,
+      background: colors.bgTop,
     },
   })
     .composite([
@@ -477,17 +370,17 @@ async function main() {
         left: 0,
       },
       {
-        input: buildShadowLayer(frame, colors),
-        top: 0,
-        left: 0,
-      },
-      {
         input: photoLayer,
         top: 0,
         left: 0,
       },
       {
-        input: buildOverlaySvg(payload, fontCss, colors, frame, brandChip, Boolean(photoBuffer)),
+        input: buildGradientOverlay(colors),
+        top: 0,
+        left: 0,
+      },
+      {
+        input: buildOverlaySvg(payload, fontCss, colors),
         top: 0,
         left: 0,
       },
@@ -498,7 +391,9 @@ async function main() {
   const result = {
     outputPath: payload.outputPath,
     usedFallback: !photoBuffer,
-    photoLoadError: photoLoadError ? String(photoLoadError.message || photoLoadError) : null,
+    photoLoadError: photoLoadError
+      ? String(photoLoadError.message || photoLoadError)
+      : null,
   };
   console.log(JSON.stringify(result));
 }
