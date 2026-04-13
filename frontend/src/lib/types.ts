@@ -10,6 +10,7 @@ export interface Trend {
   description: string | null;
   image_url: string | null;
   store_count?: number;
+  previous_rank?: number | null;
 }
 
 export interface Store {

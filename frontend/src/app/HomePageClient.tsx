@@ -680,87 +680,118 @@ export default function HomePageClient({
           ) : (
             <>
               {(() => {
-                const viralTrends = trends.filter((t) => t.type === "viral");
-                const topTrend = viralTrends[0];
-                const restViral = viralTrends.slice(1);
-                return viralTrends.length > 0 ? (
+                const TOP_COUNT = 10;
+                const topTrends = trends.slice(0, TOP_COUNT);
+                const outsideTrends = trends.slice(TOP_COUNT);
+                const topTrend = topTrends[0];
+                const restTop = topTrends.slice(1);
+
+                function rankChange(trend: Trend, currentRank: number) {
+                  if (trend.previous_rank == null) return { type: "new" as const, delta: 0 };
+                  const diff = trend.previous_rank - currentRank;
+                  if (diff > 0) return { type: "up" as const, delta: diff };
+                  if (diff < 0) return { type: "down" as const, delta: -diff };
+                  return { type: "same" as const, delta: 0 };
+                }
+
+                function RankDelta({ trend, rank }: { trend: Trend; rank: number }) {
+                  const c = rankChange(trend, rank);
+                  if (c.type === "new") return <span className="text-[10px] font-semibold text-blue-500">NEW</span>;
+                  if (c.type === "up") return <span className="text-[10px] font-semibold text-red-500">▲{c.delta}</span>;
+                  if (c.type === "down") return <span className="text-[10px] font-semibold text-blue-500">▼{c.delta}</span>;
+                  return <span className="text-[10px] text-gray-300">-</span>;
+                }
+
+                return (
                   <>
-                    {topTrend && (
-                      <section className="mb-8">
-                        <Link href={`/trend/${topTrend.id}`}>
-                          <div className="relative rounded-2xl overflow-hidden shadow-lg">
-                            <div className="relative h-56 w-full bg-gray-100">
-                              {topTrend.image_url ? (
-                                <Image
-                                  src={topTrend.image_url}
-                                  alt={topTrend.name}
-                                  fill
-                                  sizes="(max-width: 512px) 100vw, 512px"
-                                  className="object-cover"
-                                  priority
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-6xl">
-                                  🔥
+                    <section className="mb-8">
+                      <div className="mb-3">
+                        <h3 className="font-bold text-gray-900">🏆 트렌드 TOP {topTrends.length}</h3>
+                      </div>
+
+                      {topTrend && (
+                        <div className="mb-8">
+                          <Link href={`/trend/${topTrend.id}`}>
+                            <div className="relative rounded-2xl overflow-hidden shadow-lg">
+                              <div className="relative h-56 w-full bg-gray-100">
+                                {topTrend.image_url ? (
+                                  <Image
+                                    src={topTrend.image_url}
+                                    alt={topTrend.name}
+                                    fill
+                                    sizes="(max-width: 512px) 100vw, 512px"
+                                    className="object-cover"
+                                    priority
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-6xl">
+                                    🔥
+                                  </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                                <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                                  <span className="bg-yellow-400 text-yellow-900 text-xs font-black w-7 h-7 rounded-full flex items-center justify-center shadow-sm">1</span>
+                                  <span className="bg-red-500 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
+                                    🔥 지금 가장 핫한
+                                  </span>
+                                  {rankChange(topTrend, 1).type !== "same" && (
+                                    <span className="bg-white/20 backdrop-blur-sm text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                      <RankDelta trend={topTrend} rank={1} />
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                              <div className="absolute top-3 left-3">
-                                <span className="bg-red-500 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
-                                  🔥 지금 가장 핫한
-                                </span>
-                              </div>
-                              <div className="absolute bottom-0 left-0 right-0 p-4">
-                                <h2 className="text-2xl font-bold text-white tracking-[-0.03em]">{topTrend.name}</h2>
-                                <p className="text-sm text-white/85 mt-1 line-clamp-2">
-                                  {topTrend.description || "곧 설명이 추가됩니다"}
-                                </p>
-                                <div className="flex items-center gap-3 mt-2 text-xs text-white/70">
-                                  <span>인기도 {Math.min(topTrend.peak_score, 100)}%</span>
-                                  <span>판매처 {topTrend.store_count || 0}곳</span>
+                                <div className="absolute bottom-0 left-0 right-0 p-4">
+                                  <h2 className="text-2xl font-bold text-white tracking-[-0.03em]">{topTrend.name}</h2>
+                                  <p className="text-sm text-white/85 mt-1 line-clamp-2">
+                                    {topTrend.description || "곧 설명이 추가됩니다"}
+                                  </p>
+                                  <div className="flex items-center gap-3 mt-2 text-xs text-white/70">
+                                    <span>인기도 {Math.min(topTrend.peak_score, 100)}%</span>
+                                    <span>판매처 {topTrend.store_count || 0}곳</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        </Link>
-                      </section>
-                    )}
-                    {restViral.length > 0 && (
-                      <section className="mb-8">
+                          </Link>
+                        </div>
+                      )}
+
+                      {restTop.length > 0 && (
+                        <div className="flex flex-col gap-8">
+                          {restTop.map((trend, index) => {
+                            const rank = index + 2;
+                            return (
+                              <div key={trend.id} className="flex gap-3">
+                                <div className="flex flex-col items-center pt-3 w-8 shrink-0">
+                                  <span className="text-lg font-bold text-gray-800">{rank}</span>
+                                  <RankDelta trend={trend} rank={rank} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <TrendCard trend={trend} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+
+                    {outsideTrends.length > 0 && (
+                      <section>
                         <div className="mb-3 flex items-center justify-between">
-                          <h3 className="font-bold text-gray-900">🔥 지금 뜨는 트렌드</h3>
-                          <span className="text-xs text-gray-400">
-                            {restViral.length}개
-                          </span>
+                          <h3 className="font-bold text-gray-500">순위권 밖</h3>
+                          <span className="text-xs text-gray-400">{outsideTrends.length}개</span>
                         </div>
                         <div className="flex flex-col gap-8">
-                          {restViral.map((trend) => (
+                          {outsideTrends.map((trend) => (
                             <TrendCard key={trend.id} trend={trend} />
                           ))}
                         </div>
                       </section>
                     )}
                   </>
-                ) : null;
+                );
               })()}
-
-              {trends.filter((t) => t.type === "steady").length > 0 && (
-                <section>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-bold text-gray-900">🏅 스테디셀러</h3>
-                    <span className="text-xs text-gray-400">
-                      {trends.filter((t) => t.type === "steady").length}개
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-8">
-                    {trends
-                      .filter((t) => t.type === "steady")
-                      .map((trend) => (
-                        <TrendCard key={trend.id} trend={trend} />
-                      ))}
-                  </div>
-                </section>
-              )}
             </>
           )}
         </div>
