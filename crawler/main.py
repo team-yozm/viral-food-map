@@ -15,11 +15,13 @@ from config import settings
 from error_reporting import install_recent_logs_handler, report_exception_to_discord
 from notifications import send_discord_message
 from routers.instagram import router as instagram_router
+from routers.new_products import router as new_products_router
 from routers.stores import router as stores_router
 from routers.trends import router as trends_router
 from routers.yomechu import router as yomechu_router
 from scheduler.jobs import (
     get_scheduler_description,
+    run_new_products_refresh_job,
     run_yomechu_enrichment_job,
     start_scheduler,
     stop_scheduler,
@@ -40,6 +42,11 @@ def _build_startup_message() -> str:
         if settings.INSTAGRAM_POSTING_ENABLED
         else "인스타 피드: 비활성화"
     )
+    new_products_line = (
+        f"신상 수집: {settings.NEW_PRODUCTS_INTERVAL_HOURS}시간 간격"
+        if settings.NEW_PRODUCTS_ENABLED
+        else "신상 수집: 비활성화"
+    )
     yomechu_line = (
         f"요메추 보강 주기: {settings.YOMECHU_ENRICH_INTERVAL_HOURS}시간"
         if settings.YOMECHU_ENRICH_ENABLED
@@ -54,6 +61,7 @@ def _build_startup_message() -> str:
             f"자동 AI 한도: {schedule['daily_ai_limit']}회/일",
             f"판매처 갱신: {schedule['store_update_minutes']}분 간격",
             instagram_line,
+            new_products_line,
             yomechu_line,
         ]
     )
@@ -72,10 +80,17 @@ def _handle_background_task_result(task: asyncio.Task):
 async def lifespan(app: FastAPI):
     logger.info("Server starting")
     startup_yomechu_enrich: asyncio.Task | None = None
+    startup_new_products_refresh: asyncio.Task | None = None
 
     try:
         start_scheduler()
         await send_discord_message(_build_startup_message())
+
+        if settings.NEW_PRODUCTS_ENABLED:
+            startup_new_products_refresh = asyncio.create_task(
+                run_new_products_refresh_job(trigger="startup")
+            )
+            startup_new_products_refresh.add_done_callback(_handle_background_task_result)
 
         if settings.YOMECHU_ENRICH_ENABLED:
             startup_yomechu_enrich = asyncio.create_task(
@@ -89,6 +104,8 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         try:
+            if startup_new_products_refresh and not startup_new_products_refresh.done():
+                startup_new_products_refresh.cancel()
             if startup_yomechu_enrich and not startup_yomechu_enrich.done():
                 startup_yomechu_enrich.cancel()
             stop_scheduler()
@@ -125,6 +142,7 @@ app.add_middleware(
 app.include_router(trends_router)
 app.include_router(stores_router)
 app.include_router(instagram_router)
+app.include_router(new_products_router)
 app.include_router(yomechu_router)
 
 
@@ -155,6 +173,8 @@ async def health():
         "trend_detection_schedule": schedule["trend_detection"],
         "keyword_discovery_schedule": schedule["keyword_discovery"],
         "store_update_interval_minutes": int(schedule["store_update_minutes"]),
+        "new_products_enabled": settings.NEW_PRODUCTS_ENABLED,
+        "new_products_interval_hours": int(schedule["new_products_interval_hours"]),
         "instagram_posting_enabled": settings.INSTAGRAM_POSTING_ENABLED,
         "instagram_feed_schedule": schedule["instagram_feed_schedule"],
         "instagram_media_bucket": settings.INSTAGRAM_MEDIA_BUCKET,

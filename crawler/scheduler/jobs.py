@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from config import settings
+from crawlers.new_products import refresh_new_products
 from crawlers.yomechu_places import refresh_recent_yomechu_ratings
 from detector.keyword_discoverer import discover_keywords
 from detector.store_updater import refresh_stores_for_active_trends
@@ -24,6 +25,7 @@ trend_detection_lock = threading.Lock()
 keyword_discovery_lock = threading.Lock()
 store_update_lock = threading.Lock()
 yomechu_enrich_lock = threading.Lock()
+new_products_lock = threading.Lock()
 _trend_detection_queue_lock = threading.Lock()
 _keyword_discovery_queue_lock = threading.Lock()
 trend_detection_task: asyncio.Task | None = None
@@ -44,7 +46,16 @@ keyword_discovery_status: dict[str, object | None] = {
     "last_summary": None,
     "last_error": None,
 }
+new_products_status: dict[str, object | None] = {
+    "state": "idle",
+    "last_trigger": None,
+    "last_started_at": None,
+    "last_finished_at": None,
+    "last_summary": None,
+    "last_error": None,
+}
 instagram_post_lock = threading.Lock()
+NEW_PRODUCTS_JOB_NAME = "신상 수집"
 
 MAX_DETAIL_LINES = 5
 TREND_JOB_NAME = "트렌드 감지"
@@ -121,11 +132,20 @@ YOMECHU_LABELS = {
     "updated": "보강 건수",
 }
 
+NEW_PRODUCTS_LABELS = {
+    "sources": "소스",
+    "fetched_products": "수집",
+    "inserted_products": "신규",
+    "updated_products": "갱신",
+    "visible_products": "노출",
+}
+
 JOB_LABELS = {
     TREND_JOB_NAME: TREND_LABELS,
     DISCOVERY_JOB_NAME: DISCOVERY_LABELS,
     STORE_UPDATE_JOB_NAME: STORE_UPDATE_LABELS,
     YOMECHU_JOB_NAME: YOMECHU_LABELS,
+    NEW_PRODUCTS_JOB_NAME: NEW_PRODUCTS_LABELS,
 }
 
 
@@ -239,6 +259,7 @@ def get_scheduler_description() -> dict[str, str]:
         "trend_detection": trend_schedule,
         "keyword_discovery": discovery_schedule,
         "store_update_minutes": str(settings.STORE_UPDATE_INTERVAL_MINUTES),
+        "new_products_interval_hours": str(settings.NEW_PRODUCTS_INTERVAL_HOURS),
         "daily_ai_limit": str(settings.AI_AUTOMATION_DAILY_LIMIT),
         "instagram_posting_enabled": str(settings.INSTAGRAM_POSTING_ENABLED).lower(),
         "instagram_feed_schedule": _format_hour_minute(
@@ -334,6 +355,34 @@ def get_keyword_discovery_status() -> dict[str, object | None]:
         keyword_discovery_lock.locked()
         or status.get("state") in {"queued", "running"}
         or (keyword_discovery_thread and keyword_discovery_thread.is_alive())
+    )
+    return status
+
+
+def _mark_new_products_running(trigger: str) -> None:
+    new_products_status["state"] = "running"
+    new_products_status["last_trigger"] = trigger
+    new_products_status["last_started_at"] = _utc_now_iso()
+    new_products_status["last_error"] = None
+
+
+def _mark_new_products_finished(summary: dict) -> None:
+    new_products_status["state"] = "completed"
+    new_products_status["last_finished_at"] = _utc_now_iso()
+    new_products_status["last_summary"] = summary
+    new_products_status["last_error"] = None
+
+
+def _mark_new_products_failed(error: str) -> None:
+    new_products_status["state"] = "failed"
+    new_products_status["last_finished_at"] = _utc_now_iso()
+    new_products_status["last_error"] = error
+
+
+def get_new_products_refresh_status() -> dict[str, object | None]:
+    status = dict(new_products_status)
+    status["running"] = bool(
+        new_products_lock.locked() or status.get("state") == "running"
     )
     return status
 
@@ -605,6 +654,52 @@ async def run_yomechu_enrichment_job(trigger: str = "scheduler") -> dict:
         yomechu_enrich_lock.release()
 
 
+async def run_new_products_refresh_job(trigger: str = "scheduler") -> dict:
+    job_name = NEW_PRODUCTS_JOB_NAME
+    if not settings.NEW_PRODUCTS_ENABLED and trigger == "scheduler":
+        logger.info("%s skipped because it is disabled", job_name)
+        summary = {"sources": 0, "fetched_products": 0, "visible_products": 0, "skipped": True}
+        _mark_new_products_finished(summary)
+        return summary
+
+    if not new_products_lock.acquire(blocking=False):
+        logger.warning("%s skipped because previous run is still active", job_name)
+        summary = {
+            "sources": 0,
+            "fetched_products": 0,
+            "inserted_products": 0,
+            "updated_products": 0,
+            "visible_products": 0,
+            "skipped": True,
+            "reason": "already_running",
+        }
+        _mark_new_products_finished(summary)
+        return summary
+
+    _mark_new_products_running(trigger)
+    logger.info("%s started (%s)", job_name, trigger)
+
+    try:
+        summary = await refresh_new_products(trigger=trigger)
+        if summary.get("visible_products", 0) > 0:
+            await send_discord_message(
+                _build_job_message(job_name, trigger, "완료", summary=summary)
+            )
+        _mark_new_products_finished(summary)
+        return summary
+    except Exception as exc:
+        _mark_new_products_failed(str(exc))
+        logger.exception("%s failed (%s)", job_name, trigger)
+        await report_exception_to_discord(
+            f"{job_name} 실패",
+            exc,
+            details={"trigger": trigger},
+        )
+        raise
+    finally:
+        new_products_lock.release()
+
+
 async def run_instagram_feed_job(
     *,
     trigger: str = "scheduler",
@@ -673,6 +768,10 @@ def run_yomechu_enrichment():
     asyncio.run(run_yomechu_enrichment_job(trigger="scheduler"))
 
 
+def run_new_products_refresh():
+    asyncio.run(run_new_products_refresh_job(trigger="scheduler"))
+
+
 def run_instagram_feed_post():
     asyncio.run(run_instagram_feed_job(trigger="scheduler"))
 
@@ -707,6 +806,16 @@ def start_scheduler():
         max_instances=1,
         coalesce=True,
     )
+    if settings.NEW_PRODUCTS_ENABLED:
+        scheduler.add_job(
+            run_new_products_refresh,
+            "interval",
+            hours=settings.NEW_PRODUCTS_INTERVAL_HOURS,
+            id="new_products_refresh",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     if settings.INSTAGRAM_POSTING_ENABLED:
         scheduler.add_job(
             run_instagram_feed_post,

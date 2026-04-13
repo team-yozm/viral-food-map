@@ -177,6 +177,16 @@ class Settings:
     YOMECHU_ENRICH_INTERVAL_HOURS: int = int(
         os.getenv("YOMECHU_ENRICH_INTERVAL_HOURS", "4")
     )
+    NEW_PRODUCTS_ENABLED: bool = _env_bool(
+        "NEW_PRODUCTS_ENABLED",
+        default=True,
+    )
+    NEW_PRODUCTS_INTERVAL_HOURS: int = int(
+        os.getenv("NEW_PRODUCTS_INTERVAL_HOURS", "6")
+    )
+    NEW_PRODUCTS_LOOKBACK_DAYS: int = int(
+        os.getenv("NEW_PRODUCTS_LOOKBACK_DAYS", "30")
+    )
     YOMECHU_ENRICH_BATCH_SIZE: int = int(
         os.getenv("YOMECHU_ENRICH_BATCH_SIZE", "100")
     )

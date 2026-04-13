@@ -137,9 +137,46 @@ export interface CrawlerHealthResponse {
   trend_detection_schedule?: string;
   keyword_discovery_schedule?: string;
   store_update_interval_minutes?: number;
+  new_products_enabled?: boolean;
+  new_products_interval_hours?: number;
   instagram_posting_enabled?: boolean;
   instagram_feed_schedule?: string;
   instagram_media_bucket?: string;
+}
+
+export interface NewProductsSourceSummary {
+  source_key: string;
+  title: string;
+  fetched: number;
+  inserted: number;
+  updated: number;
+  visible: number;
+}
+
+export interface NewProductsRefreshSummary {
+  sources: number;
+  fetched_products: number;
+  inserted_products: number;
+  updated_products: number;
+  visible_products: number;
+  skipped?: boolean;
+  reason?: string;
+  source_summaries: NewProductsSourceSummary[];
+}
+
+export interface NewProductsRefreshStatus {
+  state: "idle" | "running" | "completed" | "failed";
+  last_trigger: string | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_summary: NewProductsRefreshSummary | null;
+  last_error: string | null;
+  running: boolean;
+}
+
+export interface TriggerNewProductsRefreshResponse {
+  message: string;
+  summary: NewProductsRefreshSummary;
 }
 
 export interface InstagramPublishedTrend {
@@ -401,6 +438,44 @@ export async function fetchCrawlerHealth(): Promise<CrawlerHealthResponse> {
 
   if (!response.ok) {
     throw new Error("크롤러 상태 확인에 실패했습니다.");
+  }
+
+  return response.json();
+}
+
+export async function triggerNewProductsRefresh(
+  accessToken: string
+): Promise<TriggerNewProductsRefreshResponse> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/api/new-products/refresh`, {
+    method: "POST",
+    headers: getAdminCrawlerHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getCrawlerResponseErrorMessage(
+        response,
+        "신상 수집 실행에 실패했습니다."
+      )
+    );
+  }
+
+  return response.json();
+}
+
+export async function fetchNewProductsRefreshStatus(): Promise<NewProductsRefreshStatus> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/api/new-products/status`);
+
+  if (!response.ok) {
+    throw new Error("신상 수집 상태 확인에 실패했습니다.");
   }
 
   return response.json();

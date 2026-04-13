@@ -782,3 +782,74 @@ def list_published_instagram_trend_ids() -> list[str]:
             exc,
         )
         return []
+
+
+def upsert_new_product_source(source_data: dict[str, Any]) -> dict[str, Any] | None:
+    result = (
+        get_client()
+        .table("new_product_sources")
+        .upsert(source_data, on_conflict="source_key")
+        .execute()
+    )
+    data = result.data or []
+    return data[0] if data else None
+
+
+def update_new_product_source(
+    source_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    result = (
+        get_client()
+        .table("new_product_sources")
+        .update(payload)
+        .eq("id", source_id)
+        .execute()
+    )
+    data = result.data or []
+    return data[0] if data else None
+
+
+def get_new_products_by_source_id(source_id: str) -> list[dict[str, Any]]:
+    return (
+        get_client()
+        .table("new_products")
+        .select("id, external_id, status")
+        .eq("source_id", source_id)
+        .execute()
+        .data
+        or []
+    )
+
+
+def upsert_new_products(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    result = (
+        get_client()
+        .table("new_products")
+        .upsert(rows, on_conflict="source_id,external_id")
+        .execute()
+    )
+    return result.data or []
+
+
+def create_new_product_crawl_run(payload: dict[str, Any]) -> dict[str, Any] | None:
+    result = get_client().table("new_product_crawl_runs").insert(payload).execute()
+    data = result.data or []
+    return data[0] if data else None
+
+
+def update_new_product_crawl_run(
+    run_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    result = (
+        get_client()
+        .table("new_product_crawl_runs")
+        .update(payload)
+        .eq("id", run_id)
+        .execute()
+    )
+    data = result.data or []
+    return data[0] if data else None

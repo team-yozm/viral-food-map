@@ -57,6 +57,67 @@ export interface Keyword {
   baseline_volume: number;
 }
 
+export type NewProductSourceType = "convenience" | "franchise";
+export type NewProductStatus = "visible" | "hidden" | "expired";
+
+export interface NewProductSource {
+  id: string;
+  source_key: string;
+  title: string;
+  brand: string;
+  source_type: NewProductSourceType;
+  channel: string;
+  site_url: string;
+  crawl_url: string;
+  is_active: boolean;
+  last_crawled_at: string | null;
+  last_success_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewProduct {
+  id: string;
+  source_id: string;
+  external_id: string;
+  name: string;
+  brand: string;
+  source_type: NewProductSourceType;
+  channel: string;
+  category: string | null;
+  summary: string | null;
+  image_url: string | null;
+  product_url: string | null;
+  published_at: string | null;
+  available_from: string | null;
+  available_to: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  is_food: boolean;
+  is_limited: boolean;
+  status: NewProductStatus;
+  raw_payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewProductCrawlRun {
+  id: string;
+  source_id: string | null;
+  source_key: string | null;
+  trigger: string;
+  status: "running" | "success" | "failed";
+  fetched_count: number;
+  inserted_count: number;
+  updated_count: number;
+  visible_count: number;
+  error_message: string | null;
+  summary: Record<string, unknown>;
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+}
+
 export interface AnalyticsSummary {
   total_views: number;
   today_views: number;
