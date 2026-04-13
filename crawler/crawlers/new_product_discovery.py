@@ -39,6 +39,9 @@ BRAND_ALIAS_SOURCE_KEYS = {
     "공차코리아": "gongcha_event_list",
     "푸라닭": "puradak_event_list",
     "푸라닭치킨": "puradak_event_list",
+    "두찜": "twozzim_news",
+    "2찜": "twozzim_news",
+    "twozzim": "twozzim_news",
 }
 BRAND_SITE_HINT_URLS = {
     "베스킨라빈스": ("https://www.baskinrobbins.co.kr/",),
