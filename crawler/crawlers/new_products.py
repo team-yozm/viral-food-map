@@ -307,6 +307,46 @@ def _extract_date_range_values(
     return available_from, available_to
 
 
+def _extract_detail_published_at(detail_soup: BeautifulSoup | Any) -> str | None:
+    if not detail_soup:
+        return None
+
+    meta_published = detail_soup.select_one(
+        'meta[property="article:published_time"], meta[name="article:published_time"]'
+    )
+    meta_value = meta_published.get("content", "").strip() if meta_published else ""
+    if meta_value:
+        return meta_value
+
+    text_candidates = [
+        _normalize_text(node.get_text(" ", strip=True))
+        for node in detail_soup.select(".date, .write_info, .view_info, .board_view, .board_info")
+    ]
+    text_candidates.append(_normalize_text(detail_soup.get_text(" ", strip=True)))
+
+    for text in text_candidates:
+        if not text:
+            continue
+
+        match = re.search(r"\b\d{2}\.\d{2}\.\d{2}\b", text)
+        if match:
+            published_at = _parse_date_value(match.group(0), "short_dot")
+            if published_at:
+                return published_at
+
+        match = re.search(r"\b20\d{2}[.-]\d{1,2}[.-]\d{1,2}\b", text)
+        if match:
+            date_text = match.group(0)
+            published_at = _parse_date_value(
+                date_text,
+                "dot" if "." in date_text else "dash",
+            )
+            if published_at:
+                return published_at
+
+    return None
+
+
 def _get_nested_value(payload: Any, path: str | None) -> Any:
     if not path:
         return payload
@@ -820,30 +860,45 @@ async def _crawl_html_board_news_table(
     max_items = int(config.get("max_items", 40))
     row_selector = str(config.get("row_selector") or ".board_wrap table tbody tr")
     min_cell_count = int(config.get("min_cell_count", 4))
-    category_cell_index = int(config.get("category_cell_index", 1))
+    category_cell_index = int(config.get("category_cell_index", -1))
     title_cell_index = int(config.get("title_cell_index", 2))
-    date_cell_index = int(config.get("date_cell_index", 3))
+    date_cell_index = int(config.get("date_cell_index", -1))
     detail_link_selector = str(config.get("detail_link_selector") or "a[href]")
+    onclick_pattern = str(config.get("onclick_pattern") or "")
     required_category = _normalize_text(str(config.get("required_category") or ""))
     default_category = str(config.get("default_category") or "신메뉴 소식")
     summary_fallback = str(config.get("summary_fallback") or "{brand} 공식 소식")
     detail_image_markers = tuple(config.get("detail_image_markers") or ("/wp-content/uploads/",))
     date_format = str(config.get("date_format") or "dash")
+    detail_date_required = bool(config.get("detail_date_required", False))
 
     for row in soup.select(row_selector)[:max_items]:
         cells = row.find_all("td")
         if len(cells) < min_cell_count:
             continue
 
-        if max(category_cell_index, title_cell_index, date_cell_index) >= len(cells):
+        required_indices = [title_cell_index]
+        if category_cell_index >= 0:
+            required_indices.append(category_cell_index)
+        if date_cell_index >= 0:
+            required_indices.append(date_cell_index)
+        if max(required_indices) >= len(cells):
             continue
 
-        category_text = cells[category_cell_index].get_text(" ", strip=True)
+        category_text = (
+            cells[category_cell_index].get_text(" ", strip=True)
+            if category_cell_index >= 0
+            else ""
+        )
         title_link = cells[title_cell_index].select_one(detail_link_selector)
-        title = title_link.get_text(" ", strip=True) if title_link else ""
-        published_at = _parse_date_value(
-            cells[date_cell_index].get_text(" ", strip=True),
-            date_format,
+        title = title_link.get_text(" ", strip=True) if title_link else cells[title_cell_index].get_text(" ", strip=True)
+        published_at = (
+            _parse_date_value(
+                cells[date_cell_index].get_text(" ", strip=True),
+                date_format,
+            )
+            if date_cell_index >= 0
+            else None
         )
         if required_category and _normalize_text(category_text) != required_category:
             continue
@@ -851,11 +906,21 @@ async def _crawl_html_board_news_table(
             continue
         if not _looks_like_food(title):
             continue
-        if not _is_recent_or_active(published_at):
-            continue
 
         detail_url = _build_absolute_url(source.site_url, title_link.get("href")) if title_link else None
+        if not detail_url and onclick_pattern:
+            onclick_value = row.get("onclick", "")
+            onclick_match = re.search(onclick_pattern, onclick_value)
+            if onclick_match:
+                detail_href = onclick_match.groupdict().get("href") or onclick_match.group(1)
+                detail_url = _build_absolute_url(source.site_url, detail_href)
         detail_soup = await _fetch_soup(client, detail_url) if detail_url else None
+        if not published_at and detail_soup:
+            published_at = _extract_detail_published_at(detail_soup)
+        if detail_date_required and not published_at:
+            continue
+        if not _is_recent_or_active(published_at):
+            continue
         image_url = (
             _extract_first_matching_image(
                 detail_soup,
@@ -892,7 +957,11 @@ async def _crawl_html_board_news_table(
                 is_food=True,
                 raw_payload={
                     "row_category": category_text,
-                    "listed_at": cells[3].get_text(" ", strip=True),
+                    "listed_at": (
+                        cells[date_cell_index].get_text(" ", strip=True)
+                        if date_cell_index >= 0
+                        else None
+                    ),
                 },
             )
         )
@@ -1577,6 +1646,102 @@ async def _crawl_html_badge_menu(
     return list(products_by_id.values())
 
 
+async def _crawl_html_linked_menu_cards(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    config = _get_parser_config(source)
+    soup = await _fetch_soup(client, source.crawl_url)
+    item_selector = str(config.get("item_selector") or "")
+    detail_link_selector = str(config.get("detail_link_selector") or "")
+    external_id_pattern = str(config.get("external_id_pattern") or "")
+    title_selector = str(config.get("title_selector") or "")
+    summary_selector = str(config.get("summary_selector") or "")
+    default_category = str(config.get("default_category") or "신규 메뉴")
+    summary_fallback = str(config.get("summary_fallback") or "{brand} 공식 메뉴")
+    max_items = int(config.get("max_items", 40))
+
+    if not item_selector:
+        return []
+
+    products_by_id: dict[str, ParsedNewProduct] = {}
+    for item in soup.select(item_selector)[: max_items * 3]:
+        if detail_link_selector in {":self", "self"} and getattr(item, "name", "") == "a":
+            link_element = item
+        elif detail_link_selector:
+            link_element = item.select_one(detail_link_selector)
+        else:
+            link_element = item.find("a", href=True)
+
+        if not link_element:
+            continue
+
+        href = link_element.get("href", "").strip()
+        detail_url = _build_absolute_url(source.site_url, href)
+        if not detail_url:
+            continue
+
+        if external_id_pattern:
+            match = re.search(external_id_pattern, detail_url)
+            if not match:
+                continue
+            external_id = match.groupdict().get("id") or match.group(1)
+        else:
+            external_id = detail_url
+
+        if external_id in products_by_id:
+            continue
+
+        title_element = item.select_one(title_selector) if title_selector else None
+        name = _extract_direct_text(title_element) if title_element else ""
+        if not name:
+            name = _normalize_text(link_element.get("title", ""))
+        if not name:
+            name = _extract_direct_text(link_element)
+        if not name:
+            image = item.select_one("img")
+            name = _normalize_text(image.get("alt", "") if image else "")
+        if not name or not _looks_like_food(name):
+            continue
+
+        if summary_selector:
+            summary = _normalize_text(
+                item.select_one(summary_selector).get_text(" ", strip=True)
+                if item.select_one(summary_selector)
+                else ""
+            )
+        else:
+            summary = ""
+
+        image_url = _extract_image_from_element(item, source=source, config=config)
+        products_by_id[external_id] = ParsedNewProduct(
+            external_id=external_id,
+            name=name,
+            brand=source.brand,
+            source_type=source.source_type,
+            channel=source.channel,
+            category=default_category,
+            summary=summary or _format_template_value(
+                summary_fallback,
+                brand=source.brand,
+                category=default_category,
+            ),
+            image_url=image_url,
+            product_url=detail_url,
+            published_at=None,
+            available_from=None,
+            available_to=None,
+            is_limited=False,
+            is_food=True,
+            raw_payload={},
+        )
+
+        if len(products_by_id) >= max_items:
+            break
+
+    return list(products_by_id.values())
+
+
 async def _crawl_json_menu_feed(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
@@ -1916,6 +2081,8 @@ async def _crawl_source(
         return await _crawl_html_paged_new_menu(client, source)
     if source.parser_type == "html_badge_menu":
         return await _crawl_html_badge_menu(client, source)
+    if source.parser_type == "html_linked_menu_cards":
+        return await _crawl_html_linked_menu_cards(client, source)
     if source.parser_type == "mcdonalds_promotion":
         return await _crawl_mcdonalds_promotion(client, source)
     if source.parser_type == "json_menu_feed":

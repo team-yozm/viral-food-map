@@ -40,6 +40,24 @@ BRAND_ALIAS_SOURCE_KEYS = {
     "푸라닭": "puradak_event_list",
     "푸라닭치킨": "puradak_event_list",
 }
+BRAND_SITE_HINT_URLS = {
+    "베스킨라빈스": ("https://www.baskinrobbins.co.kr/",),
+    "배스킨라빈스": ("https://www.baskinrobbins.co.kr/",),
+    "베라": ("https://www.baskinrobbins.co.kr/",),
+    "프랭크버거": ("https://www.frankburger.co.kr/index_brand.html",),
+    "frankburger": ("https://www.frankburger.co.kr/index_brand.html",),
+}
+DISCOVERY_NON_FOOD_KEYWORDS = (
+    "굿즈",
+    "텀블러",
+    "스티커",
+    "쿠폰",
+    "할인",
+    "카드",
+    "회원",
+    "캠페인",
+    "전자영수증",
+)
 RESULT_HOST_BLOCKLIST = {
     "blog.naver.com",
     "cafe.naver.com",
@@ -98,6 +116,15 @@ def _apply_manual_sector(
 
 def _normalize_brand_key(value: str) -> str:
     return re.sub(r"[^0-9a-z가-힣]+", "", value.lower())
+
+
+def _normalize_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _looks_like_food(name: str) -> bool:
+    normalized = re.sub(r"\s+", "", name).lower()
+    return not any(keyword in normalized for keyword in DISCOVERY_NON_FOOD_KEYWORDS)
 
 
 def _normalize_url(url: str) -> str:
@@ -224,12 +251,15 @@ async def _search_candidate_urls(
     for keyword in query_keywords:
         query = f"{brand} {keyword}"
         queries.append(query)
-        response = await client.get(
-            "https://html.duckduckgo.com/html/",
-            params={"q": query},
-            headers=REQUEST_HEADERS,
-        )
-        response.raise_for_status()
+        try:
+            response = await client.get(
+                "https://html.duckduckgo.com/html/",
+                params={"q": query},
+                headers=REQUEST_HEADERS,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            continue
 
         for url in _extract_search_result_urls(response.text)[:SEARCH_RESULT_LIMIT]:
             for candidate in (url, _get_root_url(url)):
@@ -286,6 +316,37 @@ def _looks_like_builtin_brand(brand: str, source_type: str) -> NewProductSourceD
         if brand_key == source_brand_key or brand_key in source_brand_key or source_brand_key in brand_key:
             return _clone_source(source)
     return None
+
+
+def _get_brand_site_hint_urls(brand: str, source_type: str) -> list[str]:
+    if source_type != "franchise":
+        return []
+
+    brand_key = _normalize_brand_key(brand)
+    if not brand_key:
+        return []
+
+    hinted_urls: list[str] = []
+    seen: set[str] = set()
+    for alias, urls in BRAND_SITE_HINT_URLS.items():
+        alias_key = _normalize_brand_key(alias)
+        if not alias_key:
+            continue
+        if not (
+            brand_key == alias_key
+            or brand_key in alias_key
+            or alias_key in brand_key
+        ):
+            continue
+
+        for url in urls:
+            normalized = _normalize_url(url)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            hinted_urls.append(url)
+
+    return hinted_urls
 
 
 def _match_builtin_source_from_urls(
@@ -350,6 +411,7 @@ def _detect_generic_table_board_source(
     selectors = (".board_wrap table tbody tr", "table tbody tr")
     matched_selector = None
     first_valid_row = None
+    first_title_only_row = None
 
     for selector in selectors:
         rows = soup.select(selector)
@@ -361,7 +423,11 @@ def _detect_generic_table_board_source(
                 continue
             for title_idx in range(len(cells)):
                 link = cells[title_idx].find("a", href=True)
-                if not link:
+                row_onclick = row.get("onclick", "")
+                has_row_detail = bool(
+                    re.search(r"location\.href='[^']+'", row_onclick)
+                )
+                if not link and not has_row_detail:
                     continue
                 date_candidates = [
                     _normalize_text(cell.get_text(" ", strip=True))
@@ -376,12 +442,21 @@ def _detect_generic_table_board_source(
                     None,
                 )
                 if date_idx is None:
+                    title_text = _normalize_text(cells[title_idx].get_text(" ", strip=True))
+                    if not first_title_only_row and title_text and _looks_like_food(title_text):
+                        matched_selector = selector
+                        first_title_only_row = {
+                            "cells": cells,
+                            "title_idx": title_idx,
+                            "uses_row_onclick": has_row_detail and not bool(link),
+                        }
                     continue
                 matched_selector = selector
                 first_valid_row = {
                     "cells": cells,
                     "title_idx": title_idx,
                     "date_idx": date_idx,
+                    "uses_row_onclick": has_row_detail and not bool(link),
                 }
                 break
             if first_valid_row:
@@ -389,34 +464,61 @@ def _detect_generic_table_board_source(
         if first_valid_row:
             break
 
-    if not first_valid_row or not matched_selector:
+    if not matched_selector:
         return None
 
-    cells = first_valid_row["cells"]
-    title_idx = int(first_valid_row["title_idx"])
-    date_idx = int(first_valid_row["date_idx"])
-    title_text = _normalize_text(cells[title_idx].get_text(" ", strip=True))
-    date_sample = _normalize_text(cells[date_idx].get_text(" ", strip=True))
-    date_format = "short_dot" if re.search(r"\b\d{2}\.\d{2}\.\d{2}\b", date_sample) else (
-        "dot" if "." in date_sample else "dash"
-    )
-    category_idx = 1 if len(cells) >= 4 and title_idx != 1 and date_idx != 1 else None
-    notes.append("테이블형 공식 공지/뉴스 페이지를 탐지해 html_board_news_table parser를 적용했습니다.")
+    if not first_valid_row and not first_title_only_row:
+        return None
 
-    parser_config: dict[str, Any] = {
-        "row_selector": matched_selector,
-        "min_cell_count": len(cells),
-        "title_cell_index": title_idx,
-        "date_cell_index": date_idx,
-        "date_format": date_format,
-        "detail_link_selector": "a[href]",
-        "default_category": "신메뉴 소식",
-        "summary_fallback": "{brand} 공식 소식",
-        "detail_image_markers": ("/wp-content/uploads/", "/upload/", "/uploads/", "/files/"),
-        "max_items": 40,
-    }
-    if category_idx is not None:
-        parser_config["category_cell_index"] = category_idx
+    if first_valid_row:
+        cells = first_valid_row["cells"]
+        title_idx = int(first_valid_row["title_idx"])
+        date_idx = int(first_valid_row["date_idx"])
+        title_text = _normalize_text(cells[title_idx].get_text(" ", strip=True))
+        date_sample = _normalize_text(cells[date_idx].get_text(" ", strip=True))
+        date_format = "short_dot" if re.search(r"\b\d{2}\.\d{2}\.\d{2}\b", date_sample) else (
+            "dot" if "." in date_sample else "dash"
+        )
+        category_idx = 1 if len(cells) >= 4 and title_idx != 1 and date_idx != 1 else None
+        notes.append("테이블형 공식 공지/뉴스 페이지를 탐지해 html_board_news_table parser를 적용했습니다.")
+
+        parser_config: dict[str, Any] = {
+            "row_selector": matched_selector,
+            "min_cell_count": len(cells),
+            "title_cell_index": title_idx,
+            "date_cell_index": date_idx,
+            "date_format": date_format,
+            "detail_link_selector": "a[href]",
+            "default_category": "신메뉴 소식",
+            "summary_fallback": "{brand} 공식 소식",
+            "detail_image_markers": ("/wp-content/uploads/", "/upload/", "/uploads/", "/files/"),
+            "max_items": 40,
+        }
+        if category_idx is not None:
+            parser_config["category_cell_index"] = category_idx
+        if first_valid_row.get("uses_row_onclick"):
+            parser_config["onclick_pattern"] = r"location\.href='(?P<href>[^']+)'"
+    else:
+        cells = first_title_only_row["cells"]
+        title_idx = int(first_title_only_row["title_idx"])
+        title_text = _normalize_text(cells[title_idx].get_text(" ", strip=True))
+        notes.append("날짜가 리스트에 없는 공지형 테이블을 탐지해 상세 페이지 날짜 추출 기반 html_board_news_table parser를 적용했습니다.")
+
+        parser_config = {
+            "row_selector": matched_selector,
+            "min_cell_count": len(cells),
+            "title_cell_index": title_idx,
+            "date_cell_index": -1,
+            "date_format": "dash",
+            "detail_link_selector": "a[href]",
+            "default_category": "신메뉴 소식",
+            "summary_fallback": "{brand} 공식 소식",
+            "detail_image_markers": ("/wp-content/uploads/", "/upload/", "/uploads/", "/files/"),
+            "max_items": 40,
+            "detail_date_required": True,
+        }
+        if first_title_only_row.get("uses_row_onclick"):
+            parser_config["onclick_pattern"] = r"location\.href='(?P<href>[^']+)'"
 
     return _build_admin_source_definition(
         brand=brand,
@@ -495,6 +597,83 @@ def _detect_generic_card_news_grid_source(
         },
         discovery_metadata={
             "detected_by": "html_card_news_grid",
+            "matched_url": candidate_url,
+        },
+    )
+
+
+def _detect_generic_linked_menu_cards_source(
+    *,
+    brand: str,
+    source_type: str,
+    candidate_url: str,
+    soup: BeautifulSoup,
+    notes: list[str],
+) -> NewProductSourceDefinition | None:
+    selector_candidates = (
+        'a[href*="/menu/view.php?seq="]',
+        'a[href*="/menu/"][href*="view"]',
+        'a[href*="/menu/"][href*="detail"]',
+    )
+    matched_selector = None
+    matched_id_pattern = ""
+
+    for selector in selector_candidates:
+        items = soup.select(selector)
+        if len(items) < 4:
+            continue
+
+        valid_items = 0
+        seen_urls: set[str] = set()
+        for item in items[:24]:
+            href = item.get("href", "").strip()
+            if not href:
+                continue
+
+            absolute_url = urljoin(candidate_url, href)
+            if absolute_url in seen_urls:
+                continue
+            seen_urls.add(absolute_url)
+
+            title = _normalize_text(item.get("title", ""))
+            if not title:
+                title = _normalize_text(item.get_text(" ", strip=True))
+            if not title:
+                image = item.select_one("img")
+                title = _normalize_text(image.get("alt", "") if image else "")
+            if title and _looks_like_food(title):
+                valid_items += 1
+
+        if valid_items < 4:
+            continue
+
+        matched_selector = selector
+        if any("seq=" in item.get("href", "") for item in items[:8]):
+            matched_id_pattern = r"seq=(?P<id>\d+)"
+        break
+
+    if not matched_selector:
+        return None
+
+    notes.append("메뉴 카드형 공식 페이지를 탐지해 html_linked_menu_cards parser를 적용했습니다.")
+    return _build_admin_source_definition(
+        brand=brand,
+        source_type=source_type,
+        channel="메뉴",
+        site_url=_get_root_url(candidate_url),
+        crawl_url=candidate_url,
+        parser_type="html_linked_menu_cards",
+        parser_config={
+            "item_selector": matched_selector,
+            "detail_link_selector": ":self",
+            "external_id_pattern": matched_id_pattern,
+            "image_selector": "img",
+            "default_category": "신규 메뉴",
+            "summary_fallback": "{brand} 공식 메뉴",
+            "max_items": 40,
+        },
+        discovery_metadata={
+            "detected_by": "html_linked_menu_cards",
             "matched_url": candidate_url,
         },
     )
@@ -642,11 +821,20 @@ async def discover_new_product_source(
 
     timeout = httpx.Timeout(20.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        search_queries, candidate_urls = await _search_candidate_urls(
+        hint_candidate_urls = _get_brand_site_hint_urls(normalized_brand, source_type)
+        search_queries, searched_candidate_urls = await _search_candidate_urls(
             client,
             brand=normalized_brand,
             source_type=source_type,
         )
+        candidate_urls: list[str] = []
+        seen_candidate_urls: set[str] = set()
+        for candidate_url in (*hint_candidate_urls, *searched_candidate_urls):
+            normalized_url = _normalize_url(candidate_url)
+            if normalized_url in seen_candidate_urls:
+                continue
+            seen_candidate_urls.add(normalized_url)
+            candidate_urls.append(candidate_url)
 
         for candidate_url in candidate_urls[:12]:
             try:
@@ -705,6 +893,24 @@ async def discover_new_product_source(
                     confidence=0.76,
                     search_queries=search_queries,
                     notes=grid_notes,
+                )
+
+            linked_menu_notes: list[str] = []
+            generic_linked_menu_source = _detect_generic_linked_menu_cards_source(
+                brand=normalized_brand,
+                source_type=source_type,
+                candidate_url=candidate_url,
+                soup=soup,
+                notes=linked_menu_notes,
+            )
+            if generic_linked_menu_source:
+                return DiscoveredNewProductSource(
+                    source=_apply_manual_sector(generic_linked_menu_source, sector_key),
+                    matched_url=candidate_url,
+                    official_site_url=candidate_url,
+                    confidence=0.77,
+                    search_queries=search_queries,
+                    notes=linked_menu_notes,
                 )
 
             event_notes: list[str] = []
@@ -804,6 +1010,27 @@ async def discover_new_product_source(
                         notes=internal_grid_notes,
                     )
 
+                internal_linked_menu_notes: list[str] = []
+                generic_internal_linked_menu_source = _detect_generic_linked_menu_cards_source(
+                    brand=normalized_brand,
+                    source_type=source_type,
+                    candidate_url=internal_url,
+                    soup=internal_soup,
+                    notes=internal_linked_menu_notes,
+                )
+                if generic_internal_linked_menu_source:
+                    return DiscoveredNewProductSource(
+                        source=_apply_manual_sector(
+                            generic_internal_linked_menu_source,
+                            sector_key,
+                        ),
+                        matched_url=internal_url,
+                        official_site_url=candidate_url,
+                        confidence=0.75,
+                        search_queries=search_queries,
+                        notes=internal_linked_menu_notes,
+                    )
+
                 internal_event_notes: list[str] = []
                 generic_internal_event_source = _detect_generic_event_card_list_source(
                     brand=normalized_brand,
@@ -846,4 +1073,4 @@ async def discover_new_product_source(
                         notes=internal_media_event_notes,
                     )
 
-    raise ValueError("지원 가능한 공식 신상 소스를 찾지 못했습니다. 현재는 등록된 parser preset, 테이블형 공지, 웹진형 뉴스, 카드형 이벤트, 미디어형 이벤트 페이지까지 자동 등록됩니다.")
+    raise ValueError("지원 가능한 공식 신상 소스를 찾지 못했습니다. 현재는 등록된 parser preset, 테이블형 공지, 날짜 없는 공지 테이블, 웹진형 뉴스, 메뉴 카드형 페이지, 카드형 이벤트, 미디어형 이벤트 페이지까지 자동 등록됩니다.")
