@@ -35,8 +35,11 @@ from detector.alias_manager import (
     build_alias_rows,
     clean_display_keyword,
     dedupe_terms,
+    filter_alias_rows,
+    get_effective_canonical_keyword,
     get_canonicalization_label,
     normalize_keyword_text,
+    parse_alias_decisions,
     resolve_keyword_alias,
 )
 from detector.keyword_manager import (
@@ -534,6 +537,7 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
     seen_canonicalizations: set[str] = set()
     alias_rows = get_keyword_aliases()
     alias_lookup = build_alias_lookup(alias_rows)
+    blocked_pairs, _ = parse_alias_decisions(alias_rows)
 
     blog_texts: list[str] = []
     evidence_texts: list[str] = []
@@ -619,11 +623,7 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         if keyword
     }
     existing_keys.update(normalize_keyword_text(word) for word in STOPWORDS if word)
-    existing_keys.update(
-        row.get("alias_normalized") or normalize_keyword_text(row.get("alias"))
-        for row in alias_rows
-        if row.get("alias") or row.get("alias_normalized")
-    )
+    existing_keys.update(alias_lookup.keys())
     review_statuses = get_ai_review_latest_statuses("keyword")
 
     candidates: list[dict] = []
@@ -805,6 +805,12 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         if review is not None:
             if review.category != DEFAULT_CATEGORY or category == DEFAULT_CATEGORY:
                 category = review.category
+            review.canonical_keyword = get_effective_canonical_keyword(
+                keyword,
+                review.canonical_keyword,
+                alias_lookup,
+                blocked_pairs,
+            )
 
             if not _is_ai_accept(review):
                 target_key = (
@@ -921,7 +927,7 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         seen_inserted_keys.add(normalized_display)
 
     insert_keywords(new_keywords)
-    upsert_keyword_aliases(alias_rows_to_upsert)
+    upsert_keyword_aliases(filter_alias_rows(alias_rows_to_upsert, blocked_pairs))
     summary["new_keywords"] = len(new_keywords)
     summary["keywords"] = [keyword["keyword"] for keyword in new_keywords]
     logger.info("keyword discovery finished with %s new keywords", len(new_keywords))

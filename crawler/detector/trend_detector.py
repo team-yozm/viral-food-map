@@ -55,8 +55,11 @@ from detector.alias_manager import (
     build_alias_terms_by_canonical,
     clean_display_keyword,
     dedupe_terms,
+    filter_alias_rows,
+    get_effective_canonical_keyword,
     get_canonicalization_label,
     normalize_keyword_text,
+    parse_alias_decisions,
     resolve_keyword_alias,
 )
 from detector.keyword_manager import (
@@ -840,6 +843,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
     seen_canonicalizations: set[str] = set()
     alias_rows = get_keyword_aliases()
     alias_lookup = build_alias_lookup(alias_rows)
+    blocked_pairs, _ = parse_alias_decisions(alias_rows)
     alias_terms_by_canonical = build_alias_terms_by_canonical(alias_rows)
     active_trends = get_active_trends() or []
     invalid_active_trends = _deactivate_invalid_active_trends(active_trends)
@@ -1089,6 +1093,12 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         if review is not None:
             if review.category != DEFAULT_CATEGORY or category == DEFAULT_CATEGORY:
                 category = review.category
+            review.canonical_keyword = get_effective_canonical_keyword(
+                keyword,
+                review.canonical_keyword,
+                alias_lookup,
+                blocked_pairs,
+            )
 
             # Phase 1: AI 리뷰 결과를 trend_reviews 테이블에 저장
             existing_for_review = candidate_existing_trends.get(keyword)
@@ -1442,7 +1452,9 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 insert_stores(store_records)
                 summary["stored_stores"] += len(store_records)
 
-    upsert_keyword_aliases(alias_rows_to_upsert)
+    upsert_keyword_aliases(
+        filter_alias_rows(alias_rows_to_upsert, blocked_pairs)
+    )
     deduped_confirmed_keywords = dedupe_terms(confirmed_keywords)
     deduped_new_confirmed_keywords = dedupe_terms(new_confirmed_keywords)
     summary["confirmed"] = len(deduped_confirmed_keywords)

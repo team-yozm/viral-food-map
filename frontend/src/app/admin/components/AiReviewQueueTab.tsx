@@ -611,13 +611,9 @@ export default function AiReviewQueueTab() {
                   {isPending && (
                     <div className="flex flex-shrink-0 flex-col gap-2">
                       {hasCanonicalApproval && canonicalKeyword && (
-                        <button
-                          onClick={() => void approveRow(row, canonicalKeyword)}
-                          disabled={busyId === row.id}
-                          className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50"
-                        >
-                          {busyId === row.id ? "처리 중..." : "AI 대표명 승인"}
-                        </button>
+                        <p className="max-w-[220px] rounded-lg bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-700">
+                          대표명 판단은 AI/동의어 탭에서 묶기, 분리, 뒤집기로 처리합니다.
+                        </p>
                       )}
                       <button
                         onClick={() => void approveRow(row)}

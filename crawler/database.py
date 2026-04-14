@@ -502,7 +502,7 @@ def upsert_keyword_aliases(rows: list[dict]):
         return (
             get_client()
             .table("keyword_aliases")
-            .upsert(payload, on_conflict="alias_normalized")
+            .upsert(payload, on_conflict="alias_normalized,canonical_normalized")
             .execute()
         )
     except Exception as exc:
