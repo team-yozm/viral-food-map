@@ -60,7 +60,13 @@ def build_alias_lookup(alias_rows: list[dict]) -> dict[str, str]:
     blocked, merges = parse_alias_decisions(alias_rows)
     lookup: dict[str, str] = {}
 
-    for row in alias_rows:
+    # merge 결정이 auto 행보다 나중에 처리되어야 덮어쓰기가 올바름
+    sorted_rows = sorted(
+        alias_rows,
+        key=lambda r: 1 if r.get("decision_type") == "merge" else 0,
+    )
+
+    for row in sorted_rows:
         if str(row.get("decision_type") or "").strip().lower() == "separate":
             continue
         alias_key = row.get("alias_normalized") or normalize_keyword_text(
