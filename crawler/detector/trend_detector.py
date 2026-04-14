@@ -173,9 +173,14 @@ def classify_status(
             return "active"
         return "watchlist"
 
-    # declining → score 회복 시 active 복귀, 아니면 watchlist로 강등
+    # declining → score 회복 시 rising/active 복귀, 아니면 watchlist로 강등
     if existing_status == "declining":
         if meets_active:
+            if (
+                acceleration >= settings.TREND_THRESHOLD
+                and score >= settings.TREND_RISING_SCORE_THRESHOLD
+            ):
+                return "rising"
             return "active"
         if rank is not None and rank <= settings.TREND_TOP_RANK_CANDIDATE_MAX:
             return "declining"
@@ -474,20 +479,25 @@ def _deactivate_stale_trends(confirmed_keywords: list[str]) -> list[str]:
     cutoff = datetime.now(timezone.utc) - timedelta(
         hours=settings.ACTIVE_TREND_TTL_HOURS
     )
-    confirmed_keyword_set = set(confirmed_keywords)
+    confirmed_keyword_set = {
+        normalize_keyword_text(kw) for kw in confirmed_keywords
+    }
     deactivated_trends: list[str] = []
 
     for trend in get_active_trends() or []:
         trend_id = trend.get("id")
         keyword = trend.get("name")
-        if not trend_id or not keyword or keyword in confirmed_keyword_set:
+        if not trend_id or not keyword or normalize_keyword_text(keyword) in confirmed_keyword_set:
             continue
 
         detected_at = _parse_detected_at(trend.get("detected_at"))
         if detected_at and detected_at > cutoff:
             continue
 
-        if update_trend_status(trend_id, "inactive"):
+        is_watchlist = trend.get("status") == "watchlist"
+        if update_trend_status(
+            trend_id, "inactive", enforce_min_active=not is_watchlist
+        ):
             deactivated_trends.append(keyword)
 
     return deactivated_trends
