@@ -25,6 +25,8 @@ import { getAddressLabelFromCoords } from "@/lib/kakao-loader";
 import { DEFAULT_MAP_CENTER, hasUsableCoordinates } from "@/lib/location";
 import { SITE_URL } from "@/lib/site";
 import { supabase } from "@/lib/supabase";
+import useAppClipExperience from "@/hooks/useAppClipExperience";
+import { withAppClipParam } from "@/lib/app-clip";
 import type {
   LocationStatus,
   NearbyTrendStore,
@@ -120,6 +122,7 @@ export default function HomePageClient({
   verifiedStoreCount,
   lastUpdated,
 }: HomePageClientProps) {
+  const isAppClipExperience = useAppClipExperience();
   const [trends, setTrends] = useState<Trend[]>(initialTrends);
   const [nearbyStores, setNearbyStores] = useState<GroupedNearbyStore[]>([]);
   const [loading, setLoading] = useState(initialTrends.length === 0);
@@ -562,6 +565,8 @@ export default function HomePageClient({
     });
   }, [sessionId, yomechuResult]);
 
+  const mapHref = withAppClipParam("/map", isAppClipExperience);
+
   return (
     <>
       <Header
@@ -631,7 +636,7 @@ export default function HomePageClient({
                 지금 뜨는 트렌드 보기
               </Link>
               <Link
-                href="/map"
+                href={mapHref}
                 className="rounded-xl border border-white/30 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
               >
                 지도에서 판매처 찾기
@@ -648,12 +653,14 @@ export default function HomePageClient({
           </div>
         </section>
 
-        <section className="mb-6">
-          <div className="flex justify-center">
-            <PushSubscribeButton />
-          </div>
-          <InstallPrompt />
-        </section>
+        {!isAppClipExperience ? (
+          <section className="mb-6">
+            <div className="flex justify-center">
+              <PushSubscribeButton />
+            </div>
+            <InstallPrompt />
+          </section>
+        ) : null}
 
         <div id="trends" className="scroll-mt-24">
           {loading ? (
@@ -713,7 +720,12 @@ export default function HomePageClient({
 
                       {topTrend && (
                         <div className="mb-8">
-                          <Link href={`/trend/${topTrend.id}`}>
+                          <Link
+                            href={withAppClipParam(
+                              `/trend/${topTrend.id}`,
+                              isAppClipExperience
+                            )}
+                          >
                             <div className="relative rounded-2xl overflow-hidden shadow-lg">
                               <div className="relative h-56 w-full bg-gray-100">
                                 {topTrend.image_url ? (
@@ -837,7 +849,7 @@ export default function HomePageClient({
                   </button>
                 )}
                 <Link
-                  href="/map"
+                  href={mapHref}
                   className="inline-flex rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
                 >
                   지도에서 보기
@@ -856,7 +868,7 @@ export default function HomePageClient({
                   트렌드를 확인했다면, 이제 가까운 판매처를 바로 찾아보세요.
                 </p>
               </div>
-              <Link href="/map" className="text-xs text-primary font-medium">
+              <Link href={mapHref} className="text-xs text-primary font-medium">
                 지도에서 보기
               </Link>
             </div>
@@ -906,7 +918,7 @@ export default function HomePageClient({
 
         <AdSlot slot={ADSENSE_HOME_SLOT} className="mt-8" />
 
-        <Footer />
+        {!isAppClipExperience ? <Footer /> : null}
       </main>
       <ScrollToTop />
       {locationPickerOpen ? (

@@ -12,6 +12,8 @@ import TrendBadge from "@/components/TrendBadge";
 import { getCurrentPosition } from "@/lib/native-geolocation";
 import ShareButton from "@/components/ShareButton";
 import { ADSENSE_TREND_DETAIL_SLOT } from "@/lib/adsense";
+import useAppClipExperience from "@/hooks/useAppClipExperience";
+import { withAppClipParam } from "@/lib/app-clip";
 import type { Trend, Store } from "@/lib/types";
 
 interface TrendDetailPageClientProps {
@@ -83,6 +85,7 @@ export default function TrendDetailPageClient({
   initialTrend,
   initialStores,
 }: TrendDetailPageClientProps) {
+  const isAppClipExperience = useAppClipExperience();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [storeQuery, setStoreQuery] = useState("");
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
@@ -207,7 +210,10 @@ export default function TrendDetailPageClient({
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-gray-900">판매처 목록</h3>
-            <Link href={`/report?trend=${id}`} className="text-xs text-primary font-medium">
+            <Link
+              href={withAppClipParam(`/report?trend=${id}`, isAppClipExperience)}
+              className="text-xs text-primary font-medium"
+            >
               + 제보하기
             </Link>
           </div>

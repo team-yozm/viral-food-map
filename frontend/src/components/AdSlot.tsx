@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ADSENSE_CLIENT } from "@/lib/adsense";
 import { isNative } from "@/lib/capacitor-utils";
+import useAppClipExperience from "@/hooks/useAppClipExperience";
 
 declare global {
   interface Window {
@@ -21,15 +22,20 @@ export default function AdSlot({
   className = "",
   minHeightClassName = "min-h-[180px]",
 }: AdSlotProps) {
+  const isAppClipExperience = useAppClipExperience();
   const adRef = useRef<HTMLModElement | null>(null);
   const requestedRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (isAppClipExperience) {
+      return;
+    }
+
     if (!isNative()) {
       setReady(true);
     }
-  }, []);
+  }, [isAppClipExperience]);
 
   useEffect(() => {
     if (!ready || !slot || requestedRef.current || !adRef.current) {
@@ -44,7 +50,7 @@ export default function AdSlot({
     }
   }, [ready, slot]);
 
-  if (!ready || !slot || !ADSENSE_CLIENT) {
+  if (isAppClipExperience || !ready || !slot || !ADSENSE_CLIENT) {
     return null;
   }
 

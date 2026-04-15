@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import useAppClipExperience from "@/hooks/useAppClipExperience";
 
 function HomeIcon({ active }: { active: boolean }) {
   return (
@@ -88,14 +89,23 @@ const navItems = [
 export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const isAppClipExperience = useAppClipExperience();
 
   useEffect(() => {
+    if (isAppClipExperience) {
+      return;
+    }
+
     navItems.forEach((item) => {
       if (item.href !== pathname) {
         router.prefetch(item.href);
       }
     });
-  }, [pathname, router]);
+  }, [isAppClipExperience, pathname, router]);
+
+  if (isAppClipExperience) {
+    return null;
+  }
 
   const handleNav = (href: string) => {
     Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});

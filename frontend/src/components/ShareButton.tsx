@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { isNative } from "@/lib/capacitor-utils";
+import { stripAppClipParam } from "@/lib/app-clip";
 
 interface ShareButtonProps {
   title: string;
@@ -25,7 +26,9 @@ export default function ShareButton({
 }: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
 
-  const shareUrl = url ?? (typeof window !== "undefined" ? window.location.href : "");
+  const shareUrl = stripAppClipParam(
+    url ?? (typeof window !== "undefined" ? window.location.href : "")
+  );
 
   const handleCopy = async () => {
     try {

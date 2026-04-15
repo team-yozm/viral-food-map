@@ -8,6 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		31C100012F10000100000001 /* YozmeatAppClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C1000D2F10000100000001 /* YozmeatAppClipApp.swift */; };
+		31C100022F10000100000001 /* AppClipRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C1000E2F10000100000001 /* AppClipRouter.swift */; };
+		31C100032F10000100000001 /* AppClipWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C1000F2F10000100000001 /* AppClipWebView.swift */; };
+		31C100042F10000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		31C100052F10000100000001 /* YozmeatAppClip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = 31C1000A2F10000100000001 /* YozmeatAppClip.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		30B700012F0A000100000001 /* YozmeatWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30B700032F0A000100000001 /* YozmeatWidgets.swift */; };
 		30B700022F0A000100000001 /* YozmeatWidgetsExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 30B700052F0A000100000001 /* YozmeatWidgetsExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		30A14F672EECDA8F00E40E84 /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A14F662EECDA8F00E40E84 /* AppViewController.swift */; };
@@ -21,6 +26,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		31C100062F10000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 31C100112F10000100000001;
+			remoteInfo = YozmeatAppClip;
+		};
 		30B7000B2F0A000100000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
@@ -31,6 +43,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		31C100082F10000100000001 /* Embed App Clips */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/AppClips";
+			dstSubfolderSpec = 16;
+			files = (
+				31C100052F10000100000001 /* YozmeatAppClip.app in Embed App Clips */,
+			);
+			name = "Embed App Clips";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		30B700072F0A000100000001 /* Embed App Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -46,6 +69,12 @@
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		31C1000A2F10000100000001 /* YozmeatAppClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YozmeatAppClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		31C1000B2F10000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		31C1000C2F10000100000001 /* YozmeatAppClip.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = YozmeatAppClip.entitlements; sourceTree = "<group>"; };
+		31C1000D2F10000100000001 /* YozmeatAppClipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YozmeatAppClipApp.swift; sourceTree = "<group>"; };
+		31C1000E2F10000100000001 /* AppClipRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppClipRouter.swift; sourceTree = "<group>"; };
+		31C1000F2F10000100000001 /* AppClipWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppClipWebView.swift; sourceTree = "<group>"; };
 		30B700032F0A000100000001 /* YozmeatWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YozmeatWidgets.swift; sourceTree = "<group>"; };
 		30B700042F0A000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		30B700052F0A000100000001 /* YozmeatWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YozmeatWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -63,6 +92,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		31C100122F10000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		30B700082F0A000100000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -81,11 +117,24 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		31C100102F10000100000001 /* YozmeatAppClip */ = {
+			isa = PBXGroup;
+			children = (
+				31C1000D2F10000100000001 /* YozmeatAppClipApp.swift */,
+				31C1000E2F10000100000001 /* AppClipRouter.swift */,
+				31C1000F2F10000100000001 /* AppClipWebView.swift */,
+				31C1000B2F10000100000001 /* Info.plist */,
+				31C1000C2F10000100000001 /* YozmeatAppClip.entitlements */,
+			);
+			path = YozmeatAppClip;
+			sourceTree = "<group>";
+		};
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				31C100102F10000100000001 /* YozmeatAppClip */,
 				30B700092F0A000100000001 /* YozmeatWidgets */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -95,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				31C1000A2F10000100000001 /* YozmeatAppClip.app */,
 				30B700052F0A000100000001 /* YozmeatWidgetsExtension.appex */,
 			);
 			name = Products;
@@ -129,6 +179,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		31C100112F10000100000001 /* YozmeatAppClip */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 31C100172F10000100000001 /* Build configuration list for PBXNativeTarget "YozmeatAppClip" */;
+			buildPhases = (
+				31C100142F10000100000001 /* Sources */,
+				31C100122F10000100000001 /* Frameworks */,
+				31C100132F10000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = YozmeatAppClip;
+			packageProductDependencies = (
+			);
+			productName = YozmeatAppClip;
+			productReference = 31C1000A2F10000100000001 /* YozmeatAppClip.app */;
+			productType = "com.apple.product-type.application.on-demand-install-capable";
+		};
 		30B7000A2F0A000100000001 /* YozmeatWidgetsExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 30B700112F0A000100000001 /* Build configuration list for PBXNativeTarget "YozmeatWidgetsExtension" */;
@@ -155,11 +224,13 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				31C100082F10000100000001 /* Embed App Clips */,
 				30B700072F0A000100000001 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				31C100072F10000100000001 /* PBXTargetDependency */,
 				30B7000E2F0A000100000001 /* PBXTargetDependency */,
 			);
 			name = App;
@@ -179,6 +250,10 @@
 				LastSwiftUpdateCheck = 920;
 				LastUpgradeCheck = 920;
 				TargetAttributes = {
+					31C100112F10000100000001 = {
+						CreatedOnToolsVersion = 16.0;
+						ProvisioningStyle = Automatic;
+					};
 					30B7000A2F0A000100000001 = {
 						CreatedOnToolsVersion = 16.0;
 						ProvisioningStyle = Automatic;
@@ -207,12 +282,21 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				31C100112F10000100000001 /* YozmeatAppClip */,
 				30B7000A2F0A000100000001 /* YozmeatWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		31C100132F10000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				31C100042F10000100000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		30B7000C2F0A000100000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -236,6 +320,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		31C100142F10000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				31C100012F10000100000001 /* YozmeatAppClipApp.swift in Sources */,
+				31C100022F10000100000001 /* AppClipRouter.swift in Sources */,
+				31C100032F10000100000001 /* AppClipWebView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		30B7000D2F0A000100000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -256,6 +350,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		31C100072F10000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 31C100112F10000100000001 /* YozmeatAppClip */;
+			targetProxy = 31C100062F10000100000001 /* PBXContainerItemProxy */;
+		};
 		30B7000E2F0A000100000001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 30B7000A2F0A000100000001 /* YozmeatWidgetsExtension */;
@@ -283,6 +382,53 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		31C100152F10000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = YozmeatAppClip/YozmeatAppClip.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X2YM45W49L;
+				INFOPLIST_FILE = YozmeatAppClip/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yozmeat.app.Clip;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		31C100162F10000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = YozmeatAppClip/YozmeatAppClip.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X2YM45W49L;
+				INFOPLIST_FILE = YozmeatAppClip/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yozmeat.app.Clip;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
@@ -490,6 +636,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		31C100172F10000100000001 /* Build configuration list for PBXNativeTarget "YozmeatAppClip" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				31C100152F10000100000001 /* Debug */,
+				31C100162F10000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

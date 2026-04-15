@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import useAppClipExperience from "@/hooks/useAppClipExperience";
+import { withAppClipParam } from "@/lib/app-clip";
 
 interface HeaderProps {
   showBack?: boolean;
@@ -12,6 +14,8 @@ interface HeaderProps {
 
 export default function Header({ showBack, rightSlot, bottomSlot }: HeaderProps) {
   const router = useRouter();
+  const isAppClipExperience = useAppClipExperience();
+  const homeHref = withAppClipParam("/", isAppClipExperience);
 
   return (
     <header
@@ -39,7 +43,7 @@ export default function Header({ showBack, rightSlot, bottomSlot }: HeaderProps)
             뒤로
           </button>
         )}
-        <Link href="/">
+        <Link href={homeHref}>
           <img src="/logo-title.png" alt="요즘뭐먹" className="h-11 object-contain" />
         </Link>
         {rightSlot ? <div className="absolute right-4">{rightSlot}</div> : null}

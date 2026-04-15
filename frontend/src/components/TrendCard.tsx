@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import type { Trend } from "@/lib/types";
 import { shouldUseUnoptimizedImage } from "@/lib/image-optimization";
+import useAppClipExperience from "@/hooks/useAppClipExperience";
+import { withAppClipParam } from "@/lib/app-clip";
 import TrendBadge from "./TrendBadge";
 
 interface TrendCardProps {
@@ -11,10 +13,12 @@ interface TrendCardProps {
 }
 
 export default function TrendCard({ trend }: TrendCardProps) {
+  const isAppClipExperience = useAppClipExperience();
   const useUnoptimizedImage = shouldUseUnoptimizedImage(trend.image_url);
+  const trendHref = withAppClipParam(`/trend/${trend.id}`, isAppClipExperience);
 
   return (
-    <Link href={`/trend/${trend.id}`}>
+    <Link href={trendHref}>
       <div className="bg-white rounded-2xl overflow-hidden shadow-md card-hover border border-gray-100">
         {trend.image_url && (
           <div className="relative h-40 w-full">

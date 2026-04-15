@@ -11,6 +11,7 @@ import {
   SITE_TITLE,
   SITE_URL,
 } from "@/lib/site";
+import { buildAppleSmartBannerContent } from "@/lib/app-clip";
 import { absoluteUrl } from "@/lib/seo";
 
 export const metadata: Metadata = {
@@ -52,6 +53,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const smartBannerContent = buildAppleSmartBannerContent(
+    process.env.NEXT_PUBLIC_IOS_APP_ID
+  );
   const structuredData = [
     {
       "@context": "https://schema.org",
@@ -78,6 +82,9 @@ export default function RootLayout({
           name="naver-site-verification"
           content={NAVER_SITE_VERIFICATION}
         />
+        {smartBannerContent ? (
+          <meta name="apple-itunes-app" content={smartBannerContent} />
+        ) : null}
         {structuredData.map((item) => (
           <script
             key={item["@type"]}
