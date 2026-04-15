@@ -167,6 +167,111 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
+function estimateTextWidth(text, fontSize) {
+  let width = 0;
+
+  for (const char of text) {
+    if (/\s/.test(char)) {
+      width += fontSize * 0.34;
+    } else if (/[A-Z0-9]/.test(char)) {
+      width += fontSize * 0.62;
+    } else if (/[a-z]/.test(char)) {
+      width += fontSize * 0.54;
+    } else if (/[.,!?/:;'"()\-[\]&]/.test(char)) {
+      width += fontSize * 0.38;
+    } else {
+      width += fontSize * 0.95;
+    }
+  }
+
+  return width;
+}
+
+function splitOversizedToken(token, maxWidth, fontSize) {
+  const parts = [];
+  let current = "";
+
+  for (const char of token) {
+    const next = `${current}${char}`;
+    if (current && estimateTextWidth(next, fontSize) > maxWidth) {
+      parts.push(current);
+      current = char;
+      continue;
+    }
+    current = next;
+  }
+
+  if (current) {
+    parts.push(current);
+  }
+
+  return parts;
+}
+
+function fitTextWithEllipsis(text, maxWidth, fontSize) {
+  const compact = String(text).replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return "";
+  }
+  if (estimateTextWidth(compact, fontSize) <= maxWidth) {
+    return compact;
+  }
+
+  let trimmed = compact;
+  while (trimmed && estimateTextWidth(`${trimmed}…`, fontSize) > maxWidth) {
+    trimmed = trimmed.slice(0, -1).trimEnd();
+  }
+
+  return trimmed ? `${trimmed}…` : "…";
+}
+
+function wrapTextLines(text, { maxWidth, fontSize, maxLines }) {
+  const paragraphs = String(text)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const lines = [];
+
+  for (const paragraph of paragraphs) {
+    const tokens = paragraph.split(" ").flatMap((token) => {
+      if (!token) {
+        return [];
+      }
+      if (estimateTextWidth(token, fontSize) <= maxWidth) {
+        return [token];
+      }
+      return splitOversizedToken(token, maxWidth, fontSize);
+    });
+
+    let currentLine = "";
+    for (const token of tokens) {
+      const nextLine = currentLine ? `${currentLine} ${token}` : token;
+      if (estimateTextWidth(nextLine, fontSize) <= maxWidth) {
+        currentLine = nextLine;
+        continue;
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      currentLine = token;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+  }
+
+  if (lines.length <= maxLines) {
+    return lines;
+  }
+
+  const visibleLines = lines.slice(0, maxLines - 1);
+  const overflowText = lines.slice(maxLines - 1).join(" ");
+  visibleLines.push(fitTextWithEllipsis(overflowText, maxWidth, fontSize));
+  return visibleLines;
+}
+
 function validateImageUrl(rawUrl) {
   const parsed = new URL(rawUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
@@ -316,6 +421,8 @@ async function buildFrostedGlassLayer(sourceBuffer, panel) {
 }
 
 function buildOverlaySvg(payload, fontCss, colors) {
+  const subtitleFontSize = 30;
+  const subtitleLineHeight = 42;
   const badge =
     payload.badge ||
     (payload.status === "active" ? "\uC778\uAE30" : "\uAE09\uC0C1\uC2B9");
@@ -333,6 +440,11 @@ function buildOverlaySvg(payload, fontCss, colors) {
   const titleY = p.y + 130;
   const subtitleY = p.y + 186;
   const watermarkY = p.y + p.h - 28;
+  const subtitleLines = wrapTextLines(subtitle, {
+    maxWidth: textRight - textX,
+    fontSize: subtitleFontSize,
+    maxLines: 2,
+  });
 
   const pad = 56;
 
@@ -483,11 +595,16 @@ function buildOverlaySvg(payload, fontCss, colors) {
       <text
         x="${textX}"
         y="${subtitleY}"
-        font-size="30"
+        font-size="${subtitleFontSize}"
         font-weight="400"
         fill="${colors.white}"
         fill-opacity="0.75"
-      >${escapeXml(subtitle)}</text>
+      >${subtitleLines
+        .map(
+          (line, index) =>
+            `<tspan x="${textX}" dy="${index === 0 ? 0 : subtitleLineHeight}">${escapeXml(line)}</tspan>`
+        )
+        .join("")}</text>
 
       <!-- URL watermark -->
       <text

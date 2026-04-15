@@ -66,11 +66,8 @@ def _slugify(value: str) -> str:
     return normalized or hashlib.sha256(value.encode()).hexdigest()[:8]
 
 
-def _truncate_text(value: str, max_length: int = 24) -> str:
-    compact = " ".join((value or "").split())
-    if len(compact) <= max_length:
-        return compact
-    return f"{compact[: max_length - 1]}…"
+def _compact_text(value: str) -> str:
+    return " ".join((value or "").split())
 
 
 def _truncate_error_text(value: str, max_length: int = 400) -> str:
@@ -118,10 +115,10 @@ def _build_caption(trend: dict[str, Any]) -> str:
 def _build_render_subtitle(trend: dict[str, Any]) -> str:
     description = trend.get("description")
     if description:
-        return _truncate_text(description, max_length=24)
+        return _compact_text(description)
 
     category = trend.get("category") or "간식"
-    return _truncate_text(f"{category} 카테고리에서 검색량이 오른 메뉴", max_length=24)
+    return _compact_text(f"{category} 카테고리에서 검색량이 오른 메뉴")
 
 
 def _build_badge_label(status: str | None) -> str:
