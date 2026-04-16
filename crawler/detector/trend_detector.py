@@ -201,8 +201,6 @@ def classify_status(
     if existing_status in ("rising", "active"):
         return "declining"
 
-    if rank is not None and rank <= settings.TREND_TOP_RANK_CANDIDATE_MAX:
-        return "watchlist"
     return "watchlist"
 
 
@@ -1403,13 +1401,16 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         display_keyword = plan["display_keyword"]
         category = plan["category"]
         representative_candidate = plan["representative_candidate"]
+        existing_peak = float(
+            (primary_existing_trend or {}).get("peak_score") or 0.0
+        )
         trend_data = {
             "id": plan["trend_id"],
             "name": display_keyword,
             "category": category,
             "status": plan["status"],
             "detected_at": datetime.now(timezone.utc).isoformat(),
-            "peak_score": representative_candidate["score"],
+            "peak_score": max(existing_peak, representative_candidate["score"]),
             "score_breakdown": representative_candidate.get("score_breakdown"),
             "search_volume_data": _build_search_volume_map(
                 representative_candidate["data_points"]

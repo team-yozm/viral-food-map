@@ -490,6 +490,7 @@ def get_keyword_aliases():
             get_client()
             .table("keyword_aliases")
             .select("*")
+            .order("last_seen_at", desc=True)
             .execute()
             .data
             or []
@@ -499,13 +500,17 @@ def get_keyword_aliases():
         return []
 
 
+# decision_type은 admin이 설정하는 컬럼이므로 자동 감지 upsert에서 덮어쓰지 않음
+_ALIAS_PROTECTED_COLUMNS = frozenset({"decision_type"})
+
+
 def upsert_keyword_aliases(rows: list[dict]):
     if not rows:
         return None
 
     payload = [
         {
-            **row,
+            **{k: v for k, v in row.items() if k not in _ALIAS_PROTECTED_COLUMNS},
             "last_seen_at": datetime.now(timezone.utc).isoformat(),
         }
         for row in rows
