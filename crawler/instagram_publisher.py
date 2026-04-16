@@ -545,6 +545,11 @@ async def publish_daily_instagram_feed(
         if not run_row:
             raise RuntimeError("Failed to create instagram feed run record")
 
+        # lookup 일시 실패로 existing_run을 놓쳤다가 create 시 기존 row를 돌려받은 경우
+        # 상태를 재확인해 이미 완료된 run이면 조기 종료
+        if not existing_run and run_row.get("status") in ("published", "skipped") and not force_retry:
+            return _build_noop_summary(run_date, "already_completed", run_row)
+
         if not candidates:
             run_row = update_instagram_feed_run(
                 run_row["id"],

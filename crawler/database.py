@@ -56,15 +56,27 @@ def _reset_client() -> None:
     _client = None
 
 
+def _execute_with_retry(fn):
+    """HTTP/2 GOAWAY 등 연결 끊김 시 클라이언트를 재생성해 1회 재시도."""
+    try:
+        return fn()
+    except httpx.RemoteProtocolError:
+        _reset_client()
+        return fn()
+
+
 def get_active_trends():
-    return (
-        get_client()
-        .table("trends")
-        .select("*")
-        .in_("status", ["rising", "active", "declining", "watchlist"])
-        .execute()
-        .data
-    )
+    def _call():
+        return (
+            get_client()
+            .table("trends")
+            .select("*")
+            .in_("status", ["rising", "active", "declining", "watchlist"])
+            .execute()
+            .data
+        )
+
+    return _execute_with_retry(_call)
 
 
 def get_all_keywords():
@@ -711,6 +723,21 @@ def create_instagram_feed_run(payload: dict[str, Any]) -> dict[str, Any] | None:
         result = get_client().table("instagram_feed_runs").insert(payload).execute()
         data = result.data or []
         return data[0] if data else None
+    except APIError as exc:
+        # 날짜 중복(23505): lookup이 일시 실패해 existing_run을 놓쳤을 때
+        # INSERT 대신 기존 row를 반환해 상위 로직이 상태를 재확인할 수 있도록 한다.
+        if getattr(exc, "code", None) == "23505":
+            run_date = payload.get("run_date")
+            if run_date:
+                existing = get_instagram_feed_run_by_date(run_date)
+                if existing:
+                    return existing
+        _warn_once(
+            "instagram_feed_runs_insert",
+            "instagram_feed_runs insert unavailable",
+            exc,
+        )
+        raise
     except Exception as exc:
         _warn_once(
             "instagram_feed_runs_insert",
