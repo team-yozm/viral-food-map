@@ -82,6 +82,7 @@ export default function RootLayout({
           name="naver-site-verification"
           content={NAVER_SITE_VERIFICATION}
         />
+        <meta name="google-adsense-account" content={ADSENSE_CLIENT} />
         {smartBannerContent ? (
           <meta name="apple-itunes-app" content={smartBannerContent} />
         ) : null}
