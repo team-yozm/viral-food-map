@@ -36,8 +36,10 @@ BUTTON_STYLE_SUCCESS = 3
 BUTTON_STYLE_DANGER = 4
 
 INTERACTION_TYPE_PING = 1
+INTERACTION_TYPE_MESSAGE_COMPONENT = 3
 INTERACTION_RESPONSE_TYPE_PONG = 1
 INTERACTION_RESPONSE_TYPE_CHANNEL_MESSAGE = 4
+INTERACTION_RESPONSE_TYPE_DEFERRED_MESSAGE_UPDATE = 6
 EPHEMERAL_FLAG = 1 << 6
 
 AI_REVIEW_ENTITY_KINDS: tuple[ReviewEntityKind, ReviewEntityKind] = (
@@ -202,6 +204,12 @@ def build_ephemeral_response(content: str) -> dict[str, Any]:
             "content": content,
             "flags": EPHEMERAL_FLAG,
         },
+    }
+
+
+def build_deferred_message_update_response() -> dict[str, Any]:
+    return {
+        "type": INTERACTION_RESPONSE_TYPE_DEFERRED_MESSAGE_UPDATE,
     }
 
 
@@ -1344,3 +1352,14 @@ def schedule_ai_review_message_sync(row: dict[str, Any] | None) -> None:
         ensure_ai_review_message(row),
         f"ai_review_message_sync:{row.get('id')}",
     )
+
+
+def schedule_interaction_processing(interaction: dict[str, Any]) -> None:
+    if not is_discord_review_enabled():
+        return
+    entity = parse_custom_id(_get_string(_get_record(interaction.get("data")).get("custom_id")))
+    description = "discord_interaction:unknown"
+    if entity:
+        entity_kind, action, entity_id = entity
+        description = f"discord_interaction:{entity_kind}:{action}:{entity_id}"
+    _schedule_background_task(process_interaction(interaction), description)
