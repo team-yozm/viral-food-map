@@ -70,7 +70,7 @@ class Settings:
     DISCORD_REVIEW_CHANNEL_ID: str = os.getenv("DISCORD_REVIEW_CHANNEL_ID", "")
     DISCORD_REVIEW_ENABLED: bool = _env_bool(
         "DISCORD_REVIEW_ENABLED",
-        default=False,
+        default=True,
     )
     INSTAGRAM_POSTING_ENABLED: bool = _env_bool(
         "INSTAGRAM_POSTING_ENABLED",
