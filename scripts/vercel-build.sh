@@ -11,4 +11,6 @@ else
   npm run build
 fi
 
-cp .next/routes-manifest.json .next/routes-manifest-deterministic.json
+if [ -f .next/routes-manifest.json ]; then
+  cp .next/routes-manifest.json .next/routes-manifest-deterministic.json
+fi
