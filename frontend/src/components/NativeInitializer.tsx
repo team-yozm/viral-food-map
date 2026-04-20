@@ -49,6 +49,12 @@ function navigateToNativeAppUrl(rawUrl: string) {
   window.location.assign(nextUrl);
 }
 
+function loadCapacitorAppModule() {
+  return new Function("return import('@capacitor/app')")() as Promise<
+    typeof import("@capacitor/app")
+  >;
+}
+
 export default function NativeInitializer() {
   useEffect(() => {
     if (isNative()) {
@@ -66,7 +72,7 @@ export default function NativeInitializer() {
         Geolocation.checkPermissions();
       });
 
-      void import("@capacitor/app")
+      void loadCapacitorAppModule()
         .then(async ({ App }) => {
           const launchUrl = await App.getLaunchUrl();
 
@@ -74,9 +80,12 @@ export default function NativeInitializer() {
             navigateToNativeAppUrl(launchUrl.url);
           }
 
-          const listener = await App.addListener("appUrlOpen", ({ url }) => {
+          const listener = await App.addListener(
+            "appUrlOpen",
+            ({ url }: { url: string }) => {
             navigateToNativeAppUrl(url);
-          });
+            }
+          );
 
           if (isDisposed) {
             listener.remove();
