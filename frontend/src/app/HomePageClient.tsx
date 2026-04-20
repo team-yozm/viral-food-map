@@ -810,68 +810,66 @@ export default function HomePageClient({
         </div>
 
         <section className="mb-6 mt-8">
-          <div className="rounded-[32px] bg-[#f6f9fc] px-5 py-6 shadow-sm ring-1 ring-slate-200/70 sm:px-6 sm:py-7">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3182f6]">
-                  How We Pick
-                </p>
-                <h3 className="mt-2 break-keep text-[26px] font-bold tracking-[-0.05em] text-[#191f28] sm:text-[30px]">
-                  확인 가능한 메뉴만 올립니다
-                </h3>
-                <p className="mt-2 break-keep text-sm leading-6 text-[#4e5968]">
-                  공식 채널, 실제 판매 여부, 출처 공개. 세 가지만 먼저 봅니다.
-                </p>
-              </div>
+          <div className="rounded-2xl bg-[#f6f9fc] px-5 py-5 ring-1 ring-slate-200/70">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#3182f6]">
+                How We Pick
+              </p>
               <Link
                 href="/editorial-policy"
-                className="inline-flex h-11 min-w-fit self-start whitespace-nowrap rounded-full bg-white px-4 text-sm font-semibold text-[#3182f6] shadow-[0_8px_24px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
+                className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-[#3182f6] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
                 기준 자세히 보기
               </Link>
             </div>
+            <h3 className="mt-3 break-keep text-[18px] font-bold tracking-[-0.03em] text-[#191f28]">
+              확인 가능한 메뉴만 올립니다
+            </h3>
+            <p className="mt-1.5 break-keep text-[13px] leading-5 text-[#4e5968]">
+              공식 채널, 실제 판매 여부, 출처 공개. 세 가지만 먼저 봅니다.
+            </p>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-3 gap-2">
               <Link
                 href="/how-it-works"
-                className="rounded-[24px] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
+                className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3182f6]">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#3182f6]">
                   01
                 </p>
-                <p className="mt-2 break-keep text-sm font-semibold text-[#191f28]">
+                <p className="mt-2 break-keep text-[12px] font-semibold leading-4 text-[#191f28]">
                   공식 채널 먼저
                 </p>
-                <p className="mt-1 break-keep text-[12px] leading-5 text-[#6b7684]">
-                  공지, 메뉴, 공개 페이지 확인
+                <p className="mt-1 break-keep text-[11px] leading-4 text-[#6b7684]">
+                  공지·메뉴·공개 페이지 확인
                 </p>
               </Link>
               <Link
                 href="/editorial-policy"
-                className="rounded-[24px] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
+                className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3182f6]">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#3182f6]">
                   02
                 </p>
-                <p className="mt-2 break-keep text-sm font-semibold text-[#191f28]">
+                <p className="mt-2 break-keep text-[12px] font-semibold leading-4 text-[#191f28]">
                   먹을 수 있는 메뉴만
                 </p>
-                <p className="mt-1 break-keep text-[12px] leading-5 text-[#6b7684]">
-                  굿즈, 이벤트성 항목은 제외
+                <p className="mt-1 break-keep text-[11px] leading-4 text-[#6b7684]">
+                  굿즈·이벤트 항목 제외
                 </p>
               </Link>
               <Link
                 href="/data-sources"
-                className="rounded-[24px] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
+                className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3182f6]">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#3182f6]">
                   03
                 </p>
-                <p className="mt-2 break-keep text-sm font-semibold text-[#191f28]">
+                <p className="mt-2 break-keep text-[12px] font-semibold leading-4 text-[#191f28]">
                   출처를 같이 남깁니다
                 </p>
-                <p className="mt-1 break-keep text-[12px] leading-5 text-[#6b7684]">
-                  브랜드 채널과 공식 문서 기준
+                <p className="mt-1 break-keep text-[11px] leading-4 text-[#6b7684]">
+                  브랜드·공식 문서 기준
                 </p>
               </Link>
             </div>
