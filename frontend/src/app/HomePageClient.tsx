@@ -662,6 +662,56 @@ export default function HomePageClient({
           </section>
         ) : null}
 
+        <section className="mb-6">
+          <div className="rounded-2xl bg-white px-5 py-5 shadow-sm ring-1 ring-gray-100">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  요즘뭐먹은 이렇게 운영합니다
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                  검색 반응, 공개 웹 문서, 공식 브랜드 채널, 사용자 제보를 함께 보고 지금
+                  먹어볼 만한 음식 트렌드를 정리합니다. 지도와 신상품 페이지는 탐색 도구로
+                  쓰고, 운영 문서에서는 수집 기준과 수정 원칙을 공개합니다.
+                </p>
+              </div>
+              <div className="hidden rounded-2xl bg-primary/5 px-3 py-2 text-[11px] font-semibold text-primary sm:block">
+                서비스 안내
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <Link
+                href="/about"
+                className="rounded-2xl bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+              >
+                <p className="text-sm font-semibold text-gray-900">서비스 소개</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  왜 이 서비스를 만들었는지와 어떤 정보를 제공하는지 설명합니다.
+                </p>
+              </Link>
+              <Link
+                href="/how-it-works"
+                className="rounded-2xl bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+              >
+                <p className="text-sm font-semibold text-gray-900">수집 방식</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  트렌드, 판매처, 공식 신상품을 어떤 절차로 모으는지 공개합니다.
+                </p>
+              </Link>
+              <Link
+                href="/data-sources"
+                className="rounded-2xl bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+              >
+                <p className="text-sm font-semibold text-gray-900">데이터 출처</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  어떤 출처를 사용하고 어디까지 보장하지 않는지 안내합니다.
+                </p>
+              </Link>
+            </div>
+          </div>
+        </section>
+
         <div id="trends" className="scroll-mt-24">
           {loading ? (
             <section>

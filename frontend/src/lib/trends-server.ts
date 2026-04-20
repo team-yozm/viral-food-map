@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { Store, Trend } from "./types";
 import { createServerSupabaseClient } from "./supabase-server";
+import { isTrendEligibleForIndexing } from "./trend-indexing";
 
 type TrendWithStoreCount = Trend & {
   store_count: number;
@@ -109,9 +110,23 @@ export const getTrendsForSitemap = cache(
 
     const { data } = await supabase
       .from("trends")
-      .select("id, detected_at")
+      .select("id, detected_at, description, status, stores(count)")
+      .in("status", ["rising", "active", "declining"])
       .order("detected_at", { ascending: false });
 
-    return (data as Array<Pick<Trend, "id" | "detected_at">>) ?? [];
+    return (
+      (data ?? [])
+        .map((trend: any) => ({
+          id: trend.id,
+          detected_at: trend.detected_at,
+          description: trend.description,
+          status: trend.status,
+          store_count: trend.stores?.[0]?.count ?? 0,
+        }))
+        .filter((trend) => isTrendEligibleForIndexing(trend))
+        .map(({ id, detected_at }) => ({ id, detected_at })) as Array<
+        Pick<Trend, "id" | "detected_at">
+      >
+    );
   }
 );

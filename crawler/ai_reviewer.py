@@ -66,9 +66,18 @@ _last_ai_request_started_at = 0.0
 class AIReviewError(RuntimeError):
     """Raised when the AI review service cannot be used safely."""
 
-    def __init__(self, message: str, *, request_count: int = 0):
+    def __init__(
+        self,
+        message: str,
+        *,
+        request_count: int = 0,
+        partial_results: dict[str, TrendReviewResult] | None = None,
+        partial_descriptions: dict[str, str] | None = None,
+    ):
         super().__init__(message)
         self.request_count = request_count
+        self.partial_results = dict(partial_results or {})
+        self.partial_descriptions = dict(partial_descriptions or {})
 
 
 @dataclass(slots=True)
@@ -509,6 +518,11 @@ def _is_grounding_error(exc: Exception) -> bool:
 def _is_quota_error(exc: Exception) -> bool:
     """Return True if the exception looks like a quota/rate-limit error."""
     return _has_error_keyword(exc, _QUOTA_ERROR_KEYWORDS)
+
+
+def is_ai_quota_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a Gemini quota/rate-limit error."""
+    return _is_quota_error(exc)
 
 
 def _iter_exception_chain(exc: Exception):
@@ -1026,6 +1040,7 @@ async def review_trend_candidates(
             raise AIReviewError(
                 f"trend review batch {index}/{len(batches)} failed: {exc}",
                 request_count=request_count + exc.request_count,
+                partial_results=result_map,
             ) from exc
 
         request_count += batch_request_count
@@ -1088,6 +1103,7 @@ async def review_discovered_keywords(
             raise AIReviewError(
                 f"discovery review batch {index}/{len(batches)} failed: {exc}",
                 request_count=request_count + exc.request_count,
+                partial_results=result_map,
             ) from exc
 
         request_count += batch_request_count
@@ -1144,6 +1160,7 @@ async def generate_trend_descriptions(
             raise AIReviewError(
                 f"description batch {index}/{len(batches)} failed: {exc}",
                 request_count=request_count + exc.request_count,
+                partial_descriptions=descriptions,
             ) from exc
 
         request_count += batch_request_count

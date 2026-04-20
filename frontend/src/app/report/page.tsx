@@ -7,9 +7,10 @@ import { getActiveTrends } from "@/lib/trends-server";
 export const metadata: Metadata = buildMetadata({
   title: "판매처 제보하기",
   description:
-    "유행 음식을 파는 매장을 제보하면 검토 후 요즘뭐먹 지도에 반영됩니다.",
+    "유행 음식이 파는 매장을 제보하면 검수 후 요즘뭐먹 지도에 반영됩니다.",
   path: "/report",
   keywords: ["맛집 제보", "판매처 제보", "바이럴 음식 제보"],
+  noIndex: true,
 });
 
 export default async function ReportPage() {

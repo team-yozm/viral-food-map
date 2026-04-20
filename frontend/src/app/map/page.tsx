@@ -10,6 +10,7 @@ export const metadata: Metadata = buildMetadata({
     "내 위치 주변 바이럴 음식 판매처를 지도에서 확인하고, 트렌드별로 가까운 매장을 찾아보세요.",
   path: "/map",
   keywords: ["바이럴 음식 지도", "주변 판매처", "카카오맵 맛집"],
+  noIndex: true,
 });
 
 export default async function MapPage() {

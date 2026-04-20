@@ -307,16 +307,20 @@ export default function KakaoMap({
         grid.get(key)!.push(entry);
       }
 
-      for (const group of grid.values()) {
+      grid.forEach((group: StoreEntry[]) => {
         if (group.length === 1) {
           // 단독 핀은 그대로 표시
           group[0].markerOverlay.setMap(map);
         } else {
           // 그룹: 개별 핀 숨기고 클러스터 뱃지 표시
-          group.forEach((e) => e.markerOverlay.setMap(null));
+          group.forEach((entry: StoreEntry) => entry.markerOverlay.setMap(null));
 
-          const centerLat = group.reduce((s, e) => s + e.store.lat, 0) / group.length;
-          const centerLng = group.reduce((s, e) => s + e.store.lng, 0) / group.length;
+          const centerLat =
+            group.reduce((sum: number, entry: StoreEntry) => sum + entry.store.lat, 0) /
+            group.length;
+          const centerLng =
+            group.reduce((sum: number, entry: StoreEntry) => sum + entry.store.lng, 0) /
+            group.length;
 
           const badgeEl = document.createElement("div");
           badgeEl.className = "kakao-cluster-badge";
@@ -338,7 +342,7 @@ export default function KakaoMap({
           badge.setMap(map);
           clusterOverlays.push(badge);
         }
-      }
+      });
     };
 
     renderClusters();

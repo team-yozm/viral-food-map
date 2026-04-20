@@ -24,6 +24,7 @@ export const metadata: Metadata = buildMetadata({
     "프랜차이즈 공식 채널의 신상 메뉴를 업종과 브랜드별로 모아봅니다.",
   path: "/new",
   keywords: ["신상 음식", "프랜차이즈 신메뉴", "브랜드 신상", "신상 메뉴"],
+  noIndex: true,
 });
 
 export const revalidate = 300;

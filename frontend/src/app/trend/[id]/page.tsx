@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import KakaoSdkScripts from "@/components/KakaoSdkScripts";
 import TrendDetailPageClient from "./TrendDetailPageClient";
 import { buildMetadata, buildTrendDescription } from "@/lib/seo";
+import { isTrendEligibleForIndexing } from "@/lib/trend-indexing";
 import { getTrendDetailById } from "@/lib/trends-server";
 
 export const revalidate = 3600;
@@ -27,6 +28,8 @@ export async function generateMetadata({
     });
   }
 
+  const canIndex = isTrendEligibleForIndexing(trendData.trend);
+
   return buildMetadata({
     title: `${trendData.trend.name} 판매처 지도`,
     description: buildTrendDescription({
@@ -43,6 +46,8 @@ export async function generateMetadata({
       `${trendData.trend.name} 지도`,
       `${trendData.trend.name} 맛집`,
     ],
+    noIndex: !canIndex,
+    type: "article",
   });
 }
 

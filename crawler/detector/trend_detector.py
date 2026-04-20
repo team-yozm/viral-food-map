@@ -12,6 +12,7 @@ from ai_reviewer import (
     TrendReviewPayload,
     TrendReviewResult,
     generate_trend_descriptions,
+    is_ai_quota_error,
     review_trend_candidates,
 )
 from automation_budget import (
@@ -1076,6 +1077,15 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 ) = _summarize_ai_grounding(review_results)
             except AIReviewError as exc:
                 summary["ai_calls_used"] += exc.request_count
+                review_results = dict(exc.partial_results)
+                if review_results:
+                    summary["ai_reviewed"] = len(review_results)
+                    (
+                        summary["ai_grounding_status"],
+                        summary["ai_grounding_detail"],
+                        summary["ai_grounding_queries"],
+                        summary["ai_grounding_sources"],
+                    ) = _summarize_ai_grounding(review_results)
                 summary["ai_fallback_details"].append(
                     _build_ai_detail_line(
                         "batch",
@@ -1084,8 +1094,15 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                         reason=str(exc),
                     )
                 )
-                logger.warning("AI trend batch review failed: %s", exc)
-                await send_discord_message(f"[⚠️ AI 검토 실패] 트렌드 배치 리뷰 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}")
+                if is_ai_quota_error(exc):
+                    summary["budget_exhausted"] = True
+                    summary["ai_calls_remaining"] = 0
+                    logger.warning("Gemini quota exhausted during trend batch review: %s", exc)
+                else:
+                    logger.warning("AI trend batch review failed: %s", exc)
+                    await send_discord_message(
+                        f"[⚠️ AI 검토 실패] 트렌드 배치 리뷰 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}"
+                    )
 
     confirmed_groups: dict[str, dict] = {}
     alias_rows_to_upsert: list[dict] = []
@@ -1383,6 +1400,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                 summary["ai_calls_used"] += request_count
             except AIReviewError as exc:
                 summary["ai_calls_used"] += exc.request_count
+                descriptions_by_keyword = dict(exc.partial_descriptions)
                 summary["ai_fallback_details"].append(
                     _build_ai_detail_line(
                         "description",
@@ -1391,8 +1409,15 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                         reason=str(exc),
                     )
                 )
-                logger.warning("AI trend description generation failed: %s", exc)
-                await send_discord_message(f"[⚠️ AI 검토 실패] 트렌드 설명 생성 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}")
+                if is_ai_quota_error(exc):
+                    summary["budget_exhausted"] = True
+                    summary["ai_calls_remaining"] = 0
+                    logger.warning("Gemini quota exhausted during trend description generation: %s", exc)
+                else:
+                    logger.warning("AI trend description generation failed: %s", exc)
+                    await send_discord_message(
+                        f"[⚠️ AI 검토 실패] 트렌드 설명 생성 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}"
+                    )
 
     snapshot_previous_ranks()
 
