@@ -810,64 +810,67 @@ export default function HomePageClient({
         </div>
 
         <section className="mb-6 mt-8">
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
+          <div className="rounded-[32px] bg-[#f6f9fc] px-5 py-6 shadow-sm ring-1 ring-slate-200/70 sm:px-6 sm:py-7">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70">
-                  How We Filter
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3182f6]">
+                  How We Pick
                 </p>
-                <h3 className="mt-1 text-base font-bold tracking-[-0.03em] text-slate-900">
-                  이 기준으로만 추립니다
+                <h3 className="mt-2 break-keep text-[26px] font-bold tracking-[-0.05em] text-[#191f28] sm:text-[30px]">
+                  확인 가능한 메뉴만 올립니다
                 </h3>
+                <p className="mt-2 break-keep text-sm leading-6 text-[#4e5968]">
+                  공식 채널, 실제 판매 여부, 출처 공개. 세 가지만 먼저 봅니다.
+                </p>
               </div>
               <Link
                 href="/editorial-policy"
-                className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/30 hover:text-primary"
+                className="inline-flex h-11 items-center rounded-full bg-white px-4 text-sm font-semibold text-[#3182f6] shadow-[0_8px_24px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                기준 보기
+                기준 자세히 보기
               </Link>
             </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <Link
                 href="/how-it-works"
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 transition-colors hover:border-blue-200 hover:bg-blue-50/70"
+                className="rounded-[24px] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-600">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3182f6]">
                   01
                 </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
+                <p className="mt-2 break-keep text-sm font-semibold text-[#191f28]">
                   공식 채널 먼저
                 </p>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 break-keep text-[12px] leading-5 text-[#6b7684]">
                   공지, 메뉴, 공개 페이지 확인
                 </p>
               </Link>
               <Link
                 href="/editorial-policy"
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 transition-colors hover:border-primary/30 hover:bg-primary/5"
+                className="rounded-[24px] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary/70">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3182f6]">
                   02
                 </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
+                <p className="mt-2 break-keep text-sm font-semibold text-[#191f28]">
                   먹을 수 있는 메뉴만
                 </p>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 break-keep text-[12px] leading-5 text-[#6b7684]">
                   굿즈, 이벤트성 항목은 제외
                 </p>
               </Link>
               <Link
                 href="/data-sources"
-                className="rounded-2xl border border-slate-900 bg-slate-900 px-3.5 py-3 text-white transition-colors hover:bg-slate-950"
+                className="rounded-[24px] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3182f6]">
                   03
                 </p>
-                <p className="mt-1 text-sm font-semibold text-white">
+                <p className="mt-2 break-keep text-sm font-semibold text-[#191f28]">
                   출처를 같이 남깁니다
                 </p>
-                <p className="mt-1 text-[11px] text-white/65">
+                <p className="mt-1 break-keep text-[12px] leading-5 text-[#6b7684]">
                   브랜드 채널과 공식 문서 기준
                 </p>
               </Link>
