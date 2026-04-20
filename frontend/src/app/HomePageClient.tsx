@@ -663,50 +663,114 @@ export default function HomePageClient({
         ) : null}
 
         <section className="mb-6">
-          <div className="rounded-2xl bg-white px-5 py-5 shadow-sm ring-1 ring-gray-100">
-            <div className="flex items-start justify-between gap-4">
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(155,125,212,0.16),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(139,172,216,0.18),_transparent_42%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-5 py-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70">
+                  Open Criteria
+                </p>
+                <h2 className="hidden mt-2 text-[22px] font-bold tracking-[-0.03em] text-slate-900">
+                  왜 이 메뉴가 올라왔는지
+                  <br />
+                  기준부터 먼저 보여드립니다
+                </h2>
+                <h2 className="mt-2 text-[24px] font-bold tracking-[-0.04em] text-slate-900 sm:text-[28px]">
+                  반짝 뜬 메뉴를
+                  <br />
+                  아무거나 올리진 않습니다
+                </h2>
+                <p className="hidden mt-3 text-sm leading-relaxed text-slate-600">
+                  무작정 많이 모으기보다, 지금 먹으러 갈 만한 정보인지와 출처가 분명한지부터 먼저 확인합니다.
+                </p>
+                <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-[15px]">
+                  요즘뭐먹은 검색 반응만 따라가지 않습니다. 공식 채널, 판매 정보,
+                  공개 문서, 실제 제보를 같이 보고 지금 확인해둘 만한 메뉴만 남깁니다.
+                </p>
+                <h2 className="hidden text-lg font-bold text-gray-900">
                   요즘뭐먹은 이렇게 운영합니다
                 </h2>
-                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                <p className="hidden mt-2 text-sm leading-relaxed text-gray-600">
                   검색 반응, 공개 웹 문서, 공식 브랜드 채널, 사용자 제보를 함께 보고 지금
                   먹어볼 만한 음식 트렌드를 정리합니다. 지도와 신상품 페이지는 탐색 도구로
                   쓰고, 운영 문서에서는 수집 기준과 수정 원칙을 공개합니다.
                 </p>
               </div>
-              <div className="hidden rounded-2xl bg-primary/5 px-3 py-2 text-[11px] font-semibold text-primary sm:block">
-                서비스 안내
+              <div className="hidden rounded-2xl border border-white/80 bg-white/80 px-3 py-3 text-right shadow-sm backdrop-blur sm:block">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Home Guide
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  운영 기준 공개
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  어떤 기준으로 올리고 정리하는지 홈에서 먼저 확인할 수 있게 정리했습니다.
+                </p>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <Link
-                href="/about"
-                className="rounded-2xl bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+                href="/editorial-policy"
+                className="rounded-3xl border border-slate-200 bg-white/92 px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
               >
-                <p className="text-sm font-semibold text-gray-900">서비스 소개</p>
-                <p className="mt-1 text-xs leading-5 text-gray-500">
-                  왜 이 서비스를 만들었는지와 어떤 정보를 제공하는지 설명합니다.
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70">
+                  운영 기준
+                </p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
+                  무엇을 올리고, 어떤 건 제외하는지 먼저 보여드립니다
+                </p>
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  광고성 나열처럼 보이지 않도록 선정 기준, 제외 기준, 수정 원칙을 문서로 정리했습니다.
                 </p>
               </Link>
               <Link
                 href="/how-it-works"
-                className="rounded-2xl bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+                className="rounded-3xl border border-blue-100 bg-blue-50/80 px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
               >
-                <p className="text-sm font-semibold text-gray-900">수집 방식</p>
-                <p className="mt-1 text-xs leading-5 text-gray-500">
-                  트렌드, 판매처, 공식 신상품을 어떤 절차로 모으는지 공개합니다.
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600">
+                  수집 방식
+                </p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
+                  SNS 반응만 보지 않고 공식 채널과 공개 데이터를 같이 확인합니다
+                </p>
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  검색량, 브랜드 공지, 판매 정보, 공개 페이지를 교차로 보고 확인 가능한 정보만 남깁니다.
                 </p>
               </Link>
               <Link
                 href="/data-sources"
-                className="rounded-2xl bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+                className="rounded-3xl border border-slate-900 bg-slate-900 px-4 py-4 text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-950 hover:shadow-md"
               >
-                <p className="text-sm font-semibold text-gray-900">데이터 출처</p>
-                <p className="mt-1 text-xs leading-5 text-gray-500">
-                  어떤 출처를 사용하고 어디까지 보장하지 않는지 안내합니다.
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65">
+                  출처 공개
                 </p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-white">
+                  어디서 가져왔는지 숨기지 않습니다
+                </p>
+                <p className="mt-3 text-xs leading-5 text-white/70">
+                  공식 페이지, 브랜드 채널, 공개 문서를 기준으로 묶고 어떤 출처를 썼는지 함께 남깁니다.
+                </p>
+              </Link>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href="/about"
+                className="rounded-full border border-slate-300 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
+              >
+                서비스 소개
+              </Link>
+              <Link
+                href="/editorial-policy"
+                className="rounded-full border border-slate-300 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
+              >
+                선정 기준 보기
+              </Link>
+              <Link
+                href="/data-sources"
+                className="rounded-full border border-slate-300 bg-white/80 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
+              >
+                출처 보기
               </Link>
             </div>
           </div>
