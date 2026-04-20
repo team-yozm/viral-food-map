@@ -825,7 +825,7 @@ export default function HomePageClient({
               </div>
               <Link
                 href="/editorial-policy"
-                className="inline-flex h-11 items-center rounded-full bg-white px-4 text-sm font-semibold text-[#3182f6] shadow-[0_8px_24px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
+                className="inline-flex h-11 min-w-fit self-start whitespace-nowrap rounded-full bg-white px-4 text-sm font-semibold text-[#3182f6] shadow-[0_8px_24px_rgba(15,23,42,0.06)] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
               >
                 기준 자세히 보기
               </Link>
