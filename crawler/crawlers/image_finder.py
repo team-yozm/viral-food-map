@@ -64,18 +64,40 @@ IRRELEVANT_TERMS = (
     "png",
     "svg",
     "gif",
+    # SNS 스크린샷 감지
+    "인스타그램",
+    "인스타",
+    "instagram",
+    "트위터",
+    "twitter",
+    "틱톡",
+    "tiktok",
+    "유튜브쇼츠",
+    "shorts",
 )
 HOST_PENALTIES = {
-    "images.pexels.com": 8.0,
-    "images.unsplash.com": 6.0,
-    "cdn.crowdpic.net": 8.0,
+    # SNS / 스크린샷 소스 — UI 요소가 찍혀 나오는 경우가 많아 고감점 패널티
+    "scontent.cdninstagram.com": 15.0,
+    "cdninstagram.com": 15.0,
+    "instagram.com": 15.0,
+    "scontent-icn1-1.cdninstagram.com": 15.0,
+    "lookaside.fbsbx.com": 12.0,
+    "pbs.twimg.com": 12.0,
+    "ton.twimg.com": 12.0,
+    # 핀터레스트 — 저작권 불명확 이미지 많음
     "i.pinimg.com": 7.0,
     "s.pinimg.com": 7.0,
-    "media.istockphoto.com": 8.0,
-    "images.ctfassets.net": 4.0,
-    "image.musinsa.com": 8.0,
+    # 유튜브 썸네일
     "yt3.googleusercontent.com": 10.0,
     "yt3.ggpht.com": 10.0,
+    # 쇼핑/패션 이미지
+    "image.musinsa.com": 8.0,
+    # CMS 이미지 (관련성 낮음)
+    "images.ctfassets.net": 4.0,
+    # 크라우드픽 워터마크
+    "cdn.crowdpic.net": 8.0,
+    # iStock 워터마크
+    "media.istockphoto.com": 8.0,
 }
 
 
