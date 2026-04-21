@@ -87,6 +87,14 @@ function getDistance(
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  rising: "상승 중",
+  active: "활성",
+  declining: "하락 중",
+  watchlist: "관찰 중",
+  inactive: "비활성",
+};
+
 function getMomentumSummary(peakScore: number): string {
   if (peakScore >= 85) {
     return "최근 검색 반응이 빠르게 붙는 강한 구간으로 볼 수 있습니다.";
@@ -195,16 +203,7 @@ export default function TrendDetailPageClient({
         getTrendStatusSummary(initialTrend.status),
         getTrendCategorySummary(initialTrend.category),
         getMomentumSummary(initialTrend.peak_score),
-      ],
-      usage: [
         getStoreCoverageSummary(storeCount),
-        "지도와 판매처 목록은 탐색을 돕기 위한 참고 정보입니다. 실제 판매 여부나 재고는 방문 전에 다시 확인하는 것이 좋습니다.",
-        "매장이 빠졌거나 종료된 경우에는 제보 기능을 통해 수정 요청을 남길 수 있습니다.",
-      ],
-      operations: [
-        "트렌드 상태는 검색 반응과 최근 언급 흐름을 함께 보고 갱신합니다.",
-        "판매처 정보는 지도 검색과 사용자 제보를 함께 사용하며, 제보는 검수 후 반영합니다.",
-        "설명이 빈약한 페이지는 검색 노출 범위를 줄이고 내부 탐색용으로 먼저 운영할 수 있습니다.",
       ],
     };
   }, [detectedLabel, initialTrend, sortedStores.length]);
@@ -262,7 +261,7 @@ export default function TrendDetailPageClient({
                     상태
                   </p>
                   <p className="mt-2 text-sm font-semibold text-gray-900">
-                    {initialTrend.status}
+                    {STATUS_LABEL[initialTrend.status] ?? initialTrend.status}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-primary/5 px-3 py-3">
@@ -294,27 +293,16 @@ export default function TrendDetailPageClient({
             </section>
 
             <section className="rounded-2xl bg-white px-5 py-5 shadow-sm ring-1 ring-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">이 페이지를 읽는 방법</h3>
-              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-gray-600">
-                {editorialNotes.usage.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="rounded-2xl bg-white px-5 py-5 shadow-sm ring-1 ring-gray-100">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-lg font-bold text-gray-900">운영 메모</h3>
+                <h3 className="text-lg font-bold text-gray-900">참고 사항</h3>
                 <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-primary">
-                  <Link href="/how-it-works">수집 방식</Link>
                   <Link href="/editorial-policy">운영 원칙</Link>
                   <Link href="/data-sources">데이터 출처</Link>
                 </div>
               </div>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-gray-600">
-                {editorialNotes.operations.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
+                <li>지도와 판매처 목록은 참고용이며, 실제 판매 여부는 방문 전 확인을 권장합니다.</li>
+                <li>매장 정보가 틀리거나 빠진 경우 제보 기능으로 수정 요청을 남길 수 있습니다.</li>
               </ul>
             </section>
           </article>
