@@ -289,6 +289,7 @@ export default function TrendDetailPageClient({
   const imageUrl = initialTrend.image_url;
   const statusKicker =
     STATUS_KICKER[initialTrend.status] ?? initialTrend.status.toUpperCase();
+  const currentRank = initialTrend.current_rank;
 
   return (
     <>
@@ -364,9 +365,11 @@ export default function TrendDetailPageClient({
 
           <div className="absolute inset-x-0 bottom-[18px] px-5 text-white">
             <div className="mb-2 flex flex-wrap gap-1.5">
-              <span className="font-kicker rounded-full bg-white px-2 py-[3px] text-[10px] font-extrabold text-ink">
-                #{1}
-              </span>
+              {currentRank != null ? (
+                <span className="font-kicker rounded-full bg-white px-2 py-[3px] text-[10px] font-extrabold text-ink">
+                  #{currentRank}
+                </span>
+              ) : null}
               <span className="font-kicker rounded-full bg-white/25 px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.12em] backdrop-blur">
                 {statusKicker}
               </span>

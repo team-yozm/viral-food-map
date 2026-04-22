@@ -34,9 +34,10 @@ export const getActiveTrends = cache(async (): Promise<TrendWithStoreCount[]> =>
     .order("id", { ascending: true });
 
   return (
-    data?.map((trend: any) => ({
+    data?.map((trend: any, index) => ({
       ...trend,
       store_count: trend.stores?.[0]?.count ?? 0,
+      current_rank: index + 1,
     })) ?? []
   ) as TrendWithStoreCount[];
 });
@@ -75,13 +76,14 @@ export const getTrendDetailById = cache(
       return null;
     }
 
-    const [trendResult, storesResult] = await Promise.all([
+    const [trendResult, storesResult, activeTrends] = await Promise.all([
       supabase.from("trends").select("*, stores(count)").eq("id", id).single(),
       supabase
         .from("stores")
         .select("*")
         .eq("trend_id", id)
         .order("verified", { ascending: false }),
+      getActiveTrends(),
     ]);
 
     if (!trendResult.data) {
@@ -89,11 +91,13 @@ export const getTrendDetailById = cache(
     }
 
     const trend = trendResult.data as TrendWithStoreCount;
+    const rankedTrend = activeTrends.find((activeTrend) => activeTrend.id === id);
 
     return {
       trend: {
         ...trend,
         store_count: trend.stores?.[0]?.count ?? 0,
+        current_rank: rankedTrend?.current_rank ?? null,
       },
       stores: (storesResult.data as Store[]) ?? [],
     };
