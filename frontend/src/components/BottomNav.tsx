@@ -58,20 +58,20 @@ function MapIcon({ active }: { active: boolean }) {
   );
 }
 
-function ReportIcon({ active }: { active: boolean }) {
+function TrendIcon({ active }: { active: boolean }) {
   return (
     <svg
       width="22"
       height="22"
       viewBox="0 0 24 24"
-      fill={active ? "currentColor" : "none"}
+      fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+      <path d="M3 17l6-6 4 4 8-8" />
+      <path d="M14 7h7v7" strokeWidth={active ? "2.4" : "1.8"} />
     </svg>
   );
 }
@@ -100,12 +100,12 @@ type NavItem = {
 
 const leftItems: NavItem[] = [
   { href: "/", label: "홈", Icon: HomeIcon },
-  { href: "/new", label: "신상", Icon: SparkIcon },
+  { href: "/trend", label: "트렌드", Icon: TrendIcon },
 ];
 
 const rightItems: NavItem[] = [
   { href: "/map", label: "지도", Icon: MapIcon },
-  { href: "/report", label: "제보", Icon: ReportIcon },
+  { href: "/new", label: "신상", Icon: SparkIcon },
 ];
 
 export default function BottomNav() {
