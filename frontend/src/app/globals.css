@@ -3,17 +3,44 @@
 
 @theme {
   --font-pretendard: "Pretendard Variable", "Pretendard", sans-serif;
-  --color-primary: #9B7DD4;
+  --font-mono-kicker: "ui-monospace", "SFMono-Regular", "Menlo", monospace;
+  --color-primary: #6B4FD3;
   --color-secondary: #8BACD8;
-  --color-accent: #C084FC;
+  --color-accent: #6B4FD3;
+  --color-accent-soft: #EEE8FC;
+  --color-accent-ink: #3A2789;
+  --color-ink: #14121A;
+  --color-ink2: #2E2A38;
+  --color-ink3: #57545F;
+  --color-ink4: #8A8590;
+  --color-line: #E8E4EE;
+  --color-line2: #F1EEF5;
+  --color-bg: #FAF8FC;
+  --color-surface: #FFFFFF;
+  --color-hero-top: #1A1425;
+  --color-hero-accent: #8B6FE8;
+  --color-pos: #1B8A5A;
+  --color-neg: #D93C3C;
   --color-dark: #1A1A2E;
 }
 
 :root {
   color-scheme: light;
-  --app-background: #fafafa;
-  --primary: #9B7DD4;
+  --app-background: #FAF8FC;
+  --primary: #6B4FD3;
   --secondary: #8BACD8;
+  --ink: #14121A;
+  --ink2: #2E2A38;
+  --ink3: #57545F;
+  --ink4: #8A8590;
+  --line: #E8E4EE;
+  --line2: #F1EEF5;
+  --surface: #FFFFFF;
+  --accent: #6B4FD3;
+  --accent-soft: #EEE8FC;
+  --accent-ink: #3A2789;
+  --hero-top: #1A1425;
+  --hero-accent: #8B6FE8;
   /* Keep iOS app chrome anchored to hardware safe areas instead of dynamic toolbar insets. */
   --safe-top: env(safe-area-max-inset-top, env(safe-area-inset-top, 0px));
   --safe-bottom: env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px));
@@ -55,7 +82,14 @@ html.native-app {
 }
 .card-hover:hover {
   transform: translateY(-5px);
-  box-shadow: 0 12px 32px rgba(155, 125, 212, 0.18);
+  box-shadow: 0 12px 32px rgba(107, 79, 211, 0.18);
+}
+
+.font-kicker {
+  font-family: var(--font-mono-kicker);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
 }
 
 .map-container {
@@ -74,11 +108,11 @@ html.native-app {
   height: 36px;
   padding: 0 6px;
   border-radius: 50%;
-  background: #9B7DD4;
+  background: #6B4FD3;
   color: #fff;
   font-size: 14px;
   font-weight: 800;
-  box-shadow: 0 2px 8px rgba(155, 125, 212, 0.4);
+  box-shadow: 0 2px 8px rgba(107, 79, 211, 0.4);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -111,7 +145,7 @@ html.native-app {
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid #9B7DD4;
+  border-top: 6px solid #6B4FD3;
   margin-top: -1px;
 }
 
@@ -186,7 +220,7 @@ html.native-app {
 
 .kakao-store-infowindow__phone {
   margin-top: 4px;
-  color: #9B7DD4;
+  color: #6B4FD3;
   font-size: 11px;
   line-height: 1.5;
 }

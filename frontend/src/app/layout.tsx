@@ -44,7 +44,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#9B7DD4",
+  themeColor: "#6B4FD3",
   viewportFit: "cover",
 };
 
@@ -94,7 +94,7 @@ export default function RootLayout({
           />
         ))}
       </head>
-      <body className="min-h-screen bg-[#FAFAFA]">
+      <body className="min-h-screen bg-[#FAF8FC]">
         {ADSENSE_CLIENT && (
           <Script
             src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}

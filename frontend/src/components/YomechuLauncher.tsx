@@ -220,7 +220,7 @@ export default function YomechuLauncher({
               <div className="min-h-0 overflow-y-auto p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-primary/70">
+                    <p className="text-[11px] font-semibold text-accent">
                       오늘은 트렌드 말고 그냥 밥
                     </p>
                     <h2 className="mt-1 break-keep text-xl font-black tracking-[-0.04em] text-gray-900">
@@ -448,7 +448,7 @@ export default function YomechuLauncher({
                   className="sticky z-10 mt-4 -mx-4 border-t border-gray-100 bg-white/95 px-4 pb-4 pt-3 shadow-[0_-8px_24px_rgba(255,255,255,0.82)] backdrop-blur supports-[backdrop-filter]:bg-white/88"
                   style={{ bottom: "var(--launcher-footer-offset)" }}
                 >
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
+                  <p className="font-kicker text-[10px] font-bold uppercase tracking-[0.14em] text-ink4">
                     선택 조건
                   </p>
                   <p className="mt-1 break-keep text-sm font-semibold text-gray-900">
@@ -468,7 +468,7 @@ export default function YomechuLauncher({
                     type="button"
                     onClick={onSpin}
                     disabled={!canSpin}
-                    className="mt-3 w-full rounded-2xl bg-gradient-to-r from-primary via-fuchsia-500 to-secondary px-4 py-3 text-sm font-black tracking-[0.02em] text-white shadow-[0_16px_32px_rgba(155,125,212,0.28)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+                    className="mt-3 w-full rounded-2xl bg-ink px-4 py-3 text-sm font-black tracking-[-0.01em] text-surface shadow-[0_10px_24px_rgba(20,18,26,0.22)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                   >
                     {getSpinButtonLabel(selectedCount, isSubmitting)}
                   </button>

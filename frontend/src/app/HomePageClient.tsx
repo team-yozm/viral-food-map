@@ -153,6 +153,16 @@ export default function HomePageClient({
   }, [launcherOpen]);
 
   useEffect(() => {
+    const win = window as unknown as { __yozmOpenYomechu?: () => void };
+    win.__yozmOpenYomechu = () => setLauncherOpen(true);
+    return () => {
+      if (win.__yozmOpenYomechu) {
+        delete win.__yozmOpenYomechu;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -610,179 +620,261 @@ export default function HomePageClient({
         }
       />
       <main className="page-with-bottom-nav max-w-lg mx-auto px-4 py-4">
-        <section className="mb-6">
-          <div className="bg-gradient-to-br from-purple-400 to-blue-400 rounded-2xl px-6 py-6 text-white">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/90">
-              <span className="rounded-full bg-white/15 px-2.5 py-1">
-                활성 트렌드 {trends.length}개
-              </span>
-              <span className="rounded-full bg-white/15 px-2.5 py-1">
-                검증 판매처 {storeCountLabel}곳
-              </span>
-            </div>
-            <p className="mt-4 text-xl font-bold leading-snug">
-              SNS에서 뜨는 음식,
-              <br />
-              어디서 살지 바로 찾는 지도
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-white/85">
-              실시간 트렌드와 주변 판매처를 한 번에 확인하세요.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Link
-                href="#trends"
-                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-primary shadow-sm transition-colors hover:bg-purple-50"
-              >
-                지금 뜨는 트렌드 보기
-              </Link>
-              <Link
-                href={mapHref}
-                className="rounded-xl border border-white/30 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-              >
-                지도에서 판매처 찾기
-              </Link>
-            </div>
-            <p
-              className={`mt-4 text-xs text-white/80${lastUpdatedLabel ? "" : " hidden"}`}
-              suppressHydrationWarning
-            >
-              {lastUpdatedLabel
-                ? `최근 트렌드 업데이트: ${lastUpdatedLabel}`
-                : "\u00A0"}
-            </p>
-          </div>
-        </section>
+        {(() => {
+          const TOP_COUNT = 10;
+          const topTrends = trends.slice(0, TOP_COUNT);
+          const outsideTrends = trends.slice(TOP_COUNT);
+          const topTrend = topTrends[0];
+          const restTop = topTrends.slice(1);
+          const risingCount = trends.reduce((acc, trend, idx) => {
+            const currentRank = idx + 1;
+            if (trend.previous_rank == null) return acc + 1;
+            if (trend.previous_rank > currentRank) return acc + 1;
+            return acc;
+          }, 0);
 
-        {!isAppClipExperience ? (
-          <section className="mb-6">
-            <div className="flex justify-center">
-              <PushSubscribeButton />
-            </div>
-            <InstallPrompt />
-          </section>
-        ) : null}
+          function rankChange(trend: Trend, currentRank: number) {
+            if (trend.previous_rank == null) return { type: "new" as const, delta: 0 };
+            const diff = trend.previous_rank - currentRank;
+            if (diff > 0) return { type: "up" as const, delta: diff };
+            if (diff < 0) return { type: "down" as const, delta: -diff };
+            return { type: "same" as const, delta: 0 };
+          }
 
-        <div id="trends" className="scroll-mt-24">
-          {loading ? (
-            <section>
-              <div className="flex flex-col gap-8">
-                {[1, 2, 3].map((index) => (
-                  <div
-                    key={index}
-                    className="bg-white rounded-2xl p-4 animate-pulse h-24"
-                  />
-                ))}
-              </div>
-            </section>
-          ) : trends.length === 0 ? (
-            <section>
-              <div className="text-center py-14 text-gray-400">
-                <p className="text-5xl mb-4">🍽️</p>
-                <p className="font-semibold text-gray-600 text-base">
-                  아직 유행하는 음식을 찾는 중이에요!
-                </p>
-                <p className="text-sm mt-2 text-gray-400">
-                  크롤러가 SNS를 샅샅이 뒤지고 있어요 🔍
-                </p>
-              </div>
-            </section>
-          ) : (
+          function RankDelta({ trend, rank }: { trend: Trend; rank: number }) {
+            const c = rankChange(trend, rank);
+            const pill = "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tracking-[0.02em] font-kicker";
+            if (c.type === "new") return <span className={`${pill} bg-accent-soft text-accent-ink`}>NEW</span>;
+            if (c.type === "up") return <span className={`${pill} bg-pos/10 text-pos`}>▲{c.delta}</span>;
+            if (c.type === "down") return <span className={`${pill} bg-neg/10 text-neg`}>▼{c.delta}</span>;
+            return <span className={`${pill} bg-line2 text-ink4`}>—</span>;
+          }
+
+          return (
             <>
-              {(() => {
-                const TOP_COUNT = 10;
-                const topTrends = trends.slice(0, TOP_COUNT);
-                const outsideTrends = trends.slice(TOP_COUNT);
-                const topTrend = topTrends[0];
-                const restTop = topTrends.slice(1);
+              {/* Dark editorial hero */}
+              <section className="mb-5">
+                <div className="relative overflow-hidden rounded-3xl bg-hero-top text-white shadow-[0_12px_40px_rgba(20,18,26,0.18)]">
+                  <div className="px-5 pb-4 pt-5">
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-kicker text-[10px] text-white/90">
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-hero-accent"
+                        style={{ boxShadow: "0 0 8px #8B6FE8" }}
+                      />
+                      Live · 방금 업데이트
+                    </div>
+                    <h1 className="mt-3 text-[24px] font-extrabold leading-[1.2] tracking-[-0.03em]">
+                      SNS에서 뜨는 음식,
+                      <br />
+                      <span className="text-hero-accent">판매처까지 한 번에.</span>
+                    </h1>
+                    <div className="mt-4 flex items-center">
+                      <div className="flex-1 whitespace-nowrap">
+                        <div className="font-kicker text-[9.5px] text-white/55">활성 트렌드</div>
+                        <div className="font-kicker mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
+                          {trends.length}
+                        </div>
+                      </div>
+                      <div className="h-7 w-px flex-shrink-0 bg-white/15" />
+                      <div className="flex-1 whitespace-nowrap pl-4">
+                        <div className="font-kicker text-[9.5px] text-white/55">검증 판매처</div>
+                        <div className="font-kicker mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
+                          {storeCountLabel}
+                        </div>
+                      </div>
+                      <div className="h-7 w-px flex-shrink-0 bg-white/15" />
+                      <div className="flex-1 whitespace-nowrap pl-4">
+                        <div className="font-kicker text-[9.5px] text-white/55">상승 중</div>
+                        <div className="font-kicker mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
+                          {risingCount}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                function rankChange(trend: Trend, currentRank: number) {
-                  if (trend.previous_rank == null) return { type: "new" as const, delta: 0 };
-                  const diff = trend.previous_rank - currentRank;
-                  if (diff > 0) return { type: "up" as const, delta: diff };
-                  if (diff < 0) return { type: "down" as const, delta: -diff };
-                  return { type: "same" as const, delta: 0 };
-                }
+                  {topTrend && (
+                    <Link
+                      href={withAppClipParam(`/trend/${topTrend.id}`, isAppClipExperience)}
+                      className="block border-t border-white/10 bg-white/5 px-3 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative h-[72px] w-[72px] flex-shrink-0 overflow-hidden rounded-2xl bg-white/10">
+                          {topTrend.image_url ? (
+                            <Image
+                              src={topTrend.image_url}
+                              alt={topTrend.name}
+                              fill
+                              sizes="72px"
+                              unoptimized={shouldUseUnoptimizedImage(topTrend.image_url)}
+                              className="object-cover"
+                              priority
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-hero-accent to-accent text-2xl">
+                              🔥
+                            </div>
+                          )}
+                          <span className="font-kicker absolute left-1.5 top-1.5 rounded bg-black/40 px-1.5 py-0.5 text-[9.5px] font-extrabold text-white">
+                            #1
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-kicker text-[10px] text-white/65">지금 1위</div>
+                          <div className="mt-0.5 text-[17px] font-extrabold tracking-[-0.02em]">
+                            {topTrend.name}
+                          </div>
+                          <div className="truncate text-[11.5px] text-white/70">
+                            {topTrend.description || "판매처를 실시간 집계 중이에요"}
+                          </div>
+                        </div>
+                        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
+                        </svg>
+                      </div>
+                    </Link>
+                  )}
+                </div>
+                {lastUpdatedLabel ? (
+                  <p
+                    className="mt-2 px-1 text-[11px] text-ink4"
+                    suppressHydrationWarning
+                  >
+                    최근 트렌드 업데이트: {lastUpdatedLabel}
+                  </p>
+                ) : null}
+              </section>
 
-                function RankDelta({ trend, rank }: { trend: Trend; rank: number }) {
-                  const c = rankChange(trend, rank);
-                  if (c.type === "new") return <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">NEW</span>;
-                  if (c.type === "up") return <span className="inline-flex items-center rounded-full bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">▲{c.delta}</span>;
-                  if (c.type === "down") return <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-semibold text-blue-500">▼{c.delta}</span>;
-                  return <span className="inline-flex items-center rounded-full bg-gray-50 border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-400">-</span>;
-                }
+              {/* Yomechu promo row */}
+              <button
+                type="button"
+                onClick={() => setLauncherOpen(true)}
+                className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-left transition-colors hover:bg-accent-soft/40"
+              >
+                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="8.5" cy="9" r="1.4" fill="currentColor" />
+                    <circle cx="15.5" cy="9" r="1.4" fill="currentColor" />
+                    <path d="M8 15c1 1.2 2.5 1.8 4 1.8s3-.6 4-1.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-bold tracking-[-0.02em] text-ink">
+                    오늘 뭐 먹지?
+                  </span>
+                  <span className="block text-[11.5px] text-ink4">
+                    주변 식당을 룰렛으로 골라드려요
+                  </span>
+                </span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-ink4">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
 
-                return (
+              {!isAppClipExperience ? (
+                <section className="mb-5">
+                  <div className="flex justify-center">
+                    <PushSubscribeButton />
+                  </div>
+                  <InstallPrompt />
+                </section>
+              ) : null}
+
+              <div id="trends" className="scroll-mt-24">
+                {loading ? (
+                  <section>
+                    <div className="flex flex-col gap-3">
+                      {[1, 2, 3].map((index) => (
+                        <div
+                          key={index}
+                          className="h-16 animate-pulse rounded-2xl bg-surface"
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : trends.length === 0 ? (
+                  <section>
+                    <div className="rounded-2xl border border-line bg-surface py-12 text-center">
+                      <p className="text-[14px] font-bold text-ink">
+                        아직 유행하는 음식을 찾는 중이에요
+                      </p>
+                      <p className="mt-2 text-[12px] text-ink4">
+                        크롤러가 SNS를 탐색하는 중입니다
+                      </p>
+                    </div>
+                  </section>
+                ) : (
                   <>
+                    {/* Ranked list (TOP) */}
                     <section className="mb-8">
-                      <div className="mb-3">
-                        <h3 className="font-bold text-gray-900">🏆 트렌드 TOP {topTrends.length}</h3>
+                      <div className="mb-3 flex items-baseline justify-between px-1">
+                        <div>
+                          <div className="font-kicker text-[10px] text-accent">Trend Ranking</div>
+                          <h2 className="mt-1 text-[22px] font-extrabold tracking-[-0.03em] text-ink">
+                            이번 주 TOP {topTrends.length}
+                          </h2>
+                        </div>
                       </div>
 
-                      {topTrend && (
-                        <div className="mb-8">
-                          <Link
-                            href={withAppClipParam(
-                              `/trend/${topTrend.id}`,
-                              isAppClipExperience
-                            )}
-                          >
-                            <div className="relative rounded-2xl overflow-hidden shadow-lg">
-                              <div className="relative h-56 w-full bg-gray-100">
-                                {topTrend.image_url ? (
-                                  <Image
-                                    src={topTrend.image_url}
-                                    alt={topTrend.name}
-                                    fill
-                                    sizes="(max-width: 512px) 100vw, 512px"
-                                    unoptimized={shouldUseUnoptimizedImage(topTrend.image_url)}
-                                    className="object-cover"
-                                    priority
-                                  />
-                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-6xl">
-                                    🔥
-                                  </div>
-                                )}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                                <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                                  <span className="bg-yellow-400 text-yellow-900 text-xs font-black w-7 h-7 rounded-full flex items-center justify-center shadow-sm">1</span>
-                                  <span className="bg-red-500 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
-                                    🔥 지금 가장 핫한
-                                  </span>
-                                  {rankChange(topTrend, 1).type !== "same" && (
-                                    <span className="bg-white/20 backdrop-blur-sm text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                      <RankDelta trend={topTrend} rank={1} />
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="absolute bottom-0 left-0 right-0 p-4">
-                                  <h2 className="text-2xl font-bold text-white tracking-[-0.03em]">{topTrend.name}</h2>
-                                  <p className="text-sm text-white/85 mt-1 line-clamp-2">
-                                    {topTrend.description || "곧 설명이 추가됩니다"}
-                                  </p>
-                                  <div className="flex items-center gap-3 mt-2 text-xs text-white/70">
-                                    <span>인기도 {Math.min(topTrend.peak_score, 100)}%</span>
-                                    <span>판매처 {topTrend.store_count || 0}곳</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </Link>
-                        </div>
-                      )}
-
                       {restTop.length > 0 && (
-                        <div className="flex flex-col gap-8">
+                        <div className="overflow-hidden rounded-2xl border border-line bg-surface">
                           {restTop.map((trend, index) => {
                             const rank = index + 2;
+                            const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
+                            const isLast = index === restTop.length - 1;
                             return (
-                              <div key={trend.id} className="relative">
-                                <TrendCard trend={trend} />
-                                <div className="absolute -top-2 -left-2 z-10 flex items-center gap-1">
-                                  <span className="bg-white shadow text-xs font-black w-6 h-6 rounded-full flex items-center justify-center text-gray-800 border border-gray-100">{rank}</span>
-                                  <RankDelta trend={trend} rank={rank} />
+                              <Link
+                                key={trend.id}
+                                href={withAppClipParam(
+                                  `/trend/${trend.id}`,
+                                  isAppClipExperience
+                                )}
+                                className={`flex w-full items-center gap-3 px-3 py-3 transition-colors hover:bg-bg ${
+                                  isLast ? "" : "border-b border-line2"
+                                }`}
+                              >
+                                <span className="font-kicker w-7 flex-shrink-0 text-[18px] font-bold text-ink3 tabular-nums">
+                                  {String(rank).padStart(2, "0")}
+                                </span>
+                                <div className="relative h-[52px] w-[52px] flex-shrink-0 overflow-hidden rounded-xl bg-bg">
+                                  {trend.image_url ? (
+                                    <Image
+                                      src={trend.image_url}
+                                      alt={trend.name}
+                                      fill
+                                      sizes="52px"
+                                      unoptimized={shouldUseUnoptimizedImage(trend.image_url)}
+                                      className="object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-soft to-bg" />
+                                  )}
                                 </div>
-                              </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <span className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-[-0.02em] text-ink">
+                                      {trend.name}
+                                    </span>
+                                    <span className="flex-shrink-0">
+                                      <RankDelta trend={trend} rank={rank} />
+                                    </span>
+                                  </div>
+                                  <div className="mt-0.5 truncate text-[11.5px] text-ink4">
+                                    {trend.category} · 판매처 {trend.store_count || 0}곳
+                                  </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="font-kicker text-[13px] font-bold text-ink tabular-nums">
+                                    {score}
+                                  </span>
+                                  <span className="h-1 w-12 overflow-hidden rounded-full bg-line2">
+                                    <span
+                                      className="block h-full bg-accent"
+                                      style={{ width: `${score}%` }}
+                                    />
+                                  </span>
+                                </div>
+                              </Link>
                             );
                           })}
                         </div>
@@ -790,10 +882,10 @@ export default function HomePageClient({
                     </section>
 
                     {outsideTrends.length > 0 && (
-                      <section>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="font-bold text-gray-500">순위권 밖</h3>
-                          <span className="text-xs text-gray-400">{outsideTrends.length}개</span>
+                      <section className="mb-6">
+                        <div className="mb-3 flex items-center justify-between px-1">
+                          <h3 className="text-[14px] font-bold text-ink3">순위권 밖</h3>
+                          <span className="text-[11px] text-ink4">{outsideTrends.length}개</span>
                         </div>
                         <div className="flex flex-col gap-8">
                           {outsideTrends.map((trend) => (
@@ -803,75 +895,49 @@ export default function HomePageClient({
                       </section>
                     )}
                   </>
-                );
-              })()}
+                )}
+              </div>
             </>
-          )}
-        </div>
+          );
+        })()}
 
         <section className="mb-6 mt-8">
-          <div className="rounded-2xl bg-[#f6f9fc] px-5 py-5 ring-1 ring-slate-200/70">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#3182f6]">
-                How We Pick
-              </p>
-              <Link
-                href="/editorial-policy"
-                className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-[#3182f6] ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
-              >
-                기준 자세히 보기
-              </Link>
+          <div className="mb-3 flex items-baseline justify-between px-1">
+            <div>
+              <div className="font-kicker text-[10px] text-accent">Editorial</div>
+              <h2 className="mt-1 text-[22px] font-extrabold tracking-[-0.03em] text-ink">
+                어떻게 고르나요?
+              </h2>
             </div>
-            <h3 className="mt-3 break-keep text-[18px] font-bold tracking-[-0.03em] text-[#191f28]">
-              확인 가능한 메뉴만 올립니다
-            </h3>
-            <p className="mt-1.5 break-keep text-[13px] leading-5 text-[#4e5968]">
-              공식 채널, 실제 판매 여부, 출처 공개. 세 가지만 먼저 봅니다.
+            <Link
+              href="/editorial-policy"
+              className="text-[11.5px] font-semibold text-ink3 hover:text-ink"
+            >
+              기준 자세히 &gt;
+            </Link>
+          </div>
+          <div className="rounded-2xl border border-line bg-surface p-5">
+            <p className="break-keep text-[13.5px] leading-[1.6] tracking-[-0.01em] text-ink2">
+              공식 채널, 실제 판매 여부, 출처 공개. 세 가지 기준만 먼저 봅니다.
+              굿즈·이벤트 항목은 제외되고, 먹을 수 있는 메뉴만 올라옵니다.
             </p>
-
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <Link
-                href="/how-it-works"
-                className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
-              >
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#3182f6]">
-                  01
-                </p>
-                <p className="mt-2 break-keep text-[12px] font-semibold leading-4 text-[#191f28]">
-                  공식 채널 먼저
-                </p>
-                <p className="mt-1 break-keep text-[11px] leading-4 text-[#6b7684]">
-                  공지·메뉴·공개 페이지 확인
-                </p>
-              </Link>
-              <Link
-                href="/editorial-policy"
-                className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
-              >
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#3182f6]">
-                  02
-                </p>
-                <p className="mt-2 break-keep text-[12px] font-semibold leading-4 text-[#191f28]">
-                  먹을 수 있는 메뉴만
-                </p>
-                <p className="mt-1 break-keep text-[11px] leading-4 text-[#6b7684]">
-                  굿즈·이벤트 항목 제외
-                </p>
-              </Link>
-              <Link
-                href="/data-sources"
-                className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-slate-200 transition-transform hover:-translate-y-0.5"
-              >
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#3182f6]">
-                  03
-                </p>
-                <p className="mt-2 break-keep text-[12px] font-semibold leading-4 text-[#191f28]">
-                  출처를 같이 남깁니다
-                </p>
-                <p className="mt-1 break-keep text-[11px] leading-4 text-[#6b7684]">
-                  브랜드·공식 문서 기준
-                </p>
-              </Link>
+              {[
+                { n: "01", t: "공식 채널 먼저", href: "/how-it-works" },
+                { n: "02", t: "판매 여부 확인", href: "/editorial-policy" },
+                { n: "03", t: "출처 공개", href: "/data-sources" },
+              ].map((x) => (
+                <Link
+                  key={x.n}
+                  href={x.href}
+                  className="rounded-xl border border-line bg-bg px-3 py-3 transition-colors hover:bg-accent-soft/50"
+                >
+                  <p className="font-kicker text-[10px] text-accent">{x.n}</p>
+                  <p className="mt-1.5 break-keep text-[12px] font-bold tracking-[-0.02em] text-ink">
+                    {x.t}
+                  </p>
+                </Link>
+              ))}
             </div>
           </div>
         </section>

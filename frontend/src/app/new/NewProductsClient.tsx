@@ -422,203 +422,125 @@ export default function NewProductsClient({
 
   return (
     <>
-      <section className="mb-6">
-        <div className="rounded-2xl bg-gradient-to-br from-purple-400 to-blue-400 px-6 py-6 text-white">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/90">
-            <span className="rounded-full bg-white/15 px-2.5 py-1">
-              공식 신상 {currentView.totalCount}개
-            </span>
-            <span className="rounded-full bg-white/15 px-2.5 py-1">
-              브랜드 {currentView.brandCount}곳
-            </span>
-            {visibleSectorHighlights.map((option) => (
-              <span
-                key={option.key}
-                className="rounded-full bg-white/15 px-2.5 py-1"
-              >
-                {option.label} {currentView.sectorCounts[option.key]}개
-              </span>
-            ))}
-          </div>
-
-          <p className="mt-4 text-xl font-bold leading-snug">
-            프랜차이즈 신상,
-            <br />
-            업종과 브랜드별로 빠르게 확인
-          </p>
-
-          <p className="mt-2 text-sm leading-relaxed text-white/85">
-            공식 상품 페이지와 브랜드 채널에서 음식 위주 신상만 골라서
-            보여드립니다.
-          </p>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/"
-              prefetch={false}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-primary shadow-sm transition-colors hover:bg-purple-50"
-            >
-              홈 트렌드 보기
-            </Link>
-            <button
-              type="button"
-              onClick={() => applyFilter("all", currentSector, currentBrand)}
-              className="rounded-xl border border-white/30 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-            >
-              전체 기간 보기
-            </button>
-          </div>
-
-          <p className="mt-4 text-xs text-white/80">
-            마지막 수집: {formatUpdatedAt(currentLastUpdated)}
-          </p>
+      <section className="mb-4">
+        <div className="font-kicker text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
+          New Arrivals
         </div>
+        <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.03em] text-ink">
+          신상
+        </h1>
+        <p className="mt-1 text-[12.5px] tracking-[-0.01em] text-ink4">
+          프랜차이즈·편의점 신메뉴를 매일 업데이트
+        </p>
       </section>
 
-      <section className="mb-6">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="font-bold text-gray-900">필터</h2>
-              <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                기간별 프랜차이즈 신상을 업종과 브랜드 기준으로 다시
-                정리해 보여줍니다.
-              </p>
-            </div>
-            <div className="shrink-0 text-right text-xs text-gray-400">
-              <p>{currentView.totalCount}개 노출</p>
-              <p className="mt-1">브랜드 {currentView.brandCount}곳</p>
-            </div>
-          </div>
+      <section className="mb-4 flex flex-wrap gap-1.5">
+        {PERIOD_OPTIONS.map((option) => {
+          const active = currentPeriod === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => applyFilter(option.key, currentSector, currentBrand)}
+              className={`whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
+                active
+                  ? "bg-ink text-surface"
+                  : "bg-surface text-ink2 ring-1 ring-inset ring-line"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </section>
 
-          <div className="flex items-start gap-3">
-            <FilterDropdown
-              label="기간"
-              value={currentPeriod}
-              options={PERIOD_OPTIONS}
-              open={openDropdown === "period"}
-              onOpen={() => setOpenDropdown("period")}
-              onClose={() =>
-                setOpenDropdown((current) => (current === "period" ? null : current))
-              }
-              onSelect={(next) => applyFilter(next, currentSector, currentBrand)}
-            />
-          </div>
+      <section className="mb-4 rounded-[20px] border border-line bg-surface p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[11px] font-bold text-ink3">업종</p>
+          <span className="text-[11px] text-ink4">
+            {currentView.totalCount}개 · 브랜드 {currentView.brandCount}곳
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SECTOR_OPTIONS.map((option) => {
+            const active = currentSector === option.key;
+            const count =
+              option.key === "all"
+                ? totalSectorCount
+                : currentView.sectorCounts[option.key];
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => applyFilter(currentPeriod, option.key, null)}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? "bg-accent text-surface"
+                    : "bg-accent-soft text-accent hover:bg-accent/20"
+                }`}
+              >
+                {option.label} {count}
+              </button>
+            );
+          })}
+        </div>
 
-          <div className="mt-4">
-            <p className="text-xs font-semibold text-gray-500">업종</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {SECTOR_OPTIONS.map((option) => {
-                const active = currentSector === option.key;
-                const count =
-                  option.key === "all"
-                    ? totalSectorCount
-                    : currentView.sectorCounts[option.key];
-
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => applyFilter(currentPeriod, option.key, null)}
-                    className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
-                      active
-                        ? "bg-primary text-white"
-                        : "bg-primary/10 text-primary hover:bg-primary/20"
-                    }`}
-                  >
-                    {option.label} {count}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold text-gray-500">브랜드</p>
-              {currentSector !== "all" ? (
-                <span className="text-[11px] text-gray-400">
-                  {currentView.brandOptions.length}개 브랜드
-                </span>
-              ) : null}
-            </div>
-
-            {currentSector === "all" ? (
-              <p className="mt-2 rounded-xl bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500">
-                업종을 먼저 고르면 스타벅스, 맥도날드처럼 브랜드별로 더 빠르게
-                좁혀볼 수 있어요.
-              </p>
-            ) : currentView.brandOptions.length === 0 ? (
-              <p className="mt-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">
-                이 업종에는 아직 노출 중인 브랜드가 없습니다.
-              </p>
-            ) : (
-              <div className="mt-2 flex flex-wrap gap-2">
+        {currentSector !== "all" && currentView.brandOptions.length > 0 ? (
+          <>
+            <p className="mt-4 mb-2 text-[11px] font-bold text-ink3">
+              브랜드
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => applyFilter(currentPeriod, currentSector, null)}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  !currentBrand
+                    ? "bg-ink text-surface"
+                    : "bg-line2 text-ink3 hover:bg-line"
+                }`}
+              >
+                전체 브랜드
+              </button>
+              {currentView.brandOptions.map((option) => (
                 <button
+                  key={option.key}
                   type="button"
-                  onClick={() => applyFilter(currentPeriod, currentSector, null)}
-                  className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
-                    !currentBrand
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  onClick={() =>
+                    applyFilter(currentPeriod, currentSector, option.key)
+                  }
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    currentBrand === option.key
+                      ? "bg-ink text-surface"
+                      : "bg-line2 text-ink3 hover:bg-line"
                   }`}
                 >
-                  전체 브랜드
+                  {option.label} {option.count}
                 </button>
-                {currentView.brandOptions.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => applyFilter(currentPeriod, currentSector, option.key)}
-                    className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
-                      currentBrand === option.key
-                        ? "bg-gray-900 text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    }`}
-                  >
-                    {option.label} {option.count}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          </>
+        ) : null}
 
-          <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-gray-400">
-            {sectorSummary.map((option) => (
-              <span key={option.key}>
-                {option.label} {currentView.sectorCounts[option.key]}개
-              </span>
-            ))}
-          </div>
-        </div>
+        <p className="mt-3 text-[11px] text-ink4">
+          마지막 수집: {formatUpdatedAt(currentLastUpdated)}
+        </p>
       </section>
 
       <section className="mb-6">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-gray-900">신상 목록</h3>
-            <p className="mt-1 text-xs text-gray-500">
-              {getPeriodLabel(currentPeriod)} · {getSectorLabel(currentSector)} 기준
-              {selectedBrandLabel ? ` · ${selectedBrandLabel}` : ""}
-            </p>
-          </div>
-          <span className="text-xs text-gray-400">{currentView.totalCount}개</span>
-        </div>
-
         {currentView.products.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-5 py-12 text-center">
-            <p className="mb-4 text-5xl">🍽️</p>
-            <p className="text-base font-semibold text-gray-900">
+          <div className="rounded-[20px] border border-dashed border-line bg-surface px-5 py-12 text-center">
+            <p className="text-base font-bold text-ink">
               조건에 맞는 신상이 아직 없습니다
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-gray-500">
+            <p className="mt-2 text-sm leading-relaxed text-ink3">
               기간을 넓히거나 업종, 브랜드 필터를 바꿔보세요. 공식 채널 기준
               데이터만 보여드립니다.
             </p>
           </div>
         ) : (
           <>
-            <div className="flex flex-col gap-8">
+            <div className="grid grid-cols-2 gap-2.5">
               {visibleProducts.map((product) => (
                 <NewProductCard key={product.id} product={product} />
               ))}
@@ -627,11 +549,11 @@ export default function NewProductsClient({
             <div ref={sentinelRef} aria-hidden="true" className="h-8 w-full" />
 
             {hasMore ? (
-              <p className="py-4 text-center text-xs text-gray-400">
+              <p className="py-4 text-center text-xs text-ink4">
                 불러오는 중…
               </p>
             ) : (
-              <p className="py-4 text-center text-xs text-gray-300">
+              <p className="py-4 text-center text-xs text-ink4">
                 마지막까지 모두 확인했어요
               </p>
             )}

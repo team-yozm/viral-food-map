@@ -32,6 +32,27 @@ interface ReportFormProps {
   initialTrends: Trend[];
 }
 
+interface ReportFieldProps {
+  label: string;
+  children: React.ReactNode;
+  hint?: React.ReactNode;
+}
+
+function ReportField({ label, children, hint }: ReportFieldProps) {
+  return (
+    <div className="mb-3.5 last:mb-0">
+      <div className="mb-1.5 text-[10.5px] font-bold tracking-[-0.01em] text-ink4">
+        {label}
+      </div>
+      {children}
+      {hint ? <div className="mt-1.5">{hint}</div> : null}
+    </div>
+  );
+}
+
+const fieldInputClass =
+  "block w-full rounded-[10px] border border-line bg-bg px-3.5 py-3 text-[13.5px] text-ink outline-none transition-colors focus:border-accent focus:bg-surface disabled:cursor-not-allowed disabled:text-ink4";
+
 export default function ReportForm({ initialTrends }: ReportFormProps) {
   const [trends, setTrends] = useState<Trend[]>(initialTrends);
   const [trendId, setTrendId] = useState("");
@@ -103,7 +124,6 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
     );
   }, []);
 
-  // 검색 디바운스
   useEffect(() => {
     if (selected) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -177,7 +197,7 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
       setQuery("");
       setSelected(null);
       setNote("");
-      setTimeout(() => setSubmitted(false), 3000);
+      setTrendId("");
     } catch (error) {
       setSubmitError(
         error instanceof Error
@@ -189,17 +209,71 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
     }
   };
 
+  const canSubmit =
+    !submitting &&
+    !!selected &&
+    !!trendId &&
+    !trendsLoading &&
+    !trendsError &&
+    trends.length > 0;
+
+  if (submitted) {
+    return (
+      <div
+        className="rounded-[20px] border bg-accent-soft px-6 py-7 text-center"
+        style={{ borderColor: "rgba(107,79,211,0.25)" }}
+      >
+        <div className="font-kicker text-[10px] font-bold text-accent">SUBMITTED</div>
+        <div className="mt-2 text-[20px] font-extrabold tracking-[-0.03em] text-ink">
+          제보가 접수되었어요
+        </div>
+        <div className="mt-2 text-[12.5px] leading-[1.55] tracking-[-0.01em] text-ink3">
+          <span className="font-semibold text-ink2">&apos;{submittedStoreName}&apos;</span> 확인 후 지도에 반영해드릴게요.
+          <br />
+          보통 24시간 이내에 반영됩니다.
+        </div>
+        <button
+          type="button"
+          onClick={() => setSubmitted(false)}
+          className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-ink px-5 py-2.5 text-[12.5px] font-bold tracking-[-0.01em] text-surface"
+        >
+          다른 제보하기
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          어떤 음식인가요?
-        </label>
+    <form
+      onSubmit={handleSubmit}
+      className="rounded-[20px] border border-line bg-surface p-[18px]"
+    >
+      <ReportField
+        label="관련 트렌드"
+        hint={
+          trendsLoading ? (
+            <p className="text-[11px] text-ink4">트렌드 목록 불러오는 중...</p>
+          ) : trendsError ? (
+            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2">
+              <p className="text-[11px] text-red-700">{trendsError}</p>
+              <button
+                type="button"
+                onClick={fetchTrends}
+                className="shrink-0 rounded-[8px] bg-red-700 px-2.5 py-1 text-[11px] font-semibold text-white"
+              >
+                다시 시도
+              </button>
+            </div>
+          ) : trends.length === 0 ? (
+            <p className="text-[11px] text-ink4">현재 제보 가능한 활성 트렌드가 없습니다.</p>
+          ) : null
+        }
+      >
         <div className="relative">
           <select
             value={trendId}
             onChange={(e) => setTrendId(e.target.value)}
-            className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 appearance-none disabled:bg-gray-50 disabled:text-gray-400"
+            className={`${fieldInputClass} appearance-none pr-9`}
             disabled={trendsLoading || !!trendsError || trends.length === 0}
             required
           >
@@ -210,7 +284,7 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
                   ? "트렌드 로드 실패"
                   : trends.length === 0
                     ? "등록된 트렌드 없음"
-                    : "트렌드 선택"}
+                    : "선택하세요"}
             </option>
             {trends.map((t) => (
               <option key={t.id} value={t.id}>
@@ -218,94 +292,81 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
               </option>
             ))}
           </select>
-          <svg className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-ink4"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M6 9l6 6 6-6" />
           </svg>
         </div>
-        {trendsLoading && (
-          <p className="mt-2 text-xs text-gray-500">
-            제보 가능한 트렌드 목록을 가져오고 있습니다.
-          </p>
-        )}
-        {trendsError && (
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-            <p className="text-xs text-red-700">{trendsError}</p>
-            <button
-              type="button"
-              onClick={fetchTrends}
-              className="flex-shrink-0 rounded-lg bg-red-700 px-2.5 py-1 text-[11px] font-semibold text-white"
+      </ReportField>
+
+      <ReportField label="판매처 이름">
+        <div className="relative">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (selected) setSelected(null);
+            }}
+            onFocus={() => results.length > 0 && setShowResults(true)}
+            placeholder="매장 이름을 검색하세요 (예: 성수 베이글)"
+            className={fieldInputClass}
+            required
+          />
+
+          {showResults && results.length > 0 && (
+            <div
+              ref={dropdownRef}
+              onScroll={handleDropdownScroll}
+              className="absolute left-0 right-0 z-20 mt-1 max-h-72 overflow-y-auto rounded-[12px] border border-line bg-surface shadow-[0_12px_28px_rgba(20,18,26,0.12)]"
             >
-              다시 시도
-            </button>
-          </div>
-        )}
-        {!trendsLoading && !trendsError && trends.length === 0 && (
-          <p className="mt-2 text-xs text-gray-500">
-            현재 제보 가능한 활성 트렌드가 없습니다.
-          </p>
-        )}
-      </div>
-
-      <div className="relative">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          매장 검색
-        </label>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (selected) setSelected(null);
-          }}
-          onFocus={() => results.length > 0 && setShowResults(true)}
-          placeholder="매장 이름을 검색하세요"
-          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
-          required
-        />
-
-        {showResults && results.length > 0 && (
-          <div
-            ref={dropdownRef}
-            onScroll={handleDropdownScroll}
-            className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto"
-          >
-            {results.map((place, i) => {
-              const addr = place.road_address_name || place.address_name;
-              const region = addr.split(" ").slice(0, 2).join(" ");
-              return (
-                <button
-                  key={`${place.place_name}-${place.x}-${i}`}
-                  type="button"
-                  onClick={() => handleSelect(place)}
-                  className="w-full px-4 py-3 text-left hover:bg-purple-50 transition-colors border-b border-gray-50 last:border-0"
-                >
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {place.place_name}
-                    </p>
-                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">
-                      {region}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-400 truncate">{addr}</p>
-                </button>
-              );
-            })}
-            {loadingMore && (
-              <div className="px-4 py-3 text-center text-xs text-gray-400">
-                검색 중...
-              </div>
-            )}
-          </div>
-        )}
+              {results.map((place, i) => {
+                const addr = place.road_address_name || place.address_name;
+                const region = addr.split(" ").slice(0, 2).join(" ");
+                return (
+                  <button
+                    key={`${place.place_name}-${place.x}-${i}`}
+                    type="button"
+                    onClick={() => handleSelect(place)}
+                    className="w-full border-b border-line2 px-3.5 py-2.5 text-left transition-colors last:border-0 hover:bg-accent-soft"
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-[13px] font-semibold text-ink">
+                        {place.place_name}
+                      </p>
+                      <span className="shrink-0 rounded bg-line2 px-1.5 py-[1px] text-[10px] text-ink4">
+                        {region}
+                      </span>
+                    </div>
+                    <p className="truncate text-[11.5px] text-ink4">{addr}</p>
+                  </button>
+                );
+              })}
+              {loadingMore && (
+                <div className="px-4 py-3 text-center text-[11px] text-ink4">
+                  검색 중...
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {selected && (
-          <div className="mt-2 bg-purple-50 rounded-lg px-3 py-2 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-900">
+          <div className="mt-2 flex items-center justify-between rounded-[10px] border border-accent/25 bg-accent-soft px-3.5 py-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-bold text-accent-ink">
                 {selected.place_name}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="truncate text-[11.5px] text-ink3">
                 {selected.road_address_name || selected.address_name}
               </p>
             </div>
@@ -315,48 +376,34 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
                 setSelected(null);
                 setQuery("");
               }}
-              className="text-gray-400 hover:text-gray-600 text-xs"
+              className="shrink-0 rounded-[8px] bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink2"
             >
               변경
             </button>
           </div>
         )}
-      </div>
+      </ReportField>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          메모 (선택)
-        </label>
+      <ReportField label="메모 (선택)">
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="추가 정보가 있다면 적어주세요"
-          rows={2}
-          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none"
+          placeholder="영업시간, 메뉴 이름 등"
+          rows={3}
+          className={`${fieldInputClass} resize-none`}
         />
-      </div>
+      </ReportField>
 
       <button
         type="submit"
-        disabled={
-          submitting ||
-          !selected ||
-          !trendId ||
-          trendsLoading ||
-          !!trendsError ||
-          trends.length === 0
-        }
-        className="w-full bg-primary text-white font-semibold py-3 rounded-xl transition-colors hover:bg-purple-600 disabled:opacity-50"
+        disabled={!canSubmit}
+        className="mt-4 w-full rounded-[12px] bg-ink px-4 py-4 text-[14px] font-extrabold tracking-[-0.02em] text-surface transition-opacity disabled:opacity-40"
       >
         {submitting ? "제보 중..." : "제보하기"}
       </button>
 
-      {submitError && <p className="text-sm text-red-500">{submitError}</p>}
-
-      {submitted && (
-        <div className="fixed bottom-nav-floating-offset left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-slide-up whitespace-nowrap">
-          ✅ &apos;{submittedStoreName}&apos; 제보 완료! 24시간 내 지도에 반영돼요
-        </div>
+      {submitError && (
+        <p className="mt-3 text-[12px] text-neg">{submitError}</p>
       )}
     </form>
   );

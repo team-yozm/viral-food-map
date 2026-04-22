@@ -4,8 +4,8 @@
   "description": "지금 유행하는 음식, 어디서 살까?",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#fafafa",
-  "theme_color": "#9B7DD4",
+  "background_color": "#FAF8FC",
+  "theme_color": "#6B4FD3",
   "icons": [
     {
       "src": "/icon-192.png",
