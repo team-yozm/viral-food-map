@@ -123,7 +123,13 @@ interface TopTrendRollingBannerProps {
   isAppClipExperience: boolean;
 }
 
-function GoldRankIcon({ className }: { className?: string }) {
+const rankMedals = ["🥇", "🥈", "🥉"] as const;
+
+function getRankMedal(rank: number) {
+  return rankMedals[rank - 1] ?? "🏅";
+}
+
+function TopCrownIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -181,7 +187,7 @@ function TopTrendRollingBanner({
     >
       <div className="mb-2.5 flex items-center justify-between px-1">
         <div className="font-pretendard flex items-center gap-1.5 text-[10px] font-semibold tracking-[-0.01em] text-white/65">
-          <GoldRankIcon className="h-3 w-3 flex-shrink-0 text-[#FFD166]" />
+          <TopCrownIcon className="h-3 w-3 flex-shrink-0 text-[#FFD166]" />
           TOP {trends.length}
         </div>
         <div className="flex items-center gap-1.5" aria-hidden="true">
@@ -237,7 +243,9 @@ function TopTrendRollingBanner({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.12] px-2 py-1 text-[10px] font-bold text-white/80">
-                    <GoldRankIcon className="h-3 w-3 flex-shrink-0 text-[#FFD166]" />
+                    <span className="text-[12px] leading-none" aria-hidden="true">
+                      {getRankMedal(rank)}
+                    </span>
                     <span>{rank}위</span>
                   </span>
                   <RankDeltaBadge trend={trend} currentRank={rank} />
