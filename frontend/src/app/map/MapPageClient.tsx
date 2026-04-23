@@ -4,10 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  type MouseEvent,
-  type PointerEvent,
   type WheelEvent,
 } from "react";
 import Link from "next/link";
@@ -70,12 +67,6 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
   const [locReady, setLocReady] = useState(false);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
-  const chipDragRef = useRef({
-    pointerId: -1,
-    startX: 0,
-    scrollLeft: 0,
-    dragging: false,
-  });
 
   const requestLocation = useCallback(
     () =>
@@ -201,64 +192,6 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     return km >= 100 ? `${Math.round(km)}km` : `${km.toFixed(1)}km`;
   }
 
-  const handleChipPointerDown = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType !== "mouse" || event.button !== 0) return;
-      const scroller = event.currentTarget;
-      if (scroller.scrollWidth <= scroller.clientWidth) return;
-
-      chipDragRef.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        scrollLeft: scroller.scrollLeft,
-        dragging: false,
-      };
-      scroller.setPointerCapture(event.pointerId);
-    },
-    []
-  );
-
-  const handleChipPointerMove = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      const drag = chipDragRef.current;
-      if (drag.pointerId !== event.pointerId) return;
-
-      const deltaX = event.clientX - drag.startX;
-      if (Math.abs(deltaX) > 4) {
-        drag.dragging = true;
-      }
-      if (drag.dragging) {
-        event.preventDefault();
-        event.currentTarget.scrollLeft = drag.scrollLeft - deltaX;
-      }
-    },
-    []
-  );
-
-  const handleChipPointerEnd = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      if (chipDragRef.current.pointerId !== event.pointerId) return;
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      chipDragRef.current.pointerId = -1;
-      if (event.type === "pointercancel") {
-        chipDragRef.current.dragging = false;
-      }
-    },
-    []
-  );
-
-  const handleChipClickCapture = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      if (!chipDragRef.current.dragging) return;
-      chipDragRef.current.dragging = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    []
-  );
-
   const handleChipWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
     const scroller = event.currentTarget;
     if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
@@ -293,12 +226,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
 
         {/* Trend filter chips */}
         <div
-          className="scrollbar-hide flex w-full min-w-0 cursor-grab gap-1.5 overflow-x-auto overscroll-x-contain px-5 pb-2.5 active:cursor-grabbing [touch-action:pan-x] [-webkit-overflow-scrolling:touch]"
-          onClickCapture={handleChipClickCapture}
-          onPointerCancel={handleChipPointerEnd}
-          onPointerDown={handleChipPointerDown}
-          onPointerMove={handleChipPointerMove}
-          onPointerUp={handleChipPointerEnd}
+          className="scrollbar-hide flex w-full min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-5 pb-2.5 [touch-action:pan-x] [-webkit-overflow-scrolling:touch]"
           onWheel={handleChipWheel}
         >
           <Chip
