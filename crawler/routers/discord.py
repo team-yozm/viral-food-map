@@ -5,6 +5,11 @@ from fastapi.responses import JSONResponse
 
 from auth import AdminUser, require_admin_user
 from config import settings
+from discord_commands import (
+    INTERACTION_TYPE_APPLICATION_COMMAND,
+    build_deferred_channel_response,
+    schedule_application_command_processing,
+)
 from discord_reviews import (
     INTERACTION_TYPE_MESSAGE_COMPONENT,
     INTERACTION_RESPONSE_TYPE_PONG,
@@ -40,6 +45,10 @@ async def handle_discord_interactions(
     interaction = await request.json()
     if int(interaction.get("type", 0)) == INTERACTION_TYPE_PING:
         return JSONResponse({"type": INTERACTION_RESPONSE_TYPE_PONG})
+
+    if int(interaction.get("type", 0)) == INTERACTION_TYPE_APPLICATION_COMMAND:
+        schedule_application_command_processing(interaction)
+        return JSONResponse(build_deferred_channel_response())
 
     if not settings.DISCORD_REVIEW_ENABLED:
         return JSONResponse(build_ephemeral_response("디스코드 검토 기능이 비활성화되어 있습니다."))
