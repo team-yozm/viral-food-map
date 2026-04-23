@@ -138,12 +138,17 @@ export default function BottomNav() {
 
   const handleFab = () => {
     Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
-    const openFn =
-      typeof window !== "undefined"
-        ? (window as unknown as { __yozmOpenYomechu?: () => void })
-            .__yozmOpenYomechu
-        : undefined;
-    if (openFn) {
+    const win = typeof window !== "undefined"
+      ? (window as unknown as {
+          __yozmToggleYomechu?: () => void;
+          __yozmOpenYomechu?: () => void;
+        })
+      : undefined;
+    const toggleFn = win?.__yozmToggleYomechu;
+    const openFn = win?.__yozmOpenYomechu;
+    if (toggleFn) {
+      toggleFn();
+    } else if (openFn) {
       openFn();
     } else {
       router.push("/?openYomechu=1");

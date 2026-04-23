@@ -154,12 +154,15 @@ export default function HomePageClient({
   }, [launcherOpen]);
 
   useEffect(() => {
-    const win = window as unknown as { __yozmOpenYomechu?: () => void };
+    const win = window as unknown as {
+      __yozmOpenYomechu?: () => void;
+      __yozmToggleYomechu?: () => void;
+    };
     win.__yozmOpenYomechu = () => setLauncherOpen(true);
+    win.__yozmToggleYomechu = () => setLauncherOpen((prev) => !prev);
     return () => {
-      if (win.__yozmOpenYomechu) {
-        delete win.__yozmOpenYomechu;
-      }
+      delete win.__yozmOpenYomechu;
+      delete win.__yozmToggleYomechu;
     };
   }, []);
 
