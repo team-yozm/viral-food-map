@@ -5,7 +5,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type WheelEvent,
 } from "react";
 import Link from "next/link";
 import AdSlot from "@/components/AdSlot";
@@ -43,7 +42,7 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 select-none whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
+      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
         active
           ? "bg-ink text-surface"
           : "bg-surface text-ink2 ring-1 ring-inset ring-line"
@@ -192,20 +191,6 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     return km >= 100 ? `${Math.round(km)}km` : `${km.toFixed(1)}km`;
   }
 
-  const handleChipWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    const scroller = event.currentTarget;
-    if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-
-    const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
-    const canScrollForward =
-      event.deltaY > 0 && scroller.scrollLeft < maxScrollLeft;
-    const canScrollBackward = event.deltaY < 0 && scroller.scrollLeft > 0;
-    if (!canScrollForward && !canScrollBackward) return;
-
-    event.preventDefault();
-    scroller.scrollLeft += event.deltaY;
-  }, []);
-
   return (
     <>
       <main
@@ -225,10 +210,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
         </div>
 
         {/* Trend filter chips */}
-        <div
-          className="scrollbar-hide flex w-full min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-5 pb-2.5 [touch-action:pan-x] [-webkit-overflow-scrolling:touch]"
-          onWheel={handleChipWheel}
-        >
+        <div className="scrollbar-hide flex w-full min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-5 pb-2.5">
           <Chip
             label="전체 트렌드"
             active={selectedTrendId === "all"}
