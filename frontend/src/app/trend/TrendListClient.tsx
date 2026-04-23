@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
+import RankDeltaBadge from "@/components/RankDeltaBadge";
 import { shouldUseUnoptimizedImage } from "@/lib/image-optimization";
 import type { Trend } from "@/lib/types";
 
@@ -21,23 +22,6 @@ function SearchIcon() {
   );
 }
 
-function StatusBadge({ status }: { status: Trend["status"] }) {
-  if (status === "rising") {
-    return (
-      <span className="shrink-0 rounded bg-accent-soft px-1.5 py-[2px] text-[10px] font-bold text-accent">
-        ↑ 상승
-      </span>
-    );
-  }
-  if (status === "declining") {
-    return (
-      <span className="shrink-0 rounded bg-line2 px-1.5 py-[2px] text-[10px] font-bold text-ink4">
-        ↓ 하강
-      </span>
-    );
-  }
-  return null;
-}
 
 function FeaturedCard({ trend, rank }: { trend: Trend & { store_count?: number }; rank: number }) {
   const unoptimized = shouldUseUnoptimizedImage(trend.image_url);
@@ -73,7 +57,7 @@ function FeaturedCard({ trend, rank }: { trend: Trend & { store_count?: number }
           className="rounded-[6px] px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.06em] text-white"
           style={{ background: "rgba(255,255,255,0.18)", backdropFilter: "blur(10px)" }}
         >
-          {trend.status === "rising" ? "RISING" : trend.status === "declining" ? "DECLINING" : "ACTIVE"}
+          {trend.status === "rising" ? "RISING" : "ACTIVE"}
         </span>
       </div>
       {/* Bottom info */}
@@ -125,10 +109,10 @@ function RankedRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-[-0.02em] text-ink">
+          <span className="min-w-0 truncate text-[15px] font-bold tracking-[-0.02em] text-ink">
             {trend.name}
           </span>
-          <StatusBadge status={trend.status} />
+          <RankDeltaBadge trend={trend} currentRank={rank} />
         </div>
         <div className="mt-0.5 truncate text-[11.5px] text-ink4">
           {trend.category} · 판매처 {trend.store_count ?? 0}곳

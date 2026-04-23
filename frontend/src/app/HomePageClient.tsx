@@ -9,6 +9,7 @@ import BottomNav from "@/components/BottomNav";
 import AdSlot from "@/components/AdSlot";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
+import RankDeltaBadge from "@/components/RankDeltaBadge";
 import ScrollToTop from "@/components/ScrollToTop";
 import TrendCard from "@/components/TrendCard";
 import { ADSENSE_HOME_SLOT } from "@/lib/adsense";
@@ -633,23 +634,6 @@ export default function HomePageClient({
             return acc;
           }, 0);
 
-          function rankChange(trend: Trend, currentRank: number) {
-            if (trend.previous_rank == null) return { type: "new" as const, delta: 0 };
-            const diff = trend.previous_rank - currentRank;
-            if (diff > 0) return { type: "up" as const, delta: diff };
-            if (diff < 0) return { type: "down" as const, delta: -diff };
-            return { type: "same" as const, delta: 0 };
-          }
-
-          function RankDelta({ trend, rank }: { trend: Trend; rank: number }) {
-            const c = rankChange(trend, rank);
-            const pill = "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tracking-[0.02em] font-kicker";
-            if (c.type === "new") return <span className={`${pill} bg-accent-soft text-accent-ink`}>NEW</span>;
-            if (c.type === "up") return <span className={`${pill} bg-pos/10 text-pos`}>▲{c.delta}</span>;
-            if (c.type === "down") return <span className={`${pill} bg-neg/10 text-neg`}>▼{c.delta}</span>;
-            return <span className={`${pill} bg-line2 text-ink4`}>—</span>;
-          }
-
           return (
             <>
               {/* Dark editorial hero */}
@@ -852,12 +836,10 @@ export default function HomePageClient({
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex min-w-0 items-center gap-1.5">
-                                    <span className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-[-0.02em] text-ink">
+                                    <span className="min-w-0 truncate text-[15px] font-bold tracking-[-0.02em] text-ink">
                                       {trend.name}
                                     </span>
-                                    <span className="flex-shrink-0">
-                                      <RankDelta trend={trend} rank={rank} />
-                                    </span>
+                                    <RankDeltaBadge trend={trend} currentRank={rank} />
                                   </div>
                                   <div className="mt-0.5 truncate text-[11.5px] text-ink4">
                                     {trend.category} · 판매처 {trend.store_count || 0}곳
