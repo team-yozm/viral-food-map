@@ -118,6 +118,174 @@ function groupNearbyStores(stores: NearbyTrendStore[]) {
     .slice(0, 5);
 }
 
+interface TopTrendRollingBannerProps {
+  trends: Trend[];
+  isAppClipExperience: boolean;
+}
+
+function TopTrendRollingBanner({
+  trends,
+  isAppClipExperience,
+}: TopTrendRollingBannerProps) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  useEffect(() => {
+    if (activeIndex >= trends.length) {
+      setActiveIndex(0);
+    }
+  }, [activeIndex, trends.length]);
+
+  useEffect(() => {
+    if (trends.length <= 1 || isPaused) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % trends.length);
+    }, 4200);
+
+    return () => window.clearInterval(intervalId);
+  }, [isPaused, trends.length]);
+
+  if (trends.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="border-t border-white/10 bg-white/5 px-3 py-3"
+      aria-label="지금 TOP 3 롤링 배너"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onFocus={() => setIsPaused(true)}
+      onBlur={() => setIsPaused(false)}
+    >
+      <div className="mb-2.5 flex items-center justify-between px-1">
+        <div className="font-pretendard flex items-center gap-1.5 text-[10px] font-semibold tracking-[-0.01em] text-white/65">
+          <svg
+            className="h-3 w-3 flex-shrink-0 text-[#FFD166]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m2.75 6.25 4.8 4.12a1 1 0 0 0 1.53-.32L12 4.5l2.92 5.55a1 1 0 0 0 1.53.32l4.8-4.12-2.85 10.3a1 1 0 0 1-.96.73H6.56a1 1 0 0 1-.96-.73L2.75 6.25Z" />
+            <path d="M6 20h12" />
+          </svg>
+          지금 TOP {trends.length}
+        </div>
+        <div className="flex items-center gap-1.5" aria-hidden="true">
+          {trends.map((trend, index) => (
+            <span
+              key={trend.id}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                activeIndex === index ? "w-5 bg-white" : "w-1.5 bg-white/35"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="relative h-[116px] overflow-hidden">
+        {trends.map((trend, index) => {
+          const rank = index + 1;
+          const isActive = activeIndex === index;
+          const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
+
+          return (
+            <Link
+              key={trend.id}
+              href={withAppClipParam(`/trend/${trend.id}`, isAppClipExperience)}
+              aria-hidden={!isActive}
+              tabIndex={isActive ? 0 : -1}
+              className={`absolute inset-0 flex items-center gap-3 rounded-2xl transition-all duration-500 ${
+                isActive
+                  ? "translate-x-0 opacity-100"
+                  : "pointer-events-none translate-x-4 opacity-0"
+              }`}
+            >
+              <div className="relative h-[92px] w-[92px] flex-shrink-0 overflow-hidden rounded-2xl bg-white/10">
+                {trend.image_url ? (
+                  <Image
+                    src={trend.image_url}
+                    alt={trend.name}
+                    fill
+                    sizes="92px"
+                    unoptimized={shouldUseUnoptimizedImage(trend.image_url)}
+                    className="object-cover"
+                    priority={rank === 1}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-hero-accent to-accent text-3xl">
+                    🔥
+                  </div>
+                )}
+                <span className="font-kicker absolute left-2 top-2 rounded bg-black/45 px-1.5 py-0.5 text-[9.5px] font-extrabold text-white">
+                  #{rank}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-full bg-white/[0.12] px-2 py-1 text-[10px] font-bold text-white/80">
+                    지금 {rank}위
+                  </span>
+                  <RankDeltaBadge trend={trend} currentRank={rank} />
+                </div>
+                <div className="mt-1 text-[20px] font-extrabold leading-tight tracking-[-0.03em] text-white">
+                  {trend.name}
+                </div>
+                <div className="mt-1 line-clamp-2 text-[11.5px] leading-[1.45] text-white/70">
+                  {trend.description || "판매처를 실시간 집계 중이에요"}
+                </div>
+                <div className="mt-2 flex items-center gap-2 text-[10.5px] font-semibold text-white/60">
+                  <span>{trend.category}</span>
+                  <span className="h-1 w-1 rounded-full bg-white/25" />
+                  <span>판매처 {trend.store_count || 0}곳</span>
+                  <span className="ml-auto text-white/75">{score}%</span>
+                </div>
+              </div>
+              <svg
+                className="flex-shrink-0 text-white/80"
+                width={18}
+                height={18}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </Link>
+          );
+        })}
+      </div>
+
+      {trends.length > 1 ? (
+        <div className="mt-2 flex justify-center gap-1.5">
+          {trends.map((trend, index) => (
+            <button
+              key={trend.id}
+              type="button"
+              onClick={() => setActiveIndex(index)}
+              className={`h-2 rounded-full transition-all ${
+                activeIndex === index ? "w-5 bg-white" : "w-2 bg-white/30"
+              }`}
+              aria-label={`${index + 1}위 ${trend.name} 보기`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function HomePageClient({
   initialTrends,
   verifiedStoreCount,
@@ -627,9 +795,8 @@ export default function HomePageClient({
         {(() => {
           const TOP_COUNT = 10;
           const topTrends = trends.slice(0, TOP_COUNT);
+          const rollingTrends = topTrends.slice(0, 3);
           const outsideTrends = trends.slice(TOP_COUNT);
-          const topTrend = topTrends[0];
-          const restTop = topTrends.slice(1);
           const risingCount = trends.reduce((acc, trend, idx) => {
             const currentRank = idx + 1;
             if (trend.previous_rank == null) return acc + 1;
@@ -641,7 +808,13 @@ export default function HomePageClient({
             <>
               {/* Dark editorial hero */}
               <section className="mb-5">
-                <div className="relative overflow-hidden rounded-3xl bg-hero-top text-white shadow-[0_12px_40px_rgba(20,18,26,0.18)]">
+                <div
+                  className="relative overflow-hidden rounded-3xl bg-hero-top text-white shadow-[0_12px_40px_rgba(20,18,26,0.18)]"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #1A1425 0%, #241935 58%, #332053 100%)",
+                  }}
+                >
                   <div className="px-5 pb-4 pt-5">
                     <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/90">
                       <span
@@ -679,61 +852,11 @@ export default function HomePageClient({
                     </div>
                   </div>
 
-                  {topTrend && (
-                    <Link
-                      href={withAppClipParam(`/trend/${topTrend.id}`, isAppClipExperience)}
-                      className="block border-t border-white/10 bg-white/5 px-3 py-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-[72px] w-[72px] flex-shrink-0 overflow-hidden rounded-2xl bg-white/10">
-                          {topTrend.image_url ? (
-                            <Image
-                              src={topTrend.image_url}
-                              alt={topTrend.name}
-                              fill
-                              sizes="72px"
-                              unoptimized={shouldUseUnoptimizedImage(topTrend.image_url)}
-                              className="object-cover"
-                              priority
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-hero-accent to-accent text-2xl">
-                              🔥
-                            </div>
-                          )}
-                          <span className="font-kicker absolute left-1.5 top-1.5 rounded bg-black/40 px-1.5 py-0.5 text-[9.5px] font-extrabold text-white">
-                            #1
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-pretendard flex items-center gap-1 text-[10px] font-semibold tracking-[-0.01em] text-white/65">
-                            <svg
-                              className="h-3 w-3 flex-shrink-0 text-[#FFD166]"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="m2.75 6.25 4.8 4.12a1 1 0 0 0 1.53-.32L12 4.5l2.92 5.55a1 1 0 0 0 1.53.32l4.8-4.12-2.85 10.3a1 1 0 0 1-.96.73H6.56a1 1 0 0 1-.96-.73L2.75 6.25Z" />
-                              <path d="M6 20h12" />
-                            </svg>
-                            지금 1위
-                          </div>
-                          <div className="mt-0.5 text-[17px] font-extrabold tracking-[-0.02em]">
-                            {topTrend.name}
-                          </div>
-                          <div className="truncate text-[11.5px] text-white/70">
-                            {topTrend.description || "판매처를 실시간 집계 중이에요"}
-                          </div>
-                        </div>
-                        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M5 12h14M13 6l6 6-6 6" />
-                        </svg>
-                      </div>
-                    </Link>
+                  {rollingTrends.length > 0 && (
+                    <TopTrendRollingBanner
+                      trends={rollingTrends}
+                      isAppClipExperience={isAppClipExperience}
+                    />
                   )}
                 </div>
                 {lastUpdatedLabel ? (
@@ -818,12 +941,12 @@ export default function HomePageClient({
                         </div>
                       </div>
 
-                      {restTop.length > 0 && (
+                      {topTrends.length > 0 && (
                         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
-                          {restTop.map((trend, index) => {
-                            const rank = index + 2;
+                          {topTrends.map((trend, index) => {
+                            const rank = index + 1;
                             const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
-                            const isLast = index === restTop.length - 1;
+                            const isLast = index === topTrends.length - 1;
                             return (
                               <Link
                                 key={trend.id}
