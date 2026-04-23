@@ -11,7 +11,7 @@ type TrendWithStoreCount = Trend & {
 export interface HomePageData {
   trends: TrendWithStoreCount[];
   verifiedStoreCount: number;
-  totalUserCount: number;
+  totalViewCount: number;
   lastUpdated: string | null;
 }
 
@@ -50,7 +50,7 @@ export const getHomePageData = cache(async (): Promise<HomePageData> => {
     return {
       trends: [],
       verifiedStoreCount: 0,
-      totalUserCount: 0,
+      totalViewCount: 0,
       lastUpdated: null,
     };
   }
@@ -65,13 +65,13 @@ export const getHomePageData = cache(async (): Promise<HomePageData> => {
   ]);
   const analytics = analyticsResult.data as Pick<
     AnalyticsSummary,
-    "unique_visitors"
+    "total_views"
   > | null;
 
   return {
     trends,
     verifiedStoreCount: verifiedStoresResult.count ?? 0,
-    totalUserCount: analytics?.unique_visitors ?? 0,
+    totalViewCount: analytics?.total_views ?? 0,
     lastUpdated: trends[0]?.detected_at ?? null,
   };
 });

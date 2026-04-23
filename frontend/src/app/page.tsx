@@ -18,7 +18,7 @@ export default async function HomePage() {
     <HomePageClient
       initialTrends={homePageData.trends}
       verifiedStoreCount={homePageData.verifiedStoreCount}
-      totalUserCount={homePageData.totalUserCount}
+      totalViewCount={homePageData.totalViewCount}
       lastUpdated={homePageData.lastUpdated}
     />
   );

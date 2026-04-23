@@ -69,7 +69,7 @@ interface GroupedNearbyStore extends NearbyTrendStore {
 interface HomePageClientProps {
   initialTrends: Trend[];
   verifiedStoreCount: number;
-  totalUserCount?: number;
+  totalViewCount?: number;
   lastUpdated: string | null;
 }
 
@@ -294,7 +294,7 @@ function TopTrendRollingBanner({
 export default function HomePageClient({
   initialTrends,
   verifiedStoreCount,
-  totalUserCount,
+  totalViewCount,
   lastUpdated,
 }: HomePageClientProps) {
   const isAppClipExperience = useAppClipExperience();
@@ -320,36 +320,36 @@ export default function HomePageClient({
   );
   const [revealOpen, setRevealOpen] = useState(false);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
-  const [displayTotalUserCount, setDisplayTotalUserCount] = useState(
-    totalUserCount ?? 0
+  const [displayTotalViewCount, setDisplayTotalViewCount] = useState(
+    totalViewCount ?? 0
   );
 
   useEffect(() => {
-    setDisplayTotalUserCount(totalUserCount ?? 0);
-  }, [totalUserCount]);
+    setDisplayTotalViewCount(totalViewCount ?? 0);
+  }, [totalViewCount]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchTotalUserCount = async () => {
+    const fetchTotalViewCount = async () => {
       try {
         const { data } = await supabase.rpc("get_analytics_summary", {
           days_back: 3650,
         });
         const analytics = data as Pick<
           AnalyticsSummary,
-          "unique_visitors"
+          "total_views"
         > | null;
 
-        if (!cancelled && typeof analytics?.unique_visitors === "number") {
-          setDisplayTotalUserCount(analytics.unique_visitors);
+        if (!cancelled && typeof analytics?.total_views === "number") {
+          setDisplayTotalViewCount(analytics.total_views);
         }
       } catch {
         // 방문 통계 조회 실패가 홈 화면 렌더링을 막지 않도록 둡니다.
       }
     };
 
-    void fetchTotalUserCount();
+    void fetchTotalViewCount();
 
     return () => {
       cancelled = true;
@@ -627,7 +627,7 @@ export default function HomePageClient({
   }, [trends, userLoc]);
 
   const storeCountLabel = formatCount(verifiedStoreCount);
-  const totalUserCountLabel = formatCount(displayTotalUserCount);
+  const totalViewCountLabel = formatCount(displayTotalViewCount);
 
   const [lastUpdatedLabel, setLastUpdatedLabel] = useState<string | null>(null);
 
@@ -848,34 +848,34 @@ export default function HomePageClient({
                       "linear-gradient(135deg, #1A1425 0%, #241935 58%, #332053 100%)",
                   }}
                 >
-                  <div className="px-5 pb-4 pt-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/90">
-                          <span
-                            className="h-1.5 w-1.5 rounded-full bg-hero-accent"
-                            style={{ boxShadow: "0 0 8px #8B6FE8" }}
-                          />
-                          Live · 방금 업데이트
-                        </div>
-                        <div className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/75">
-                          총 이용자 {totalUserCountLabel}명
-                        </div>
+                  <div className="relative px-5 pb-4 pt-5">
+                    <div className="pr-[104px]">
+                      <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/90">
+                        <span
+                          className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-hero-accent"
+                          style={{ boxShadow: "0 0 8px #8B6FE8" }}
+                        />
+                        <span className="truncate">
+                          Live · 총 조회수 {totalViewCountLabel}회
+                        </span>
                       </div>
-                      <div className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                        <div className="font-pretendard text-[9px] font-semibold tracking-[-0.01em] text-white/55">
+                      <h1 className="mt-2 text-[24px] font-extrabold leading-[1.2] tracking-[-0.03em]">
+                        SNS에서 뜨는 음식,
+                        <br />
+                        <span className="text-hero-accent">판매처까지 한 번에.</span>
+                      </h1>
+                    </div>
+                    <div className="absolute right-5 top-5 flex items-center gap-3 text-left">
+                      <div className="h-10 w-px bg-white/25" />
+                      <div>
+                        <div className="font-pretendard text-[10px] font-semibold tracking-[-0.01em] text-white/55">
                           검증 판매처
                         </div>
-                        <div className="font-pretendard mt-0.5 text-[16px] font-extrabold tabular-nums tracking-[-0.02em] text-white">
+                        <div className="font-pretendard mt-1 text-[20px] font-extrabold tabular-nums leading-none tracking-[-0.02em] text-white">
                           {storeCountLabel}
                         </div>
                       </div>
                     </div>
-                    <h1 className="mt-3 text-[24px] font-extrabold leading-[1.2] tracking-[-0.03em]">
-                      SNS에서 뜨는 음식,
-                      <br />
-                      <span className="text-hero-accent">판매처까지 한 번에.</span>
-                    </h1>
                   </div>
 
                   {rollingTrends.length > 0 && (
