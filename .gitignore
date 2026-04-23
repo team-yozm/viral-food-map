@@ -13,6 +13,7 @@ frontend/.env.local
 crawler/.env
 
 # Build
+.next/
 frontend/.next/
 frontend/next-env.d.ts
 frontend/out/
@@ -38,6 +39,7 @@ frontend/ios/App/Pods/
 frontend/ios/App/build/
 frontend/ios/App/App/public/
 frontend/ios/App/capacitor.config.json
+frontend/ios/App/CapApp-SPM/Package.swift
 frontend/android/.gradle/
 frontend/android/app/build/
 frontend/android/app/src/main/assets/public/

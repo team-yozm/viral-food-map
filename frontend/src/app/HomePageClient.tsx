@@ -960,7 +960,8 @@ export default function HomePageClient({
             <div className="-mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
               {nearbyStores.map((store) => {
                 const distM = Math.max(Math.round(store.distance_km * 1000), 0);
-                const distLabel = distM < 1000 ? `${distM}m` : `${(distM / 1000).toFixed(1)}km`;
+                const distKm = distM / 1000;
+                const distLabel = distM < 1000 ? `${distM}m` : distKm >= 100 ? `${Math.round(distKm)}km` : `${distKm.toFixed(1)}km`;
                 const isFranchise = store.is_franchise;
                 const firstTrend = store.trend_names[0] ?? null;
                 return (

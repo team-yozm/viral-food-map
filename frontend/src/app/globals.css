@@ -77,6 +77,12 @@ html.native-app {
   --launcher-footer-offset: calc(var(--bottom-nav-offset) + 12px);
 }
 
+@media (display-mode: standalone) {
+  :root {
+    --launcher-footer-offset: calc(var(--bottom-nav-offset) + 12px);
+  }
+}
+
 .card-hover {
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
