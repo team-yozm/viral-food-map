@@ -42,11 +42,7 @@ export default function RankDeltaBadge({ trend, currentRank }: RankDeltaBadgePro
   const delta = calcDelta(trend, currentRank);
 
   if (delta.type === "new") {
-    return (
-      <span className={`${pillBase} bg-accent-soft text-accent`}>
-        NEW
-      </span>
-    );
+    return null;
   }
   if (delta.type === "up") {
     return (
@@ -70,7 +66,5 @@ export default function RankDeltaBadge({ trend, currentRank }: RankDeltaBadgePro
       </span>
     );
   }
-  return (
-    <span className={`${pillBase} bg-line2 text-ink4`}>—</span>
-  );
+  return null;
 }
