@@ -883,47 +883,6 @@ export default function HomePageClient({
           );
         })()}
 
-        <section className="mb-6 mt-8">
-          <div className="mb-3 flex items-baseline justify-between px-1">
-            <div>
-              <div className="font-kicker text-[10px] text-accent">Editorial</div>
-              <h2 className="mt-1 text-[22px] font-extrabold tracking-[-0.03em] text-ink">
-                어떻게 고르나요?
-              </h2>
-            </div>
-            <Link
-              href="/editorial-policy"
-              className="text-[11.5px] font-semibold text-ink3 hover:text-ink"
-            >
-              기준 자세히 &gt;
-            </Link>
-          </div>
-          <div className="rounded-2xl border border-line bg-surface p-5">
-            <p className="break-keep text-[13.5px] leading-[1.6] tracking-[-0.01em] text-ink2">
-              공식 채널, 실제 판매 여부, 출처 공개. 세 가지 기준만 먼저 봅니다.
-              굿즈·이벤트 항목은 제외되고, 먹을 수 있는 메뉴만 올라옵니다.
-            </p>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {[
-                { n: "01", t: "공식 채널 먼저", href: "/how-it-works" },
-                { n: "02", t: "판매 여부 확인", href: "/editorial-policy" },
-                { n: "03", t: "출처 공개", href: "/data-sources" },
-              ].map((x) => (
-                <Link
-                  key={x.n}
-                  href={x.href}
-                  className="rounded-xl border border-line bg-bg px-3 py-3 transition-colors hover:bg-accent-soft/50"
-                >
-                  <p className="font-kicker text-[10px] text-accent">{x.n}</p>
-                  <p className="mt-1.5 break-keep text-[12px] font-bold tracking-[-0.02em] text-ink">
-                    {x.t}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {showLocationNotice ? (
           <section className="mb-6 mt-8">
             <div className="rounded-[16px] border border-line bg-bg px-4 py-4">
@@ -1042,6 +1001,47 @@ export default function HomePageClient({
             </div>
           </section>
         ) : null}
+
+        <section className="mb-6 mt-8">
+          <div className="mb-3 flex items-baseline justify-between px-1">
+            <div>
+              <div className="font-kicker text-[10px] text-accent">Editorial</div>
+              <h2 className="mt-1 text-[22px] font-extrabold tracking-[-0.03em] text-ink">
+                어떻게 고르나요?
+              </h2>
+            </div>
+            <Link
+              href="/editorial-policy"
+              className="text-[11.5px] font-semibold text-ink3 hover:text-ink"
+            >
+              기준 자세히 &gt;
+            </Link>
+          </div>
+          <div className="rounded-2xl border border-line bg-surface p-5">
+            <p className="break-keep text-[13.5px] leading-[1.6] tracking-[-0.01em] text-ink2">
+              공식 채널, 실제 판매 여부, 출처 공개. 세 가지 기준만 먼저 봅니다.
+              굿즈·이벤트 항목은 제외되고, 먹을 수 있는 메뉴만 올라옵니다.
+            </p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                { n: "01", t: "공식 채널 먼저", href: "/how-it-works" },
+                { n: "02", t: "판매 여부 확인", href: "/editorial-policy" },
+                { n: "03", t: "출처 공개", href: "/data-sources" },
+              ].map((x) => (
+                <Link
+                  key={x.n}
+                  href={x.href}
+                  className="rounded-xl border border-line bg-bg px-3 py-3 transition-colors hover:bg-accent-soft/50"
+                >
+                  <p className="font-kicker text-[10px] text-accent">{x.n}</p>
+                  <p className="mt-1.5 break-keep text-[12px] font-bold tracking-[-0.02em] text-ink">
+                    {x.t}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <AdSlot slot={ADSENSE_HOME_SLOT} className="mt-8" />
 
