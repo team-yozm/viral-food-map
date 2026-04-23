@@ -120,6 +120,18 @@ function SectionLabel({
   );
 }
 
+function StoreTypeBadge({ isFranchise }: { isFranchise: boolean }) {
+  return isFranchise ? (
+    <span className="shrink-0 rounded bg-line2 px-1.5 py-0.5 text-[9.5px] font-bold leading-none text-ink3">
+      프랜차이즈
+    </span>
+  ) : (
+    <span className="shrink-0 rounded bg-accent-soft px-1.5 py-0.5 text-[9.5px] font-bold leading-none text-accent-ink">
+      개인
+    </span>
+  );
+}
+
 export default function TrendDetailPageClient({
   id,
   initialTrend,
@@ -535,8 +547,11 @@ export default function TrendDetailPageClient({
                       {distanceKm !== null ? formatDistance(distanceKm) : "—"}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-bold tracking-[-0.01em] text-ink">
-                        {store.name}
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-sm font-bold tracking-[-0.01em] text-ink">
+                          {store.name}
+                        </span>
+                        <StoreTypeBadge isFranchise={store.is_franchise} />
                       </div>
                       <div className="mt-0.5 truncate text-[11px] text-ink4">
                         {store.address}
@@ -602,8 +617,11 @@ export default function TrendDetailPageClient({
                           : "—"}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-bold tracking-[-0.01em] text-ink">
-                          {store.name}
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm font-bold tracking-[-0.01em] text-ink">
+                            {store.name}
+                          </span>
+                          <StoreTypeBadge isFranchise={store.is_franchise} />
                         </div>
                         <div className="mt-0.5 truncate text-[11px] text-ink4">
                           {store.address}
