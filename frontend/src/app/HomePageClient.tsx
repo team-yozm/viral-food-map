@@ -123,6 +123,24 @@ interface TopTrendRollingBannerProps {
   isAppClipExperience: boolean;
 }
 
+function GoldRankIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m2.75 6.25 4.8 4.12a1 1 0 0 0 1.53-.32L12 4.5l2.92 5.55a1 1 0 0 0 1.53.32l4.8-4.12-2.85 10.3a1 1 0 0 1-.96.73H6.56a1 1 0 0 1-.96-.73L2.75 6.25Z" />
+      <path d="M6 20h12" />
+    </svg>
+  );
+}
+
 function TopTrendRollingBanner({
   trends,
   isAppClipExperience,
@@ -155,7 +173,7 @@ function TopTrendRollingBanner({
   return (
     <div
       className="border-t border-white/10 bg-white/5 px-3 py-3"
-      aria-label="지금 TOP 3 롤링 배너"
+      aria-label={`TOP ${trends.length} 롤링 배너`}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onFocus={() => setIsPaused(true)}
@@ -163,20 +181,8 @@ function TopTrendRollingBanner({
     >
       <div className="mb-2.5 flex items-center justify-between px-1">
         <div className="font-pretendard flex items-center gap-1.5 text-[10px] font-semibold tracking-[-0.01em] text-white/65">
-          <svg
-            className="h-3 w-3 flex-shrink-0 text-[#FFD166]"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m2.75 6.25 4.8 4.12a1 1 0 0 0 1.53-.32L12 4.5l2.92 5.55a1 1 0 0 0 1.53.32l4.8-4.12-2.85 10.3a1 1 0 0 1-.96.73H6.56a1 1 0 0 1-.96-.73L2.75 6.25Z" />
-            <path d="M6 20h12" />
-          </svg>
-          지금 TOP {trends.length}
+          <GoldRankIcon className="h-3 w-3 flex-shrink-0 text-[#FFD166]" />
+          TOP {trends.length}
         </div>
         <div className="flex items-center gap-1.5" aria-hidden="true">
           {trends.map((trend, index) => (
@@ -230,8 +236,9 @@ function TopTrendRollingBanner({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="rounded-full bg-white/[0.12] px-2 py-1 text-[10px] font-bold text-white/80">
-                    지금 {rank}위
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.12] px-2 py-1 text-[10px] font-bold text-white/80">
+                    <GoldRankIcon className="h-3 w-3 flex-shrink-0 text-[#FFD166]" />
+                    <span>{rank}위</span>
                   </span>
                   <RankDeltaBadge trend={trend} currentRank={rank} />
                 </div>
