@@ -22,7 +22,7 @@ from notifications.discord_bot import (
 
 logger = logging.getLogger(__name__)
 
-ReviewEntityKind = Literal["ai_review", "ai_alias", "report"]
+ReviewEntityKind = Literal["ai_review", "ai_alias", "report", "instagram_feed"]
 ReviewMessageState = Literal["active", "resolved", "stale", "failed"]
 ReviewOutcome = Literal["success", "noop", "error"]
 AliasDecision = Literal["merge", "separate", "reverse"]
@@ -165,7 +165,7 @@ def parse_custom_id(custom_id: str | None) -> tuple[ReviewEntityKind, str, str] 
         return None
 
     entity_kind, sep, remainder = rest.partition(":")
-    if entity_kind not in {"ai_review", "ai_alias", "report"} or not sep:
+    if entity_kind not in {"ai_review", "ai_alias", "report", "instagram_feed"} or not sep:
         return None
 
     action, sep, entity_id = remainder.partition(":")
@@ -236,7 +236,7 @@ def _build_components(
     disabled: bool,
     approve_disabled: bool = False,
 ) -> list[dict[str, Any]]:
-    if entity_kind == "ai_review":
+    if entity_kind in {"ai_review", "instagram_feed"}:
         buttons = [
             _button(
                 custom_id=_build_custom_id(entity_kind, "approve", entity_id),
@@ -457,6 +457,91 @@ def _format_report_content(
     return "\n".join(lines)
 
 
+def _format_instagram_feed_content(
+    run: dict[str, Any],
+    *,
+    outcome_label: str | None = None,
+    actor: DiscordActor | None = None,
+    metadata: dict[str, Any] | None = None,
+    stale_reason: str | None = None,
+) -> str:
+    lines = [
+        "[인스타 피드 이미지 검토]",
+        f"음식: {_get_string(run.get('trend_name_snapshot')) or '-'}",
+        f"후보 상태: {_get_string(run.get('candidate_status')) or '-'}",
+        f"run_date: {_get_string(run.get('run_date')) or '-'}",
+    ]
+
+    source_image_url = _get_string(run.get("source_image_url"))
+    if source_image_url:
+        lines.append(f"원본 이미지: {source_image_url}")
+
+    final_image_url = _get_string(run.get("final_image_url"))
+    if final_image_url:
+        lines.append(f"검토 이미지: {final_image_url}")
+
+    image_review = _get_record(run.get("image_review_payload"))
+    ai_verdict = _get_string(image_review.get("verdict"))
+    if ai_verdict:
+        confidence = _format_confidence(_get_number(image_review.get("confidence")))
+        ai_line = f"AI 이미지 검토: {ai_verdict}"
+        if confidence:
+            ai_line = f"{ai_line} ({confidence})"
+        lines.append(ai_line)
+
+    ai_reason = _get_string(image_review.get("reason"))
+    if ai_reason:
+        lines.append(f"AI 사유: {ai_reason}")
+
+    caption = _get_string(run.get("caption"))
+    if caption:
+        lines.extend(["", "캡션:", caption])
+
+    if stale_reason:
+        lines.extend(["", stale_reason])
+    else:
+        lines.extend(_resolution_lines(outcome_label=outcome_label, actor=actor, metadata=metadata))
+
+    return "\n".join(lines)
+
+
+def _build_instagram_feed_embeds(run: dict[str, Any]) -> list[dict[str, Any]]:
+    final_image_url = _get_string(run.get("final_image_url"))
+    if not final_image_url:
+        return []
+
+    embed: dict[str, Any] = {
+        "title": _get_string(run.get("trend_name_snapshot")) or "인스타 피드 검토",
+        "image": {"url": final_image_url},
+    }
+    fields: list[dict[str, Any]] = []
+
+    candidate_status = _get_string(run.get("candidate_status"))
+    if candidate_status:
+        fields.append({"name": "후보 상태", "value": candidate_status, "inline": True})
+
+    review_status = _get_string(run.get("discord_review_status")) or "pending"
+    fields.append({"name": "검토 상태", "value": review_status, "inline": True})
+
+    image_review = _get_record(run.get("image_review_payload"))
+    ai_verdict = _get_string(image_review.get("verdict"))
+    if ai_verdict:
+        confidence = _format_confidence(_get_number(image_review.get("confidence")))
+        confidence_suffix = f" ({confidence})" if confidence else ""
+        fields.append(
+            {
+                "name": "AI 이미지 검토",
+                "value": f"{ai_verdict}{confidence_suffix}",
+                "inline": True,
+            }
+        )
+
+    if fields:
+        embed["fields"] = fields
+
+    return [embed]
+
+
 def _build_message_payload(
     entity_kind: ReviewEntityKind,
     source: dict[str, Any],
@@ -483,8 +568,16 @@ def _build_message_payload(
             metadata=metadata,
             stale_reason=stale_reason,
         )
-    else:
+    elif entity_kind == "report":
         content = _format_report_content(
+            source,
+            outcome_label=outcome_label,
+            actor=actor,
+            metadata=metadata,
+            stale_reason=stale_reason,
+        )
+    else:
+        content = _format_instagram_feed_content(
             source,
             outcome_label=outcome_label,
             actor=actor,
@@ -495,7 +588,7 @@ def _build_message_payload(
     approve_disabled = entity_kind == "report" and (
         _get_number(source.get("lat")) is None or _get_number(source.get("lng")) is None
     )
-    return {
+    payload = {
         "content": content,
         "components": _build_components(
             entity_kind,
@@ -504,6 +597,11 @@ def _build_message_payload(
             approve_disabled=approve_disabled,
         ),
     }
+    if entity_kind == "instagram_feed":
+        embeds = _build_instagram_feed_embeds(source)
+        if embeds:
+            payload["embeds"] = embeds
+    return payload
 
 
 def _fetch_review_message(entity_kind: ReviewEntityKind, entity_id: str) -> dict[str, Any] | None:
@@ -632,6 +730,33 @@ def _fetch_pending_reports() -> list[dict[str, Any]]:
         .table("reports")
         .select("*, trends(name)")
         .eq("status", "pending")
+        .order("created_at")
+        .execute()
+        .data
+        or []
+    )
+
+
+def _fetch_instagram_feed_run(run_id: str) -> dict[str, Any] | None:
+    rows = (
+        get_client()
+        .table("instagram_feed_runs")
+        .select("*")
+        .eq("id", run_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    return rows[0] if rows else None
+
+
+def _fetch_pending_instagram_feed_runs() -> list[dict[str, Any]]:
+    return (
+        get_client()
+        .table("instagram_feed_runs")
+        .select("*")
+        .eq("status", "pending_review")
         .order("created_at")
         .execute()
         .data
@@ -900,6 +1025,26 @@ def _reject_report(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _approve_instagram_feed(run: dict[str, Any], actor: DiscordActor) -> dict[str, Any]:
+    from instagram_publisher import publish_approved_instagram_feed_run
+
+    return await publish_approved_instagram_feed_run(
+        str(run.get("id")),
+        approved_by=actor.discord_user_id,
+        approved_by_name=actor.discord_username,
+    )
+
+
+def _reject_instagram_feed(run: dict[str, Any], actor: DiscordActor) -> dict[str, Any]:
+    from instagram_publisher import reject_instagram_feed_run
+
+    return reject_instagram_feed_run(
+        str(run.get("id")),
+        rejected_by=actor.discord_user_id,
+        rejected_by_name=actor.discord_username,
+    )
+
+
 async def _deliver_message(
     *,
     entity_kind: ReviewEntityKind,
@@ -1027,6 +1172,17 @@ async def ensure_report_review_message(report: dict[str, Any]) -> dict[str, Any]
     return await _deliver_message(
         entity_kind="report",
         source=report,
+        state="active",
+    )
+
+
+async def ensure_instagram_feed_review_message(run: dict[str, Any]) -> dict[str, Any]:
+    if not is_discord_review_enabled():
+        return {"changed": False, "reason": "disabled"}
+
+    return await _deliver_message(
+        entity_kind="instagram_feed",
+        source=run,
         state="active",
     )
 
@@ -1211,6 +1367,106 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
                     message="지원하지 않는 AI 동의어 액션입니다.",
                     metadata={"reason": "unsupported_action"},
                 )
+        elif entity_kind == "instagram_feed":
+            run = _fetch_instagram_feed_run(entity_id)
+            if not run:
+                result = ActionExecutionResult(
+                    entity_kind=entity_kind,
+                    entity_id=entity_id,
+                    action=action,
+                    outcome="noop",
+                    message="이미 처리되었거나 존재하지 않는 인스타그램 피드 검토 항목입니다.",
+                    metadata={"reason": "missing"},
+                )
+            elif run.get("status") != "pending_review":
+                await _deliver_message(
+                    entity_kind=entity_kind,
+                    source=run,
+                    state="resolved",
+                    outcome_label="이미 처리됨",
+                    actor=actor,
+                    metadata={"resolved_at": _get_string(run.get("discord_reviewed_at")) or _now_iso()},
+                )
+                result = ActionExecutionResult(
+                    entity_kind=entity_kind,
+                    entity_id=entity_id,
+                    action=action,
+                    outcome="noop",
+                    message="이미 처리된 인스타그램 피드 검토 항목입니다.",
+                    metadata={"reason": "already_resolved", "status": run.get("status")},
+                )
+            elif action == "approve":
+                try:
+                    metadata = await _approve_instagram_feed(run, actor)
+                    updated_run = _fetch_instagram_feed_run(entity_id) or run
+                    await _deliver_message(
+                        entity_kind=entity_kind,
+                        source=updated_run,
+                        state="resolved",
+                        outcome_label=metadata["outcome_label"],
+                        actor=actor,
+                        metadata=metadata,
+                    )
+                    result = ActionExecutionResult(
+                        entity_kind=entity_kind,
+                        entity_id=entity_id,
+                        action=action,
+                        outcome="success",
+                        message=metadata["notice"],
+                        metadata=metadata,
+                    )
+                except Exception as exc:
+                    metadata = {
+                        "outcome_label": "게시 실패",
+                        "notice": str(exc) or "인스타그램 게시 중 오류가 발생했습니다.",
+                        "resolved_at": _now_iso(),
+                        "error": str(exc),
+                    }
+                    updated_run = _fetch_instagram_feed_run(entity_id) or run
+                    await _deliver_message(
+                        entity_kind=entity_kind,
+                        source=updated_run,
+                        state="resolved",
+                        outcome_label=metadata["outcome_label"],
+                        actor=actor,
+                        metadata=metadata,
+                    )
+                    result = ActionExecutionResult(
+                        entity_kind=entity_kind,
+                        entity_id=entity_id,
+                        action=action,
+                        outcome="error",
+                        message=metadata["notice"],
+                        metadata=metadata,
+                    )
+            elif action == "reject":
+                metadata = _reject_instagram_feed(run, actor)
+                updated_run = _fetch_instagram_feed_run(entity_id) or run
+                await _deliver_message(
+                    entity_kind=entity_kind,
+                    source=updated_run,
+                    state="resolved",
+                    outcome_label=metadata["outcome_label"],
+                    actor=actor,
+                    metadata=metadata,
+                )
+                result = ActionExecutionResult(
+                    entity_kind=entity_kind,
+                    entity_id=entity_id,
+                    action=action,
+                    outcome="success",
+                    message=metadata["notice"],
+                    metadata=metadata,
+                )
+            else:
+                result = ActionExecutionResult(
+                    entity_kind=entity_kind,
+                    entity_id=entity_id,
+                    action=action,
+                    outcome="error",
+                    message="지원하지 않는 인스타그램 피드 액션입니다.",
+                    metadata={"reason": "unsupported_action"},
+                )
         else:
             report = _fetch_report_row(entity_id)
             if not report:
@@ -1309,9 +1565,9 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
 
 async def sync_pending_review_messages() -> dict[str, int]:
     if not is_discord_review_enabled():
-        return {"ai_review": 0, "ai_alias": 0, "report": 0}
+        return {"ai_review": 0, "ai_alias": 0, "report": 0, "instagram_feed": 0}
 
-    counts = {"ai_review": 0, "ai_alias": 0, "report": 0}
+    counts = {"ai_review": 0, "ai_alias": 0, "report": 0, "instagram_feed": 0}
 
     for row in _fetch_pending_queue_rows():
         entity_kind = _resolve_queue_entity_kind(row)
@@ -1323,6 +1579,11 @@ async def sync_pending_review_messages() -> dict[str, int]:
         result = await ensure_report_review_message(report)
         if result.get("changed"):
             counts["report"] += 1
+
+    for run in _fetch_pending_instagram_feed_runs():
+        result = await ensure_instagram_feed_review_message(run)
+        if result.get("changed"):
+            counts["instagram_feed"] += 1
 
     return counts
 

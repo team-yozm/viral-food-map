@@ -229,15 +229,17 @@ export interface InstagramFeedRunSnapshot {
   status?: string | null;
   trend_name_snapshot?: string | null;
   skip_reason?: string | null;
+  final_image_url?: string | null;
 }
 
 export interface InstagramPublishSummary {
   run_date: string;
-  status: "dry_run" | "noop" | "published" | "skipped";
+  status: "dry_run" | "noop" | "pending_review" | "published" | "skipped";
   reason?: string;
   skip_reason?: string;
   candidate_count?: number;
   published_trend?: InstagramPublishedTrend;
+  pending_trend?: InstagramPublishedTrend;
   final_image_url?: string;
   used_fallback_image?: boolean;
   errors?: string[];

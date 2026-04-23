@@ -65,11 +65,20 @@ function formatTrendDetectionSummary(summary: TrendDetectionSummary | null) {
 }
 
 function getInstagramTargetName(summary: InstagramPublishSummary) {
-  return summary.published_trend?.name || summary.run?.trend_name_snapshot || null;
+  return (
+    summary.published_trend?.name ||
+    summary.pending_trend?.name ||
+    summary.run?.trend_name_snapshot ||
+    null
+  );
 }
 
 function getInstagramRequestStatus(summary: InstagramPublishSummary): RequestStatus {
   if (summary.status === "published") {
+    return "success";
+  }
+
+  if (summary.status === "pending_review") {
     return "success";
   }
 
@@ -92,11 +101,20 @@ function formatInstagramPublishMessage(summary: InstagramPublishSummary) {
       return trendName
         ? `${trendName} 게시를 완료했습니다${summary.used_fallback_image ? " (대체 이미지를 사용했습니다)." : "."}`
         : `인스타그램 게시를 완료했습니다${summary.used_fallback_image ? " (대체 이미지를 사용했습니다)." : "."}`;
+    case "pending_review":
+      return trendName
+        ? `${trendName} 피드 이미지를 디스코드 승인 대기로 보냈습니다.`
+        : "피드 이미지를 디스코드 승인 대기로 보냈습니다.";
     case "noop":
       if (summary.reason === "already_completed") {
         return trendName
           ? `${trendName} 게시가 이미 완료되어 있습니다.`
           : "오늘자 인스타그램 게시가 이미 완료되어 있습니다.";
+      }
+      if (summary.reason === "awaiting_discord_review") {
+        return trendName
+          ? `${trendName} 피드 이미지가 디스코드 승인 대기 중입니다.`
+          : "오늘자 인스타그램 피드 이미지가 디스코드 승인 대기 중입니다.";
       }
       if (summary.reason === "already_running") {
         return "인스타그램 게시 작업이 이미 실행 중입니다.";
@@ -657,7 +675,7 @@ export default function DashboardTab() {
           <div>
             <h3 className="font-semibold text-gray-900 text-sm">인스타그램 수동 게시</h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              오늘 게시 후보 중 1건을 인스타그램 피드에 바로 게시합니다
+              오늘 게시 후보 중 1건을 인스타그램 피드 게시 흐름으로 보냅니다
             </p>
             {instagramMessage && (
               <p

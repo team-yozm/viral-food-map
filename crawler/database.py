@@ -773,6 +773,27 @@ def get_instagram_feed_run_by_date(run_date: str) -> dict[str, Any] | None:
         return None
 
 
+def get_instagram_feed_run_by_id(run_id: str) -> dict[str, Any] | None:
+    try:
+        result = (
+            get_client()
+            .table("instagram_feed_runs")
+            .select("*")
+            .eq("id", run_id)
+            .limit(1)
+            .execute()
+        )
+        data = result.data or []
+        return data[0] if data else None
+    except Exception as exc:
+        _warn_once(
+            "instagram_feed_runs_lookup_by_id",
+            "instagram_feed_runs id lookup unavailable",
+            exc,
+        )
+        return None
+
+
 def create_instagram_feed_run(payload: dict[str, Any]) -> dict[str, Any] | None:
     try:
         result = get_client().table("instagram_feed_runs").insert(payload).execute()

@@ -25,9 +25,11 @@ from database import (
     create_instagram_feed_run,
     get_client,
     get_instagram_feed_run_by_date,
+    get_instagram_feed_run_by_id,
     list_published_instagram_trend_ids,
     update_instagram_feed_run,
 )
+from notifications.discord_bot import is_discord_review_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,10 @@ MAX_ERROR_MESSAGES = 5
 
 def _now_kst() -> datetime:
     return datetime.now(KST)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _today_run_date() -> str:
@@ -162,6 +168,21 @@ def _serialize_image_review(
     }
 
 
+def _is_instagram_discord_review_enabled() -> bool:
+    return bool(settings.INSTAGRAM_DISCORD_REVIEW_ENABLED and is_discord_review_enabled())
+
+
+def _build_discord_review_error() -> str:
+    if not settings.INSTAGRAM_DISCORD_REVIEW_ENABLED:
+        return ""
+    if is_discord_review_enabled():
+        return ""
+    return (
+        "INSTAGRAM_DISCORD_REVIEW_ENABLED requires DISCORD_REVIEW_ENABLED, "
+        "DISCORD_BOT_TOKEN, and DISCORD_REVIEW_CHANNEL_ID"
+    )
+
+
 def _serialize_candidate(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row.get("id"),
@@ -231,8 +252,14 @@ def _prepare_running_payload(run_date: str) -> dict[str, Any]:
         "caption": None,
         "source_image_url": None,
         "final_image_url": None,
+        "final_image_path": None,
         "instagram_creation_id": None,
         "instagram_media_id": None,
+        "image_review_payload": None,
+        "discord_review_status": None,
+        "discord_reviewed_at": None,
+        "discord_reviewed_by": None,
+        "discord_reviewed_by_name": None,
         "skip_reason": None,
         "error_message": None,
         "published_at": None,
@@ -470,6 +497,204 @@ async def _publish_media_container(creation_id: str, graph_api_base_url: str) ->
         return media_id
 
 
+async def _publish_uploaded_instagram_image(
+    *,
+    final_image_url: str,
+    caption: str,
+) -> tuple[str, str, str]:
+    creation_id, graph_api_base_url = await _create_media_container(
+        final_image_url,
+        caption,
+    )
+    await _wait_for_container_ready(creation_id, graph_api_base_url)
+    media_id = await _publish_media_container(
+        creation_id,
+        graph_api_base_url,
+    )
+    return creation_id, graph_api_base_url, media_id
+
+
+async def _queue_instagram_feed_discord_review(
+    *,
+    run_id: str,
+    candidate: dict[str, Any],
+    caption: str,
+    final_image_url: str,
+    object_path: str,
+    render_metadata: dict[str, Any],
+    image_review: InstagramImageReviewResult | None,
+) -> dict[str, Any]:
+    run_row = update_instagram_feed_run(
+        run_id,
+        {
+            "status": "pending_review",
+            "trend_id": candidate.get("id"),
+            "trend_name_snapshot": candidate.get("name"),
+            "candidate_status": candidate.get("status"),
+            "caption": caption,
+            "source_image_url": candidate.get("image_url"),
+            "final_image_url": final_image_url,
+            "final_image_path": object_path,
+            "instagram_creation_id": None,
+            "instagram_media_id": None,
+            "image_review_payload": _serialize_image_review(image_review),
+            "discord_review_status": "pending",
+            "discord_reviewed_at": None,
+            "discord_reviewed_by": None,
+            "discord_reviewed_by_name": None,
+            "skip_reason": None,
+            "error_message": render_metadata.get("photoLoadError"),
+            "published_at": None,
+        },
+    )
+    if not run_row:
+        raise RuntimeError("Failed to update instagram feed run for Discord review")
+
+    from discord_reviews import ensure_instagram_feed_review_message
+
+    sync_result = await ensure_instagram_feed_review_message(run_row)
+    if not sync_result.get("changed"):
+        reason = sync_result.get("reason") or "unknown"
+        update_instagram_feed_run(
+            run_id,
+            {
+                "status": "running",
+                "final_image_url": None,
+                "final_image_path": None,
+                "discord_review_status": None,
+                "skip_reason": "discord_review_message_failed",
+                "error_message": str(reason),
+            },
+        )
+        raise RuntimeError(f"Discord review message sync failed: {reason}")
+    return run_row
+
+
+async def publish_approved_instagram_feed_run(
+    run_id: str,
+    *,
+    approved_by: str | None = None,
+    approved_by_name: str | None = None,
+) -> dict[str, Any]:
+    _ensure_instagram_ready()
+    run = get_instagram_feed_run_by_id(run_id)
+    if not run:
+        raise ValueError("인스타그램 피드 검토 항목을 찾을 수 없습니다.")
+
+    if run.get("status") == "published":
+        return {
+            "outcome_label": "이미 게시됨",
+            "notice": "이미 인스타그램에 게시된 피드입니다.",
+            "resolved_at": _now_iso(),
+        }
+
+    if run.get("status") != "pending_review":
+        raise ValueError("승인 대기 중인 인스타그램 피드가 아닙니다.")
+
+    final_image_url = (run.get("final_image_url") or "").strip()
+    caption = (run.get("caption") or "").strip()
+    if not final_image_url or not caption:
+        raise ValueError("인스타그램 게시에 필요한 이미지 URL 또는 캡션이 없습니다.")
+
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    update_instagram_feed_run(
+        run_id,
+        {
+            "status": "running",
+            "discord_review_status": "approved",
+            "discord_reviewed_at": reviewed_at,
+            "discord_reviewed_by": approved_by,
+            "discord_reviewed_by_name": approved_by_name,
+            "skip_reason": None,
+            "error_message": None,
+        },
+    )
+
+    try:
+        creation_id, graph_api_base_url, media_id = await _publish_uploaded_instagram_image(
+            final_image_url=final_image_url,
+            caption=caption,
+        )
+        update_instagram_feed_run(
+            run_id,
+            {
+                "status": "published",
+                "instagram_creation_id": creation_id,
+                "instagram_media_id": media_id,
+                "skip_reason": None,
+                "error_message": None,
+                "published_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return {
+            "outcome_label": "승인 후 게시 완료",
+            "notice": f"{run.get('trend_name_snapshot') or '인스타그램 피드'} 게시를 완료했습니다.",
+            "resolved_at": reviewed_at,
+            "instagram_creation_id": creation_id,
+            "instagram_media_id": media_id,
+            "graph_api_host": graph_api_base_url,
+        }
+    except Exception as exc:
+        update_instagram_feed_run(
+            run_id,
+            {
+                "status": "failed",
+                "skip_reason": None,
+                "error_message": str(exc),
+            },
+        )
+        raise
+
+
+def reject_instagram_feed_run(
+    run_id: str,
+    *,
+    rejected_by: str | None = None,
+    rejected_by_name: str | None = None,
+) -> dict[str, Any]:
+    run = get_instagram_feed_run_by_id(run_id)
+    if not run:
+        raise ValueError("인스타그램 피드 검토 항목을 찾을 수 없습니다.")
+
+    if run.get("status") == "published":
+        return {
+            "outcome_label": "이미 게시됨",
+            "notice": "이미 인스타그램에 게시된 피드는 거절할 수 없습니다.",
+            "resolved_at": _now_iso(),
+        }
+
+    if run.get("status") != "pending_review":
+        return {
+            "outcome_label": "이미 처리됨",
+            "notice": "이미 처리된 인스타그램 피드입니다.",
+            "resolved_at": _now_iso(),
+        }
+
+    object_path = (run.get("final_image_path") or "").strip()
+    if object_path:
+        _delete_instagram_media(object_path)
+
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    update_instagram_feed_run(
+        run_id,
+        {
+            "status": "skipped",
+            "discord_review_status": "rejected",
+            "discord_reviewed_at": reviewed_at,
+            "discord_reviewed_by": rejected_by,
+            "discord_reviewed_by_name": rejected_by_name,
+            "skip_reason": "discord_image_review_rejected",
+            "error_message": "Discord reviewer rejected the feed image.",
+            "published_at": None,
+        },
+    )
+    return {
+        "outcome_label": "거절",
+        "notice": f"{run.get('trend_name_snapshot') or '인스타그램 피드'} 게시를 거절했습니다.",
+        "resolved_at": reviewed_at,
+    }
+
+
 def _build_noop_summary(
     run_date: str,
     reason: str,
@@ -494,6 +719,9 @@ def _ensure_instagram_ready() -> None:
         raise RuntimeError(
             "INSTAGRAM_IMAGE_REVIEW_ENABLED requires AI review credentials and model"
         )
+    discord_review_error = _build_discord_review_error()
+    if discord_review_error:
+        raise RuntimeError(discord_review_error)
 
 
 async def publish_daily_instagram_feed(
@@ -515,6 +743,7 @@ async def publish_daily_instagram_feed(
             "selected_scope": candidates[0]["status"] if candidates else None,
             "candidates": candidate_preview,
             "image_review_enabled": settings.INSTAGRAM_IMAGE_REVIEW_ENABLED,
+            "discord_review_enabled": _is_instagram_discord_review_enabled(),
             "trigger": trigger,
         }
 
@@ -533,8 +762,18 @@ async def publish_daily_instagram_feed(
                 "failed_requires_force_retry",
                 existing_run,
             )
+        if existing_status == "pending_review" and not force_retry:
+            return _build_noop_summary(
+                run_date,
+                "awaiting_discord_review",
+                existing_run,
+            )
         if existing_status == "running" and not force_retry:
             return _build_noop_summary(run_date, "already_running", existing_run)
+        if existing_status == "pending_review" and force_retry:
+            object_path = (existing_run.get("final_image_path") or "").strip()
+            if object_path:
+                _delete_instagram_media(object_path)
 
     try:
         run_row = (
@@ -549,6 +788,8 @@ async def publish_daily_instagram_feed(
         # 상태를 재확인해 이미 완료된 run이면 조기 종료
         if not existing_run and run_row.get("status") in ("published", "skipped") and not force_retry:
             return _build_noop_summary(run_date, "already_completed", run_row)
+        if not existing_run and run_row.get("status") == "pending_review" and not force_retry:
+            return _build_noop_summary(run_date, "awaiting_discord_review", run_row)
 
         if not candidates:
             run_row = update_instagram_feed_run(
@@ -581,8 +822,14 @@ async def publish_daily_instagram_feed(
                     "caption": caption,
                     "source_image_url": candidate.get("image_url"),
                     "final_image_url": None,
+                    "final_image_path": None,
                     "instagram_creation_id": None,
                     "instagram_media_id": None,
+                    "image_review_payload": None,
+                    "discord_review_status": None,
+                    "discord_reviewed_at": None,
+                    "discord_reviewed_by": None,
+                    "discord_reviewed_by_name": None,
                     "skip_reason": None,
                     "error_message": None,
                 },
@@ -620,14 +867,33 @@ async def publish_daily_instagram_feed(
                         )
                         errors.append(f"{candidate.get('name')}: {review_message}")
                         continue
-                creation_id, graph_api_base_url = await _create_media_container(
-                    final_image_url,
-                    caption,
-                )
-                await _wait_for_container_ready(creation_id, graph_api_base_url)
-                media_id = await _publish_media_container(
-                    creation_id,
-                    graph_api_base_url,
+
+                if _is_instagram_discord_review_enabled():
+                    run_row = await _queue_instagram_feed_discord_review(
+                        run_id=run_row["id"],
+                        candidate=candidate,
+                        caption=caption,
+                        final_image_url=final_image_url,
+                        object_path=object_path,
+                        render_metadata=render_metadata,
+                        image_review=image_review,
+                    )
+                    return {
+                        "run_date": run_date,
+                        "status": "pending_review",
+                        "candidate_count": len(candidates),
+                        "pending_trend": _serialize_candidate(candidate),
+                        "final_image_url": final_image_url,
+                        "image_review": _serialize_image_review(image_review),
+                        "image_review_enabled": settings.INSTAGRAM_IMAGE_REVIEW_ENABLED,
+                        "discord_review_enabled": True,
+                        "used_fallback_image": bool(render_metadata.get("usedFallback")),
+                        "run": run_row,
+                    }
+
+                creation_id, graph_api_base_url, media_id = await _publish_uploaded_instagram_image(
+                    final_image_url=final_image_url,
+                    caption=caption,
                 )
 
                 run_row = update_instagram_feed_run(
@@ -640,8 +906,11 @@ async def publish_daily_instagram_feed(
                         "caption": caption,
                         "source_image_url": candidate.get("image_url"),
                         "final_image_url": final_image_url,
+                        "final_image_path": object_path,
                         "instagram_creation_id": creation_id,
                         "instagram_media_id": media_id,
+                        "image_review_payload": _serialize_image_review(image_review),
+                        "discord_review_status": None,
                         "skip_reason": None,
                         "error_message": render_metadata.get("photoLoadError"),
                         "published_at": datetime.now(timezone.utc).isoformat(),
@@ -658,6 +927,7 @@ async def publish_daily_instagram_feed(
                     "graph_api_host": graph_api_base_url,
                     "image_review": _serialize_image_review(image_review),
                     "image_review_enabled": settings.INSTAGRAM_IMAGE_REVIEW_ENABLED,
+                    "discord_review_enabled": False,
                     "used_fallback_image": bool(render_metadata.get("usedFallback")),
                     "run": run_row,
                 }

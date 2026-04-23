@@ -76,6 +76,10 @@ class Settings:
         "INSTAGRAM_POSTING_ENABLED",
         default=False,
     )
+    INSTAGRAM_DISCORD_REVIEW_ENABLED: bool = _env_bool(
+        "INSTAGRAM_DISCORD_REVIEW_ENABLED",
+        default=False,
+    )
     INSTAGRAM_POST_SCHEDULE_HOUR: int = int(
         os.getenv("INSTAGRAM_POST_SCHEDULE_HOUR", "11")
     )
