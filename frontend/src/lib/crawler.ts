@@ -168,6 +168,19 @@ export interface TriggerTrendImageRefreshResponse {
   job: TrendImageRefreshJobStatus;
 }
 
+export interface RankBaselineSnapshotSummary {
+  target_statuses: string[];
+  target_trends: number;
+  updated_trends: number;
+  failed_trends: number;
+  error?: string;
+}
+
+export interface TriggerRankBaselineSnapshotResponse {
+  message: string;
+  summary: RankBaselineSnapshotSummary;
+}
+
 export interface CrawlerHealthResponse {
   status: string;
   service: string;
@@ -410,6 +423,30 @@ export async function fetchTrendDetectionStatus(): Promise<TrendDetectionJobStat
 
   if (!response.ok) {
     throw new Error("크롤링 상태 확인에 실패했습니다.");
+  }
+
+  return response.json();
+}
+
+export async function triggerRankBaselineSnapshot(
+  accessToken: string
+): Promise<TriggerRankBaselineSnapshotResponse> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/api/trends/rank-baseline`, {
+    method: "POST",
+    headers: getAdminCrawlerHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getCrawlerResponseErrorMessage(
+        response,
+        "순위 변동 기준 초기화에 실패했습니다."
+      )
+    );
   }
 
   return response.json();

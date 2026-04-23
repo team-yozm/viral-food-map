@@ -903,8 +903,8 @@ def run_trend_detection():
 
 def run_daily_rank_baseline_snapshot():
     logger.info("Daily rank baseline snapshot started")
-    snapshot_daily_rank_baseline()
-    logger.info("Daily rank baseline snapshot completed")
+    summary = snapshot_daily_rank_baseline()
+    logger.info("Daily rank baseline snapshot completed: %s", summary)
 
 
 def run_keyword_discovery():

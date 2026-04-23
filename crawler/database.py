@@ -142,8 +142,15 @@ RANKED_TREND_STATUSES = ["rising", "active", "declining"]
 MIN_ACTIVE_TRENDS = 10
 
 
-def snapshot_daily_rank_baseline() -> None:
-    """Persist the daily midnight rank baseline into previous_rank."""
+def snapshot_daily_rank_baseline() -> dict[str, Any]:
+    """Persist the current rank baseline into previous_rank."""
+    summary: dict[str, Any] = {
+        "target_statuses": RANKED_TREND_STATUSES,
+        "target_trends": 0,
+        "updated_trends": 0,
+        "failed_trends": 0,
+    }
+
     try:
         rows = (
             get_client()
@@ -157,22 +164,30 @@ def snapshot_daily_rank_baseline() -> None:
         )
     except Exception as exc:
         logger.warning("snapshot_daily_rank_baseline: failed to fetch trends: %s", exc)
-        return
+        summary["failed_trends"] = 1
+        summary["error"] = str(exc)
+        return summary
 
     if not rows:
-        return
+        return summary
+
+    summary["target_trends"] = len(rows)
 
     for rank, row in enumerate(rows, start=1):
         try:
             get_client().table("trends").update(
                 {"previous_rank": rank}
             ).eq("id", row["id"]).execute()
+            summary["updated_trends"] += 1
         except Exception as exc:
+            summary["failed_trends"] += 1
             logger.warning(
                 "snapshot_daily_rank_baseline: failed to update id=%s: %s",
                 row["id"],
                 exc,
             )
+
+    return summary
 
 
 def insert_stores(stores: list[dict]):

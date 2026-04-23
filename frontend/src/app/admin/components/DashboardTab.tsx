@@ -9,9 +9,11 @@ import {
   fetchTrendDetectionStatus,
   getCrawlerBaseUrl,
   publishInstagramFeed,
+  triggerRankBaselineSnapshot,
   triggerTrendImageRefresh,
   triggerTrendDetection,
   type InstagramPublishSummary,
+  type RankBaselineSnapshotSummary,
   type TrendImageRefreshJobStatus,
   type TrendImageRefreshSummary,
   type TrendDetectionJobStatus,
@@ -81,6 +83,25 @@ function formatTrendImageRefreshSummary(summary: TrendImageRefreshSummary | null
     summary.failed_images > 0 ? `, 실패 ${summary.failed_images}개` : "";
 
   return `사진이 없는 활성/급상승 트렌드 ${summary.target_trends}개 중 ${summary.updated_images}개 사진을 채웠습니다${failedText}.`;
+}
+
+function formatRankBaselineSummary(summary: RankBaselineSnapshotSummary | null) {
+  if (!summary) {
+    return "순위 변동 기준을 현재 순위로 초기화했습니다.";
+  }
+
+  if (summary.error) {
+    return `순위 변동 기준 초기화 중 오류가 발생했습니다: ${summary.error}`;
+  }
+
+  if (summary.target_trends <= 0) {
+    return "초기화할 활성/급상승/하락 트렌드가 없습니다.";
+  }
+
+  const failedText =
+    summary.failed_trends > 0 ? `, 실패 ${summary.failed_trends}개` : "";
+
+  return `${summary.updated_trends}개 트렌드의 순위 변동 기준을 현재 순위로 초기화했습니다${failedText}.`;
 }
 
 function getInstagramTargetName(summary: InstagramPublishSummary) {
@@ -170,6 +191,9 @@ export default function DashboardTab() {
   const [imageRefreshStatus, setImageRefreshStatus] =
     useState<RequestStatus>("idle");
   const [imageRefreshMessage, setImageRefreshMessage] = useState<string | null>(null);
+  const [rankBaselineStatus, setRankBaselineStatus] =
+    useState<RequestStatus>("idle");
+  const [rankBaselineMessage, setRankBaselineMessage] = useState<string | null>(null);
   const [instagramStatus, setInstagramStatus] = useState<RequestStatus>("idle");
   const [instagramMessage, setInstagramMessage] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState<RequestStatus>("idle");
@@ -341,6 +365,33 @@ export default function DashboardTab() {
         error instanceof Error ? error.message : "트렌드 이미지 갱신에 실패했습니다."
       );
       setTimeout(() => setImageRefreshStatus("idle"), 5000);
+    }
+  };
+
+  const resetRankBaseline = async () => {
+    const apiUrl = getCrawlerBaseUrl();
+    if (!apiUrl) return;
+
+    setRankBaselineStatus("loading");
+    setRankBaselineMessage("현재 트렌드 순위를 기준값으로 저장하고 있습니다.");
+    try {
+      const accessToken = await getAdminAccessToken();
+      const result = await triggerRankBaselineSnapshot(accessToken);
+      await fetchData();
+      setRankBaselineStatus(result.summary.error ? "error" : "success");
+      setRankBaselineMessage(formatRankBaselineSummary(result.summary));
+      setTimeout(
+        () => setRankBaselineStatus("idle"),
+        result.summary.error ? 5000 : 3000
+      );
+    } catch (error) {
+      setRankBaselineStatus("error");
+      setRankBaselineMessage(
+        error instanceof Error
+          ? error.message
+          : "순위 변동 기준 초기화에 실패했습니다."
+      );
+      setTimeout(() => setRankBaselineStatus("idle"), 5000);
     }
   };
 
@@ -737,6 +788,51 @@ export default function DashboardTab() {
                     : "크롤링 실행"}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl p-4 border border-gray-100">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">순위 변동 기준 초기화</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              현재 트렌드 순위를 기준으로 저장해 등락 표시를 지금 시점부터 다시 계산합니다
+            </p>
+            {rankBaselineMessage && (
+              <p
+                className={`text-xs mt-2 ${
+                  rankBaselineStatus === "error"
+                    ? "text-red-500"
+                    : rankBaselineStatus === "success"
+                      ? "text-green-600"
+                      : "text-gray-500"
+                }`}
+              >
+                {rankBaselineMessage}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={resetRankBaseline}
+            disabled={!apiUrl || rankBaselineStatus === "loading"}
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 ${
+              rankBaselineStatus === "success"
+                ? "bg-green-500 text-white"
+                : rankBaselineStatus === "error"
+                  ? "bg-red-500 text-white"
+                  : "bg-primary text-white hover:bg-purple-600"
+            }`}
+          >
+            {rankBaselineStatus === "loading"
+              ? "초기화 중..."
+              : rankBaselineStatus === "success"
+                ? "완료!"
+                : rankBaselineStatus === "error"
+                  ? "실패"
+                  : !apiUrl
+                    ? "API URL 미설정"
+                    : "기준 초기화"}
+          </button>
         </div>
       </div>
 

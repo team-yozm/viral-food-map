@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from auth import AdminUser, require_admin_user
-from database import get_client
+from database import get_client, snapshot_daily_rank_baseline
 from scheduler.jobs import (
     get_keyword_discovery_status,
     get_trend_image_refresh_status,
@@ -65,6 +65,16 @@ async def trigger_detection(_: AdminUser = Depends(require_admin_user)):
 @router.get("/detect/status")
 async def get_detection_status():
     return get_trend_detection_status()
+
+
+@router.post("/rank-baseline")
+async def trigger_rank_baseline_snapshot(_: AdminUser = Depends(require_admin_user)):
+    """현재 순위를 순위 변동 기준값으로 저장"""
+    summary = snapshot_daily_rank_baseline()
+    return {
+        "message": "순위 변동 기준을 현재 순위로 초기화했습니다.",
+        "summary": summary,
+    }
 
 
 @router.post("/refresh-images")
