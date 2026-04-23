@@ -236,9 +236,6 @@ function TopTrendRollingBanner({
                     🔥
                   </div>
                 )}
-                <span className="font-kicker absolute left-2 top-2 rounded bg-black/45 px-1.5 py-0.5 text-[9.5px] font-extrabold text-white">
-                  #{rank}
-                </span>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
