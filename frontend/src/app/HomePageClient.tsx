@@ -267,21 +267,6 @@ function TopTrendRollingBanner({
         })}
       </div>
 
-      {trends.length > 1 ? (
-        <div className="mt-2 flex justify-center gap-1.5">
-          {trends.map((trend, index) => (
-            <button
-              key={trend.id}
-              type="button"
-              onClick={() => setActiveIndex(index)}
-              className={`h-2 rounded-full transition-all ${
-                activeIndex === index ? "w-5 bg-white" : "w-2 bg-white/30"
-              }`}
-              aria-label={`${index + 1}위 ${trend.name} 보기`}
-            />
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
