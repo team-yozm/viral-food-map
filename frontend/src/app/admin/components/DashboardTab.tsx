@@ -74,13 +74,13 @@ function formatTrendImageRefreshSummary(summary: TrendImageRefreshSummary | null
   }
 
   if (summary.target_trends <= 0) {
-    return "갱신할 활성 트렌드가 없습니다.";
+    return "사진이 없는 활성/급상승 트렌드가 없습니다.";
   }
 
   const failedText =
     summary.failed_images > 0 ? `, 실패 ${summary.failed_images}개` : "";
 
-  return `활성/급상승 트렌드 ${summary.target_trends}개 중 ${summary.updated_images}개 사진을 갱신했습니다. 유지 ${summary.kept_images}개${failedText}.`;
+  return `사진이 없는 활성/급상승 트렌드 ${summary.target_trends}개 중 ${summary.updated_images}개 사진을 채웠습니다${failedText}.`;
 }
 
 function getInstagramTargetName(summary: InstagramPublishSummary) {
@@ -321,7 +321,7 @@ export default function DashboardTab() {
     if (!apiUrl) return;
 
     setImageRefreshStatus("loading");
-    setImageRefreshMessage("활성/급상승 트렌드 사진을 다시 찾고 있습니다.");
+    setImageRefreshMessage("사진이 없는 활성/급상승 트렌드를 찾고 있습니다.");
     try {
       const accessToken = await getAdminAccessToken();
       const result = await triggerTrendImageRefresh(accessToken);
@@ -743,9 +743,9 @@ export default function DashboardTab() {
       <div className="bg-white rounded-xl p-4 border border-gray-100">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="font-semibold text-gray-900 text-sm">트렌드 사진 갱신</h3>
+            <h3 className="font-semibold text-gray-900 text-sm">빈 트렌드 사진 채우기</h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              활성/급상승 트렌드의 대표 사진을 트렌드명 기준으로 다시 크롤링합니다
+              사진이 없는 활성/급상승 트렌드만 트렌드명 기준으로 크롤링합니다
             </p>
             {imageRefreshMessage && (
               <p
@@ -780,7 +780,7 @@ export default function DashboardTab() {
                   ? "실패"
                   : !apiUrl
                     ? "API URL 미설정"
-                    : "사진 갱신"}
+                    : "빈 사진 채우기"}
           </button>
         </div>
       </div>

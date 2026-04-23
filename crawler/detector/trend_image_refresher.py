@@ -13,8 +13,8 @@ ACTIVE_TREND_IMAGE_STATUSES = ("rising", "active")
 IMAGE_REFRESH_CONCURRENCY = 3
 
 
-def _load_target_trends(statuses: tuple[str, ...]) -> list[dict[str, Any]]:
-    return (
+def _load_missing_image_trends(statuses: tuple[str, ...]) -> list[dict[str, Any]]:
+    rows = (
         get_client()
         .table("trends")
         .select("id,name,category,image_url,status")
@@ -24,6 +24,7 @@ def _load_target_trends(statuses: tuple[str, ...]) -> list[dict[str, Any]]:
         .data
         or []
     )
+    return [row for row in rows if not str(row.get("image_url") or "").strip()]
 
 
 async def _refresh_one_trend_image(
@@ -106,7 +107,7 @@ async def _refresh_one_trend_image(
 
 
 async def refresh_images_for_active_trends() -> dict[str, Any]:
-    trends = _load_target_trends(ACTIVE_TREND_IMAGE_STATUSES)
+    trends = _load_missing_image_trends(ACTIVE_TREND_IMAGE_STATUSES)
     semaphore = asyncio.Semaphore(IMAGE_REFRESH_CONCURRENCY)
     results = await asyncio.gather(
         *[
