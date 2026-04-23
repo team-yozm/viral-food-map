@@ -23,7 +23,7 @@ function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): nu
 }
 
 function formatDistance(km: number): string {
-  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
+  return km < 1 ? `${Math.round(km * 1000)}m` : km >= 100 ? `${Math.round(km)}km` : `${km.toFixed(1)}km`;
 }
 
 function StarRating({ rating }: { rating: number | null }) {

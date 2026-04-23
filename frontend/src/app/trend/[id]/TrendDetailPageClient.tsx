@@ -49,7 +49,7 @@ function formatDistance(km: number): string {
   if (km < 1) {
     return `${Math.round(km * 1000)}m`;
   }
-  return `${km.toFixed(1)}km`;
+  return km >= 100 ? `${Math.round(km)}km` : `${km.toFixed(1)}km`;
 }
 
 const STATUS_LABEL: Record<string, string> = {
