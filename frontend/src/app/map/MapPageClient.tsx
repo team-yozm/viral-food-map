@@ -4,7 +4,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
+  type MouseEvent,
+  type WheelEvent,
 } from "react";
 import Link from "next/link";
 import AdSlot from "@/components/AdSlot";
@@ -66,6 +69,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
   const [locReady, setLocReady] = useState(false);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const trendChipDragRef = useRef({ didDrag: false });
 
   const requestLocation = useCallback(
     () =>
@@ -191,6 +195,79 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     return km >= 100 ? `${Math.round(km)}km` : `${km.toFixed(1)}km`;
   }
 
+  const handleTrendChipsWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    const scroller = event.currentTarget;
+    const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
+    if (maxScrollLeft <= 0) return;
+
+    const delta =
+      Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
+    if (delta === 0) return;
+
+    const nextScrollLeft = Math.min(
+      maxScrollLeft,
+      Math.max(0, scroller.scrollLeft + delta)
+    );
+    if (nextScrollLeft === scroller.scrollLeft) return;
+
+    event.preventDefault();
+    scroller.scrollLeft = nextScrollLeft;
+  }, []);
+
+  const handleTrendChipsMouseDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+
+      const scroller = event.currentTarget;
+      const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
+      if (maxScrollLeft <= 0) return;
+
+      const startX = event.clientX;
+      const startScrollLeft = scroller.scrollLeft;
+      let didDrag = false;
+
+      trendChipDragRef.current.didDrag = false;
+
+      const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
+        const deltaX = moveEvent.clientX - startX;
+        if (!didDrag && Math.abs(deltaX) < 5) return;
+
+        didDrag = true;
+        trendChipDragRef.current.didDrag = true;
+        moveEvent.preventDefault();
+        scroller.scrollLeft = Math.min(
+          maxScrollLeft,
+          Math.max(0, startScrollLeft - deltaX)
+        );
+      };
+
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        window.setTimeout(() => {
+          trendChipDragRef.current.didDrag = false;
+        }, 100);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    []
+  );
+
+  const handleTrendChipsClickCapture = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (!trendChipDragRef.current.didDrag) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      trendChipDragRef.current.didDrag = false;
+    },
+    []
+  );
+
   return (
     <>
       <main
@@ -210,7 +287,12 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
         </div>
 
         {/* Trend filter chips */}
-        <div className="scrollbar-hide flex w-full min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-5 pb-2.5">
+        <div
+          className="scrollbar-hide flex w-full min-w-0 cursor-grab gap-1.5 overflow-x-auto overscroll-x-contain px-5 pb-2.5 active:cursor-grabbing"
+          onClickCapture={handleTrendChipsClickCapture}
+          onMouseDown={handleTrendChipsMouseDown}
+          onWheel={handleTrendChipsWheel}
+        >
           <Chip
             label="전체 트렌드"
             active={selectedTrendId === "all"}
