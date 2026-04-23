@@ -14,6 +14,7 @@ from crawlers.yomechu_places import refresh_recent_yomechu_ratings
 from detector.keyword_discoverer import discover_keywords
 from detector.store_updater import refresh_stores_for_active_trends
 from detector.trend_detector import detect_trends
+from detector.trend_image_refresher import refresh_images_for_active_trends
 from error_reporting import report_exception_to_discord
 from instagram_publisher import publish_daily_instagram_feed
 from notifications import send_discord_message, send_push_notifications
@@ -22,15 +23,26 @@ logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler(timezone=ZoneInfo(settings.SCHEDULER_TIMEZONE))
 trend_detection_lock = threading.Lock()
+trend_image_refresh_lock = threading.Lock()
 keyword_discovery_lock = threading.Lock()
 store_update_lock = threading.Lock()
 yomechu_enrich_lock = threading.Lock()
 new_products_lock = threading.Lock()
 _trend_detection_queue_lock = threading.Lock()
+_trend_image_refresh_queue_lock = threading.Lock()
 _keyword_discovery_queue_lock = threading.Lock()
 trend_detection_task: asyncio.Task | None = None
+trend_image_refresh_task: asyncio.Task | None = None
 keyword_discovery_thread: threading.Thread | None = None
 trend_detection_status: dict[str, object | None] = {
+    "state": "idle",
+    "last_trigger": None,
+    "last_started_at": None,
+    "last_finished_at": None,
+    "last_summary": None,
+    "last_error": None,
+}
+trend_image_refresh_status: dict[str, object | None] = {
     "state": "idle",
     "last_trigger": None,
     "last_started_at": None,
@@ -59,6 +71,7 @@ NEW_PRODUCTS_JOB_NAME = "신상 수집"
 
 MAX_DETAIL_LINES = 5
 TREND_JOB_NAME = "트렌드 감지"
+TREND_IMAGE_JOB_NAME = "트렌드 이미지 갱신"
 DISCOVERY_JOB_NAME = "키워드 발굴"
 STORE_UPDATE_JOB_NAME = "판매처 갱신"
 YOMECHU_JOB_NAME = "요메추 보강"
@@ -94,6 +107,16 @@ TREND_LABELS = {
     "ai_review_details": "AI 보류 상세",
     "ai_fallback_details": "AI fallback 상세",
     "generated_descriptions": "AI 설명 생성",
+}
+
+TREND_IMAGE_LABELS = {
+    "target_trends": "대상 트렌드",
+    "processed_trends": "처리 트렌드",
+    "updated_images": "갱신 이미지",
+    "kept_images": "유지 이미지",
+    "missing_images": "이미지 없음",
+    "skipped_images": "스킵",
+    "failed_images": "실패",
 }
 
 DISCOVERY_LABELS = {
@@ -142,6 +165,7 @@ NEW_PRODUCTS_LABELS = {
 
 JOB_LABELS = {
     TREND_JOB_NAME: TREND_LABELS,
+    TREND_IMAGE_JOB_NAME: TREND_IMAGE_LABELS,
     DISCOVERY_JOB_NAME: DISCOVERY_LABELS,
     STORE_UPDATE_JOB_NAME: STORE_UPDATE_LABELS,
     YOMECHU_JOB_NAME: YOMECHU_LABELS,
@@ -323,6 +347,56 @@ def _handle_trend_detection_task_result(task: asyncio.Task) -> None:
             trend_detection_task = None
 
 
+def _mark_trend_image_refresh_queued(trigger: str) -> None:
+    trend_image_refresh_status["state"] = "queued"
+    trend_image_refresh_status["last_trigger"] = trigger
+    trend_image_refresh_status["last_error"] = None
+
+
+def _mark_trend_image_refresh_running(trigger: str) -> None:
+    trend_image_refresh_status["state"] = "running"
+    trend_image_refresh_status["last_trigger"] = trigger
+    trend_image_refresh_status["last_started_at"] = _utc_now_iso()
+    trend_image_refresh_status["last_error"] = None
+
+
+def _mark_trend_image_refresh_finished(summary: dict) -> None:
+    trend_image_refresh_status["state"] = "completed"
+    trend_image_refresh_status["last_finished_at"] = _utc_now_iso()
+    trend_image_refresh_status["last_summary"] = summary
+    trend_image_refresh_status["last_error"] = None
+
+
+def _mark_trend_image_refresh_failed(error: str) -> None:
+    trend_image_refresh_status["state"] = "failed"
+    trend_image_refresh_status["last_finished_at"] = _utc_now_iso()
+    trend_image_refresh_status["last_error"] = error
+
+
+def get_trend_image_refresh_status() -> dict[str, object | None]:
+    status = dict(trend_image_refresh_status)
+    status["running"] = bool(
+        trend_image_refresh_lock.locked()
+        or status.get("state") in {"queued", "running"}
+        or (trend_image_refresh_task and not trend_image_refresh_task.done())
+    )
+    return status
+
+
+def _handle_trend_image_refresh_task_result(task: asyncio.Task) -> None:
+    global trend_image_refresh_task
+
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.info("%s detached task cancelled", TREND_IMAGE_JOB_NAME)
+    except Exception:
+        logger.exception("%s detached task failed", TREND_IMAGE_JOB_NAME)
+    finally:
+        if trend_image_refresh_task is task:
+            trend_image_refresh_task = None
+
+
 def _mark_keyword_discovery_queued(trigger: str) -> None:
     keyword_discovery_status["state"] = "queued"
     keyword_discovery_status["last_trigger"] = trigger
@@ -455,6 +529,35 @@ def queue_trend_detection_job(trigger: str = "manual") -> dict[str, object]:
         }
 
 
+def queue_trend_image_refresh_job(trigger: str = "manual") -> dict[str, object]:
+    global trend_image_refresh_task
+
+    with _trend_image_refresh_queue_lock:
+        if trend_image_refresh_lock.locked() or (
+            trend_image_refresh_task and not trend_image_refresh_task.done()
+        ):
+            return {
+                "accepted": False,
+                "status": "running",
+                "message": "Trend image refresh is already running.",
+                "job": get_trend_image_refresh_status(),
+            }
+
+        _mark_trend_image_refresh_queued(trigger)
+        trend_image_refresh_task = asyncio.create_task(
+            run_trend_image_refresh_job(trigger=trigger)
+        )
+        trend_image_refresh_task.add_done_callback(
+            _handle_trend_image_refresh_task_result
+        )
+        return {
+            "accepted": True,
+            "status": "queued",
+            "message": "Trend image refresh queued.",
+            "job": get_trend_image_refresh_status(),
+        }
+
+
 async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
     job_name = TREND_JOB_NAME
     if not trend_detection_lock.acquire(blocking=False):
@@ -552,6 +655,46 @@ async def run_trend_detection_job(trigger: str = "scheduler") -> dict:
         raise
     finally:
         trend_detection_lock.release()
+
+
+async def run_trend_image_refresh_job(trigger: str = "scheduler") -> dict:
+    job_name = TREND_IMAGE_JOB_NAME
+    if not trend_image_refresh_lock.acquire(blocking=False):
+        logger.warning("%s skipped because previous run is still active", job_name)
+        summary = {
+            "target_trends": 0,
+            "processed_trends": 0,
+            "updated_images": 0,
+            "kept_images": 0,
+            "failed_images": 0,
+            "skipped": True,
+            "reason": "already_running",
+        }
+        _mark_trend_image_refresh_finished(summary)
+        return summary
+
+    _mark_trend_image_refresh_running(trigger)
+    logger.info("%s started (%s)", job_name, trigger)
+    await send_discord_message(_build_job_message(job_name, trigger, "시작"))
+
+    try:
+        summary = await refresh_images_for_active_trends()
+        await send_discord_message(
+            _build_job_message(job_name, trigger, "완료", summary=summary)
+        )
+        _mark_trend_image_refresh_finished(summary)
+        return summary
+    except Exception as exc:
+        _mark_trend_image_refresh_failed(str(exc))
+        logger.exception("%s failed (%s)", job_name, trigger)
+        await report_exception_to_discord(
+            f"{job_name} 실패",
+            exc,
+            details={"trigger": trigger},
+        )
+        raise
+    finally:
+        trend_image_refresh_lock.release()
 
 
 async def run_keyword_discovery_job(trigger: str = "scheduler") -> dict:

@@ -5,11 +5,15 @@ import { supabase } from "@/lib/supabase";
 import TrendBadge from "@/components/TrendBadge";
 import {
   fetchCrawlerHealth,
+  fetchTrendImageRefreshStatus,
   fetchTrendDetectionStatus,
   getCrawlerBaseUrl,
   publishInstagramFeed,
+  triggerTrendImageRefresh,
   triggerTrendDetection,
   type InstagramPublishSummary,
+  type TrendImageRefreshJobStatus,
+  type TrendImageRefreshSummary,
   type TrendDetectionJobStatus,
   type TrendDetectionSummary,
 } from "@/lib/crawler";
@@ -62,6 +66,21 @@ function formatTrendDetectionSummary(summary: TrendDetectionSummary | null) {
   }
 
   return `${summary.confirmed}개 트렌드, ${summary.stored_stores}개 판매처를 반영했습니다.`;
+}
+
+function formatTrendImageRefreshSummary(summary: TrendImageRefreshSummary | null) {
+  if (!summary) {
+    return "트렌드 이미지 갱신이 완료되었습니다.";
+  }
+
+  if (summary.target_trends <= 0) {
+    return "갱신할 활성 트렌드가 없습니다.";
+  }
+
+  const failedText =
+    summary.failed_images > 0 ? `, 실패 ${summary.failed_images}개` : "";
+
+  return `활성/급상승 트렌드 ${summary.target_trends}개 중 ${summary.updated_images}개 사진을 갱신했습니다. 유지 ${summary.kept_images}개${failedText}.`;
 }
 
 function getInstagramTargetName(summary: InstagramPublishSummary) {
@@ -148,6 +167,9 @@ export default function DashboardTab() {
   const [lastDetected, setLastDetected] = useState<string | null>(null);
   const [crawlStatus, setCrawlStatus] = useState<RequestStatus>("idle");
   const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
+  const [imageRefreshStatus, setImageRefreshStatus] =
+    useState<RequestStatus>("idle");
+  const [imageRefreshMessage, setImageRefreshMessage] = useState<string | null>(null);
   const [instagramStatus, setInstagramStatus] = useState<RequestStatus>("idle");
   const [instagramMessage, setInstagramMessage] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState<RequestStatus>("idle");
@@ -246,6 +268,26 @@ export default function DashboardTab() {
     throw new Error("크롤링 완료 확인이 지연되고 있습니다.");
   };
 
+  const waitForTrendImageRefreshCompletion = async (): Promise<TrendImageRefreshJobStatus> => {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < TREND_DETECTION_TIMEOUT_MS) {
+      const job = await fetchTrendImageRefreshStatus();
+
+      if (job.state === "completed") {
+        return job;
+      }
+
+      if (job.state === "failed") {
+        throw new Error(job.last_error || "트렌드 이미지 갱신에 실패했습니다.");
+      }
+
+      await delay(TREND_DETECTION_POLL_INTERVAL_MS);
+    }
+
+    throw new Error("트렌드 이미지 갱신 완료 확인이 지연되고 있습니다.");
+  };
+
   const triggerCrawl = async () => {
     const apiUrl = getCrawlerBaseUrl();
     if (!apiUrl) return;
@@ -271,6 +313,34 @@ export default function DashboardTab() {
         error instanceof Error ? error.message : "수동 크롤링 실행에 실패했습니다."
       );
       setTimeout(() => setCrawlStatus("idle"), 5000);
+    }
+  };
+
+  const refreshTrendImages = async () => {
+    const apiUrl = getCrawlerBaseUrl();
+    if (!apiUrl) return;
+
+    setImageRefreshStatus("loading");
+    setImageRefreshMessage("활성/급상승 트렌드 사진을 다시 찾고 있습니다.");
+    try {
+      const accessToken = await getAdminAccessToken();
+      const result = await triggerTrendImageRefresh(accessToken);
+      setImageRefreshMessage(
+        result.accepted
+          ? "이미지 갱신을 시작했습니다. 완료 여부를 확인하고 있습니다."
+          : "이미 실행 중인 이미지 갱신을 확인하고 있습니다."
+      );
+      const job = await waitForTrendImageRefreshCompletion();
+      await fetchData();
+      setImageRefreshStatus("success");
+      setImageRefreshMessage(formatTrendImageRefreshSummary(job.last_summary));
+      setTimeout(() => setImageRefreshStatus("idle"), 3000);
+    } catch (error) {
+      setImageRefreshStatus("error");
+      setImageRefreshMessage(
+        error instanceof Error ? error.message : "트렌드 이미지 갱신에 실패했습니다."
+      );
+      setTimeout(() => setImageRefreshStatus("idle"), 5000);
     }
   };
 
@@ -667,6 +737,51 @@ export default function DashboardTab() {
                     : "크롤링 실행"}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl p-4 border border-gray-100">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">트렌드 사진 갱신</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              활성/급상승 트렌드의 대표 사진을 트렌드명 기준으로 다시 크롤링합니다
+            </p>
+            {imageRefreshMessage && (
+              <p
+                className={`text-xs mt-2 ${
+                  imageRefreshStatus === "error"
+                    ? "text-red-500"
+                    : imageRefreshStatus === "success"
+                      ? "text-green-600"
+                      : "text-gray-500"
+                }`}
+              >
+                {imageRefreshMessage}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={refreshTrendImages}
+            disabled={!apiUrl || imageRefreshStatus === "loading"}
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 ${
+              imageRefreshStatus === "success"
+                ? "bg-green-500 text-white"
+                : imageRefreshStatus === "error"
+                  ? "bg-red-500 text-white"
+                  : "bg-primary text-white hover:bg-purple-600"
+            }`}
+          >
+            {imageRefreshStatus === "loading"
+              ? "갱신 중..."
+              : imageRefreshStatus === "success"
+                ? "완료!"
+                : imageRefreshStatus === "error"
+                  ? "실패"
+                  : !apiUrl
+                    ? "API URL 미설정"
+                    : "사진 갱신"}
+          </button>
         </div>
       </div>
 

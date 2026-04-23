@@ -5,8 +5,10 @@ from auth import AdminUser, require_admin_user
 from database import get_client
 from scheduler.jobs import (
     get_keyword_discovery_status,
+    get_trend_image_refresh_status,
     get_trend_detection_status,
     queue_keyword_discovery_job,
+    queue_trend_image_refresh_job,
     queue_trend_detection_job,
 )
 
@@ -63,6 +65,19 @@ async def trigger_detection(_: AdminUser = Depends(require_admin_user)):
 @router.get("/detect/status")
 async def get_detection_status():
     return get_trend_detection_status()
+
+
+@router.post("/refresh-images")
+async def trigger_image_refresh(_: AdminUser = Depends(require_admin_user)):
+    """활성/급상승 트렌드 이미지 갱신 트리거"""
+    result = queue_trend_image_refresh_job(trigger="manual")
+    status_code = 202 if result["accepted"] else 200
+    return JSONResponse(status_code=status_code, content=result)
+
+
+@router.get("/refresh-images/status")
+async def get_image_refresh_status():
+    return get_trend_image_refresh_status()
 
 
 @router.post("/discover-keywords")

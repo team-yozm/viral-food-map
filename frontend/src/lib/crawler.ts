@@ -129,6 +129,45 @@ export interface TriggerTrendDetectionResponse {
   job: TrendDetectionJobStatus;
 }
 
+export interface TrendImageRefreshSummary {
+  target_statuses: string[];
+  target_trends: number;
+  processed_trends: number;
+  updated_images: number;
+  kept_images: number;
+  missing_images: number;
+  skipped_images: number;
+  failed_images: number;
+  updated_trends?: Array<{
+    id: string;
+    name: string;
+    old_image_url?: string | null;
+    new_image_url?: string | null;
+  }>;
+  failed_trends?: Array<{
+    id: string;
+    name: string;
+    error?: string;
+  }>;
+}
+
+export interface TrendImageRefreshJobStatus {
+  state: "idle" | "queued" | "running" | "completed" | "failed";
+  last_trigger: string | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_summary: TrendImageRefreshSummary | null;
+  last_error: string | null;
+  running: boolean;
+}
+
+export interface TriggerTrendImageRefreshResponse {
+  accepted: boolean;
+  status: "queued" | "running";
+  message: string;
+  job: TrendImageRefreshJobStatus;
+}
+
 export interface CrawlerHealthResponse {
   status: string;
   service: string;
@@ -371,6 +410,44 @@ export async function fetchTrendDetectionStatus(): Promise<TrendDetectionJobStat
 
   if (!response.ok) {
     throw new Error("크롤링 상태 확인에 실패했습니다.");
+  }
+
+  return response.json();
+}
+
+export async function triggerTrendImageRefresh(
+  accessToken: string
+): Promise<TriggerTrendImageRefreshResponse> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/api/trends/refresh-images`, {
+    method: "POST",
+    headers: getAdminCrawlerHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getCrawlerResponseErrorMessage(
+        response,
+        "트렌드 이미지 갱신 실행에 실패했습니다."
+      )
+    );
+  }
+
+  return response.json();
+}
+
+export async function fetchTrendImageRefreshStatus(): Promise<TrendImageRefreshJobStatus> {
+  if (!CRAWLER_BASE_URL) {
+    throw new Error("크롤러 API 주소가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(`${CRAWLER_BASE_URL}/api/trends/refresh-images/status`);
+
+  if (!response.ok) {
+    throw new Error("트렌드 이미지 갱신 상태 확인에 실패했습니다.");
   }
 
   return response.json();
