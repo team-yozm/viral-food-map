@@ -216,7 +216,13 @@ export default function YomechuLauncher({
           className="border-t border-gray-100 bg-[radial-gradient(circle_at_top,_rgba(155,125,212,0.14),_transparent_55%),linear-gradient(180deg,_#fff_0%,_#faf7ff_100%)]"
         >
           <div className="mx-auto max-w-lg px-4 pb-4 pt-3">
-            <div className="flex max-h-[calc(100dvh-136px)] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_18px_40px_rgba(155,125,212,0.18)]">
+            <div
+              className="flex flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_18px_40px_rgba(155,125,212,0.18)]"
+              style={{
+                height:
+                  "calc(100dvh - var(--safe-top) - var(--bottom-nav-offset) - 80px)",
+              }}
+            >
               <div className="min-h-0 overflow-y-auto p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -444,10 +450,7 @@ export default function YomechuLauncher({
                   </div>
                 ) : null}
 
-                <div
-                  className="sticky z-10 mt-4 -mx-4 border-t border-gray-100 bg-white/95 px-4 pb-4 pt-3 shadow-[0_-8px_24px_rgba(255,255,255,0.82)] backdrop-blur supports-[backdrop-filter]:bg-white/88"
-                  style={{ bottom: "var(--launcher-footer-offset)" }}
-                >
+                <div className="sticky bottom-0 z-10 mt-4 -mx-4 border-t border-gray-100 bg-white/95 px-4 pb-4 pt-3 shadow-[0_-8px_24px_rgba(255,255,255,0.82)] backdrop-blur supports-[backdrop-filter]:bg-white/88">
                   <p className="font-kicker text-[10px] font-bold uppercase tracking-[0.14em] text-ink4">
                     선택 조건
                   </p>
