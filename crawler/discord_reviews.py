@@ -480,18 +480,12 @@ def _format_instagram_feed_content(
     if final_image_url:
         lines.append(f"검토 이미지: {final_image_url}")
 
-    image_review = _get_record(run.get("image_review_payload"))
-    ai_verdict = _get_string(image_review.get("verdict"))
-    if ai_verdict:
-        confidence = _format_confidence(_get_number(image_review.get("confidence")))
-        ai_line = f"AI 이미지 검토: {ai_verdict}"
-        if confidence:
-            ai_line = f"{ai_line} ({confidence})"
-        lines.append(ai_line)
+    if _get_string(run.get("skip_reason")) == "discord_image_review_pending":
+        lines.append("AI 이미지 검토: 실패/미실행")
 
-    ai_reason = _get_string(image_review.get("reason"))
+    ai_reason = _get_string(run.get("error_message"))
     if ai_reason:
-        lines.append(f"AI 사유: {ai_reason}")
+        lines.append(f"사유: {ai_reason}")
 
     caption = _get_string(run.get("caption"))
     if caption:
@@ -520,21 +514,10 @@ def _build_instagram_feed_embeds(run: dict[str, Any]) -> list[dict[str, Any]]:
     if candidate_status:
         fields.append({"name": "후보 상태", "value": candidate_status, "inline": True})
 
-    review_status = _get_string(run.get("discord_review_status")) or "pending"
-    fields.append({"name": "검토 상태", "value": review_status, "inline": True})
+    fields.append({"name": "검토 상태", "value": "pending", "inline": True})
 
-    image_review = _get_record(run.get("image_review_payload"))
-    ai_verdict = _get_string(image_review.get("verdict"))
-    if ai_verdict:
-        confidence = _format_confidence(_get_number(image_review.get("confidence")))
-        confidence_suffix = f" ({confidence})" if confidence else ""
-        fields.append(
-            {
-                "name": "AI 이미지 검토",
-                "value": f"{ai_verdict}{confidence_suffix}",
-                "inline": True,
-            }
-        )
+    if _get_string(run.get("skip_reason")) == "discord_image_review_pending":
+        fields.append({"name": "AI 이미지 검토", "value": "실패/미실행", "inline": True})
 
     if fields:
         embed["fields"] = fields
@@ -749,19 +732,6 @@ def _fetch_instagram_feed_run(run_id: str) -> dict[str, Any] | None:
         or []
     )
     return rows[0] if rows else None
-
-
-def _fetch_pending_instagram_feed_runs() -> list[dict[str, Any]]:
-    return (
-        get_client()
-        .table("instagram_feed_runs")
-        .select("*")
-        .eq("status", "pending_review")
-        .order("created_at")
-        .execute()
-        .data
-        or []
-    )
 
 
 def _update_queue_status(row_id: str, status: QueueStatus) -> None:
@@ -1122,6 +1092,42 @@ async def _deliver_message(
         return {"changed": False, "reason": str(exc)}
 
 
+async def _deliver_instagram_feed_message(
+    *,
+    source: dict[str, Any],
+    state: ReviewMessageState,
+    actor: DiscordActor | None = None,
+    outcome_label: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    stale_reason: str | None = None,
+) -> dict[str, Any]:
+    if not is_discord_review_enabled():
+        return {"changed": False, "reason": "disabled"}
+
+    channel_id = actor.channel_id if actor and actor.channel_id else settings.DISCORD_REVIEW_CHANNEL_ID.strip()
+    message_id = actor.message_id if actor else None
+    payload = _build_message_payload(
+        "instagram_feed",
+        source,
+        disabled=state != "active",
+        outcome_label=outcome_label,
+        actor=actor,
+        metadata=metadata or {},
+        stale_reason=stale_reason,
+    )
+
+    try:
+        if message_id:
+            await edit_channel_message(channel_id, message_id, payload)
+            return {"changed": True, "message_id": message_id}
+
+        created = await create_channel_message(channel_id, payload)
+        return {"changed": True, "message_id": _get_string(created.get("id"))}
+    except DiscordBotError as exc:
+        logger.warning("Discord instagram feed message sync failed for %s: %s", source.get("id"), exc)
+        return {"changed": False, "reason": str(exc)}
+
+
 async def _stale_other_ai_variant_messages(row: dict[str, Any], keep_kind: ReviewEntityKind) -> None:
     entity_id = str(row.get("id"))
     channel_id = settings.DISCORD_REVIEW_CHANNEL_ID.strip()
@@ -1180,8 +1186,7 @@ async def ensure_instagram_feed_review_message(run: dict[str, Any]) -> dict[str,
     if not is_discord_review_enabled():
         return {"changed": False, "reason": "disabled"}
 
-    return await _deliver_message(
-        entity_kind="instagram_feed",
+    return await _deliver_instagram_feed_message(
         source=run,
         state="active",
     )
@@ -1221,14 +1226,15 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
     entity_kind, action, entity_id = parsed
 
     if actor.channel_id != settings.DISCORD_REVIEW_CHANNEL_ID.strip():
-        _log_review_action(
-            entity_kind=entity_kind,
-            entity_id=entity_id,
-            action=action,
-            outcome="noop",
-            actor=actor,
-            payload={"reason": "channel_not_allowed"},
-        )
+        if entity_kind != "instagram_feed":
+            _log_review_action(
+                entity_kind=entity_kind,
+                entity_id=entity_id,
+                action=action,
+                outcome="noop",
+                actor=actor,
+                payload={"reason": "channel_not_allowed"},
+            )
         return ActionExecutionResult(
             entity_kind=entity_kind,
             entity_id=entity_id,
@@ -1378,14 +1384,16 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
                     message="이미 처리되었거나 존재하지 않는 인스타그램 피드 검토 항목입니다.",
                     metadata={"reason": "missing"},
                 )
-            elif run.get("status") != "pending_review":
-                await _deliver_message(
-                    entity_kind=entity_kind,
+            elif (
+                run.get("status") != "running"
+                or run.get("skip_reason") != "discord_image_review_pending"
+            ):
+                await _deliver_instagram_feed_message(
                     source=run,
                     state="resolved",
                     outcome_label="이미 처리됨",
                     actor=actor,
-                    metadata={"resolved_at": _get_string(run.get("discord_reviewed_at")) or _now_iso()},
+                    metadata={"resolved_at": _now_iso()},
                 )
                 result = ActionExecutionResult(
                     entity_kind=entity_kind,
@@ -1399,8 +1407,7 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
                 try:
                     metadata = await _approve_instagram_feed(run, actor)
                     updated_run = _fetch_instagram_feed_run(entity_id) or run
-                    await _deliver_message(
-                        entity_kind=entity_kind,
+                    await _deliver_instagram_feed_message(
                         source=updated_run,
                         state="resolved",
                         outcome_label=metadata["outcome_label"],
@@ -1423,8 +1430,7 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
                         "error": str(exc),
                     }
                     updated_run = _fetch_instagram_feed_run(entity_id) or run
-                    await _deliver_message(
-                        entity_kind=entity_kind,
+                    await _deliver_instagram_feed_message(
                         source=updated_run,
                         state="resolved",
                         outcome_label=metadata["outcome_label"],
@@ -1442,8 +1448,7 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
             elif action == "reject":
                 metadata = _reject_instagram_feed(run, actor)
                 updated_run = _fetch_instagram_feed_run(entity_id) or run
-                await _deliver_message(
-                    entity_kind=entity_kind,
+                await _deliver_instagram_feed_message(
                     source=updated_run,
                     state="resolved",
                     outcome_label=metadata["outcome_label"],
@@ -1552,22 +1557,23 @@ async def process_interaction(interaction: dict[str, Any]) -> ActionExecutionRes
             metadata={"reason": "exception", "error": str(exc)},
         )
 
-    _log_review_action(
-        entity_kind=result.entity_kind,
-        entity_id=result.entity_id,
-        action=result.action,
-        outcome=result.outcome,
-        actor=actor,
-        payload=result.metadata,
-    )
+    if result.entity_kind != "instagram_feed":
+        _log_review_action(
+            entity_kind=result.entity_kind,
+            entity_id=result.entity_id,
+            action=result.action,
+            outcome=result.outcome,
+            actor=actor,
+            payload=result.metadata,
+        )
     return result
 
 
 async def sync_pending_review_messages() -> dict[str, int]:
     if not is_discord_review_enabled():
-        return {"ai_review": 0, "ai_alias": 0, "report": 0, "instagram_feed": 0}
+        return {"ai_review": 0, "ai_alias": 0, "report": 0}
 
-    counts = {"ai_review": 0, "ai_alias": 0, "report": 0, "instagram_feed": 0}
+    counts = {"ai_review": 0, "ai_alias": 0, "report": 0}
 
     for row in _fetch_pending_queue_rows():
         entity_kind = _resolve_queue_entity_kind(row)
@@ -1579,11 +1585,6 @@ async def sync_pending_review_messages() -> dict[str, int]:
         result = await ensure_report_review_message(report)
         if result.get("changed"):
             counts["report"] += 1
-
-    for run in _fetch_pending_instagram_feed_runs():
-        result = await ensure_instagram_feed_review_message(run)
-        if result.get("changed"):
-            counts["instagram_feed"] += 1
 
     return counts
 

@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -172,15 +173,8 @@ def _is_instagram_discord_review_enabled() -> bool:
     return bool(settings.INSTAGRAM_DISCORD_REVIEW_ENABLED and is_discord_review_enabled())
 
 
-def _build_discord_review_error() -> str:
-    if not settings.INSTAGRAM_DISCORD_REVIEW_ENABLED:
-        return ""
-    if is_discord_review_enabled():
-        return ""
-    return (
-        "INSTAGRAM_DISCORD_REVIEW_ENABLED requires DISCORD_REVIEW_ENABLED, "
-        "DISCORD_BOT_TOKEN, and DISCORD_REVIEW_CHANNEL_ID"
-    )
+def _can_fallback_to_discord_review() -> bool:
+    return _is_instagram_discord_review_enabled()
 
 
 def _serialize_candidate(row: dict[str, Any]) -> dict[str, Any]:
@@ -336,6 +330,19 @@ def _delete_instagram_media(object_path: str) -> None:
         bucket.remove([object_path])
     except Exception as exc:
         logger.warning("Failed to delete rejected image %s: %s", object_path, exc)
+
+
+def _extract_media_object_path(image_url: str | None) -> str | None:
+    if not image_url:
+        return None
+
+    parsed = urlsplit(image_url)
+    marker = f"/storage/v1/object/public/{settings.INSTAGRAM_MEDIA_BUCKET}/"
+    if marker not in parsed.path:
+        return None
+
+    object_path = parsed.path.split(marker, 1)[1].strip("/")
+    return unquote(object_path) if object_path else None
 
 
 def _extract_graph_error_payload(response: httpx.Response) -> dict[str, Any]:
@@ -516,28 +523,22 @@ async def _queue_instagram_feed_discord_review(
     final_image_url: str,
     object_path: str,
     render_metadata: dict[str, Any],
-    image_review: InstagramImageReviewResult | None,
+    reason: str,
 ) -> dict[str, Any]:
     run_row = update_instagram_feed_run(
         run_id,
         {
-            "status": "pending_review",
+            "status": "running",
             "trend_id": candidate.get("id"),
             "trend_name_snapshot": candidate.get("name"),
             "candidate_status": candidate.get("status"),
             "caption": caption,
             "source_image_url": candidate.get("image_url"),
             "final_image_url": final_image_url,
-            "final_image_path": object_path,
             "instagram_creation_id": None,
             "instagram_media_id": None,
-            "image_review_payload": _serialize_image_review(image_review),
-            "discord_review_status": "pending",
-            "discord_reviewed_at": None,
-            "discord_reviewed_by": None,
-            "discord_reviewed_by_name": None,
-            "skip_reason": None,
-            "error_message": render_metadata.get("photoLoadError"),
+            "skip_reason": "discord_image_review_pending",
+            "error_message": reason or render_metadata.get("photoLoadError"),
             "published_at": None,
         },
     )
@@ -552,14 +553,13 @@ async def _queue_instagram_feed_discord_review(
         update_instagram_feed_run(
             run_id,
             {
-                "status": "running",
+                "status": "failed",
                 "final_image_url": None,
-                "final_image_path": None,
-                "discord_review_status": None,
                 "skip_reason": "discord_review_message_failed",
                 "error_message": str(reason),
             },
         )
+        _delete_instagram_media(object_path)
         raise RuntimeError(f"Discord review message sync failed: {reason}")
     return run_row
 
@@ -570,7 +570,7 @@ async def publish_approved_instagram_feed_run(
     approved_by: str | None = None,
     approved_by_name: str | None = None,
 ) -> dict[str, Any]:
-    _ensure_instagram_ready()
+    _ensure_instagram_ready(require_image_review=False)
     run = get_instagram_feed_run_by_id(run_id)
     if not run:
         raise ValueError("인스타그램 피드 검토 항목을 찾을 수 없습니다.")
@@ -582,7 +582,10 @@ async def publish_approved_instagram_feed_run(
             "resolved_at": _now_iso(),
         }
 
-    if run.get("status") != "pending_review":
+    if (
+        run.get("status") != "running"
+        or run.get("skip_reason") != "discord_image_review_pending"
+    ):
         raise ValueError("승인 대기 중인 인스타그램 피드가 아닙니다.")
 
     final_image_url = (run.get("final_image_url") or "").strip()
@@ -595,10 +598,6 @@ async def publish_approved_instagram_feed_run(
         run_id,
         {
             "status": "running",
-            "discord_review_status": "approved",
-            "discord_reviewed_at": reviewed_at,
-            "discord_reviewed_by": approved_by,
-            "discord_reviewed_by_name": approved_by_name,
             "skip_reason": None,
             "error_message": None,
         },
@@ -657,14 +656,17 @@ def reject_instagram_feed_run(
             "resolved_at": _now_iso(),
         }
 
-    if run.get("status") != "pending_review":
+    if (
+        run.get("status") != "running"
+        or run.get("skip_reason") != "discord_image_review_pending"
+    ):
         return {
             "outcome_label": "이미 처리됨",
             "notice": "이미 처리된 인스타그램 피드입니다.",
             "resolved_at": _now_iso(),
         }
 
-    object_path = (run.get("final_image_path") or "").strip()
+    object_path = _extract_media_object_path(run.get("final_image_url"))
     if object_path:
         _delete_instagram_media(object_path)
 
@@ -673,10 +675,6 @@ def reject_instagram_feed_run(
         run_id,
         {
             "status": "skipped",
-            "discord_review_status": "rejected",
-            "discord_reviewed_at": reviewed_at,
-            "discord_reviewed_by": rejected_by,
-            "discord_reviewed_by_name": rejected_by_name,
             "skip_reason": "discord_image_review_rejected",
             "error_message": "Discord reviewer rejected the feed image.",
             "published_at": None,
@@ -702,20 +700,22 @@ def _build_noop_summary(
     }
 
 
-def _ensure_instagram_ready() -> None:
+def _ensure_instagram_ready(*, require_image_review: bool = True) -> None:
     if not settings.INSTAGRAM_POSTING_ENABLED:
         raise RuntimeError("Instagram posting is disabled")
     if not settings.INSTAGRAM_IG_USER_ID.strip():
         raise RuntimeError("INSTAGRAM_IG_USER_ID is required")
     if not settings.INSTAGRAM_ACCESS_TOKEN.strip():
         raise RuntimeError("INSTAGRAM_ACCESS_TOKEN is required")
-    if settings.INSTAGRAM_IMAGE_REVIEW_ENABLED and not is_ai_review_enabled():
+    if require_image_review and (
+        settings.INSTAGRAM_IMAGE_REVIEW_ENABLED
+        and not is_ai_review_enabled()
+        and not _can_fallback_to_discord_review()
+    ):
         raise RuntimeError(
-            "INSTAGRAM_IMAGE_REVIEW_ENABLED requires AI review credentials and model"
+            "INSTAGRAM_IMAGE_REVIEW_ENABLED requires AI review credentials and model, "
+            "or Discord review fallback credentials"
         )
-    discord_review_error = _build_discord_review_error()
-    if discord_review_error:
-        raise RuntimeError(discord_review_error)
 
 
 async def publish_daily_instagram_feed(
@@ -756,16 +756,20 @@ async def publish_daily_instagram_feed(
                 "failed_requires_force_retry",
                 existing_run,
             )
-        if existing_status == "pending_review" and not force_retry:
-            return _build_noop_summary(
-                run_date,
-                "awaiting_discord_review",
-                existing_run,
-            )
+        if (
+            existing_status == "running"
+            and existing_run.get("skip_reason") == "discord_image_review_pending"
+            and not force_retry
+        ):
+            return _build_noop_summary(run_date, "awaiting_discord_review", existing_run)
         if existing_status == "running" and not force_retry:
             return _build_noop_summary(run_date, "already_running", existing_run)
-        if existing_status == "pending_review" and force_retry:
-            object_path = (existing_run.get("final_image_path") or "").strip()
+        if (
+            existing_status == "running"
+            and existing_run.get("skip_reason") == "discord_image_review_pending"
+            and force_retry
+        ):
+            object_path = _extract_media_object_path(existing_run.get("final_image_url"))
             if object_path:
                 _delete_instagram_media(object_path)
 
@@ -782,7 +786,12 @@ async def publish_daily_instagram_feed(
         # 상태를 재확인해 이미 완료된 run이면 조기 종료
         if not existing_run and run_row.get("status") in ("published", "skipped") and not force_retry:
             return _build_noop_summary(run_date, "already_completed", run_row)
-        if not existing_run and run_row.get("status") == "pending_review" and not force_retry:
+        if (
+            not existing_run
+            and run_row.get("status") == "running"
+            and run_row.get("skip_reason") == "discord_image_review_pending"
+            and not force_retry
+        ):
             return _build_noop_summary(run_date, "awaiting_discord_review", run_row)
 
         if not candidates:
@@ -831,14 +840,23 @@ async def publish_daily_instagram_feed(
                     run_date,
                     candidate["name"],
                 )
+                discord_fallback_reason: str | None = None
                 if settings.INSTAGRAM_IMAGE_REVIEW_ENABLED:
-                    image_review = await review_instagram_post_image(
-                        image_url=final_image_url,
-                        trend_name=candidate["name"],
-                        category=candidate.get("category"),
-                        caption=caption,
-                    )
-                    if not _is_instagram_image_review_accepted(image_review):
+                    try:
+                        image_review = await review_instagram_post_image(
+                            image_url=final_image_url,
+                            trend_name=candidate["name"],
+                            category=candidate.get("category"),
+                            caption=caption,
+                        )
+                    except Exception as exc:
+                        discord_fallback_reason = f"AI 이미지 리뷰 실패: {exc}"
+                        logger.warning(
+                            "Instagram image review failed for %s: %s",
+                            candidate.get("name"),
+                            exc,
+                        )
+                    if image_review is not None and not _is_instagram_image_review_accepted(image_review):
                         review_message = _build_instagram_image_review_message(image_review)
                         logger.info(
                             "Instagram image review blocked %s: %s",
@@ -855,8 +873,22 @@ async def publish_daily_instagram_feed(
                         )
                         errors.append(f"{candidate.get('name')}: {review_message}")
                         continue
+                elif _can_fallback_to_discord_review():
+                    discord_fallback_reason = "AI 이미지 리뷰가 비활성화되어 디스코드 확인이 필요합니다."
 
-                if _is_instagram_discord_review_enabled():
+                if discord_fallback_reason:
+                    if not _can_fallback_to_discord_review():
+                        _delete_instagram_media(object_path)
+                        update_instagram_feed_run(
+                            run_row["id"],
+                            {
+                                "skip_reason": "ai_image_review_failed",
+                                "error_message": discord_fallback_reason,
+                            },
+                        )
+                        errors.append(f"{candidate.get('name')}: {discord_fallback_reason}")
+                        continue
+
                     run_row = await _queue_instagram_feed_discord_review(
                         run_id=run_row["id"],
                         candidate=candidate,
@@ -864,7 +896,7 @@ async def publish_daily_instagram_feed(
                         final_image_url=final_image_url,
                         object_path=object_path,
                         render_metadata=render_metadata,
-                        image_review=image_review,
+                        reason=discord_fallback_reason,
                     )
                     return {
                         "run_date": run_date,
