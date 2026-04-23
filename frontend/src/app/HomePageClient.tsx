@@ -29,6 +29,7 @@ import { supabase } from "@/lib/supabase";
 import useAppClipExperience from "@/hooks/useAppClipExperience";
 import { withAppClipParam } from "@/lib/app-clip";
 import type {
+  AnalyticsSummary,
   LocationStatus,
   NearbyTrendStore,
   Trend,
@@ -68,7 +69,14 @@ interface GroupedNearbyStore extends NearbyTrendStore {
 interface HomePageClientProps {
   initialTrends: Trend[];
   verifiedStoreCount: number;
+  totalUserCount?: number;
   lastUpdated: string | null;
+}
+
+function formatCount(value: number | null | undefined) {
+  const safeValue =
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat("ko-KR").format(safeValue);
 }
 
 function createSessionId() {
@@ -286,6 +294,7 @@ function TopTrendRollingBanner({
 export default function HomePageClient({
   initialTrends,
   verifiedStoreCount,
+  totalUserCount,
   lastUpdated,
 }: HomePageClientProps) {
   const isAppClipExperience = useAppClipExperience();
@@ -311,6 +320,41 @@ export default function HomePageClient({
   );
   const [revealOpen, setRevealOpen] = useState(false);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [displayTotalUserCount, setDisplayTotalUserCount] = useState(
+    totalUserCount ?? 0
+  );
+
+  useEffect(() => {
+    setDisplayTotalUserCount(totalUserCount ?? 0);
+  }, [totalUserCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchTotalUserCount = async () => {
+      try {
+        const { data } = await supabase.rpc("get_analytics_summary", {
+          days_back: 3650,
+        });
+        const analytics = data as Pick<
+          AnalyticsSummary,
+          "unique_visitors"
+        > | null;
+
+        if (!cancelled && typeof analytics?.unique_visitors === "number") {
+          setDisplayTotalUserCount(analytics.unique_visitors);
+        }
+      } catch {
+        // 방문 통계 조회 실패가 홈 화면 렌더링을 막지 않도록 둡니다.
+      }
+    };
+
+    void fetchTotalUserCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (launcherOpen) {
@@ -582,10 +626,8 @@ export default function HomePageClient({
     fetchNearby();
   }, [trends, userLoc]);
 
-  const storeCountLabel = String(verifiedStoreCount).replace(
-    /\B(?=(\d{3})+(?!\d))/g,
-    ","
-  );
+  const storeCountLabel = formatCount(verifiedStoreCount);
+  const totalUserCountLabel = formatCount(displayTotalUserCount);
 
   const [lastUpdatedLabel, setLastUpdatedLabel] = useState<string | null>(null);
 
@@ -794,12 +836,6 @@ export default function HomePageClient({
           const topTrends = trends.slice(0, TOP_COUNT);
           const rollingTrends = topTrends.slice(0, 3);
           const outsideTrends = trends.slice(TOP_COUNT);
-          const risingCount = trends.reduce((acc, trend, idx) => {
-            const currentRank = idx + 1;
-            if (trend.previous_rank == null) return acc + 1;
-            if (trend.previous_rank > currentRank) return acc + 1;
-            return acc;
-          }, 0);
 
           return (
             <>
@@ -813,40 +849,33 @@ export default function HomePageClient({
                   }}
                 >
                   <div className="px-5 pb-4 pt-5">
-                    <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/90">
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-hero-accent"
-                        style={{ boxShadow: "0 0 8px #8B6FE8" }}
-                      />
-                      Live · 방금 업데이트
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/90">
+                          <span
+                            className="h-1.5 w-1.5 rounded-full bg-hero-accent"
+                            style={{ boxShadow: "0 0 8px #8B6FE8" }}
+                          />
+                          Live · 방금 업데이트
+                        </div>
+                        <div className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/75">
+                          총 이용자 {totalUserCountLabel}명
+                        </div>
+                      </div>
+                      <div className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                        <div className="font-pretendard text-[9px] font-semibold tracking-[-0.01em] text-white/55">
+                          검증 판매처
+                        </div>
+                        <div className="font-pretendard mt-0.5 text-[16px] font-extrabold tabular-nums tracking-[-0.02em] text-white">
+                          {storeCountLabel}
+                        </div>
+                      </div>
                     </div>
                     <h1 className="mt-3 text-[24px] font-extrabold leading-[1.2] tracking-[-0.03em]">
                       SNS에서 뜨는 음식,
                       <br />
                       <span className="text-hero-accent">판매처까지 한 번에.</span>
                     </h1>
-                    <div className="mt-4 flex items-center">
-                      <div className="flex-1 whitespace-nowrap">
-                        <div className="font-pretendard text-[9.5px] font-semibold tracking-[-0.01em] text-white/55">활성 트렌드</div>
-                        <div className="font-pretendard mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
-                          {trends.length}
-                        </div>
-                      </div>
-                      <div className="h-7 w-px flex-shrink-0 bg-white/15" />
-                      <div className="flex-1 whitespace-nowrap pl-4">
-                        <div className="font-pretendard text-[9.5px] font-semibold tracking-[-0.01em] text-white/55">검증 판매처</div>
-                        <div className="font-pretendard mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
-                          {storeCountLabel}
-                        </div>
-                      </div>
-                      <div className="h-7 w-px flex-shrink-0 bg-white/15" />
-                      <div className="flex-1 whitespace-nowrap pl-4">
-                        <div className="font-pretendard text-[9.5px] font-semibold tracking-[-0.01em] text-white/55">상승 중</div>
-                        <div className="font-pretendard mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
-                          {risingCount}
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {rollingTrends.length > 0 && (

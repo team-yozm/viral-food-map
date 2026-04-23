@@ -1,5 +1,5 @@
 import { cache } from "react";
-import type { Store, Trend } from "./types";
+import type { AnalyticsSummary, Store, Trend } from "./types";
 import { createServerSupabaseClient } from "./supabase-server";
 import { isTrendEligibleForIndexing } from "./trend-indexing";
 
@@ -11,6 +11,7 @@ type TrendWithStoreCount = Trend & {
 export interface HomePageData {
   trends: TrendWithStoreCount[];
   verifiedStoreCount: number;
+  totalUserCount: number;
   lastUpdated: string | null;
 }
 
@@ -49,21 +50,28 @@ export const getHomePageData = cache(async (): Promise<HomePageData> => {
     return {
       trends: [],
       verifiedStoreCount: 0,
+      totalUserCount: 0,
       lastUpdated: null,
     };
   }
 
-  const [trends, verifiedStoresResult] = await Promise.all([
+  const [trends, verifiedStoresResult, analyticsResult] = await Promise.all([
     getActiveTrends(),
     supabase
       .from("stores")
       .select("id", { count: "exact", head: true })
       .eq("verified", true),
+    supabase.rpc("get_analytics_summary", { days_back: 3650 }),
   ]);
+  const analytics = analyticsResult.data as Pick<
+    AnalyticsSummary,
+    "unique_visitors"
+  > | null;
 
   return {
     trends,
     verifiedStoreCount: verifiedStoresResult.count ?? 0,
+    totalUserCount: analytics?.unique_visitors ?? 0,
     lastUpdated: trends[0]?.detected_at ?? null,
   };
 });
