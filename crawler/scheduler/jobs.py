@@ -11,6 +11,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from config import settings
 from crawlers.new_products import refresh_new_products
 from crawlers.yomechu_places import refresh_recent_yomechu_ratings
+from database import snapshot_daily_rank_baseline
 from detector.keyword_discoverer import discover_keywords
 from detector.store_updater import refresh_stores_for_active_trends
 from detector.trend_detector import detect_trends
@@ -281,6 +282,7 @@ def get_scheduler_description() -> dict[str, str]:
     return {
         "timezone": settings.SCHEDULER_TIMEZONE,
         "trend_detection": trend_schedule,
+        "rank_baseline_reset": "매일 00:00",
         "keyword_discovery": discovery_schedule,
         "store_update_minutes": str(settings.STORE_UPDATE_INTERVAL_MINUTES),
         "new_products_interval_hours": str(settings.NEW_PRODUCTS_INTERVAL_HOURS),
@@ -899,6 +901,12 @@ def run_trend_detection():
     asyncio.run(run_trend_detection_job(trigger="scheduler"))
 
 
+def run_daily_rank_baseline_snapshot():
+    logger.info("Daily rank baseline snapshot started")
+    snapshot_daily_rank_baseline()
+    logger.info("Daily rank baseline snapshot completed")
+
+
 def run_keyword_discovery():
     asyncio.run(run_keyword_discovery_job(trigger="scheduler"))
 
@@ -920,6 +928,16 @@ def run_instagram_feed_post():
 
 
 def start_scheduler():
+    scheduler.add_job(
+        run_daily_rank_baseline_snapshot,
+        "cron",
+        hour=0,
+        minute=0,
+        id="daily_rank_baseline_snapshot",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.add_job(
         run_trend_detection,
         "cron",
@@ -984,7 +1002,8 @@ def start_scheduler():
 
     description = get_scheduler_description()
     logger.info(
-        "Scheduler started: trend=%s, discovery=%s, store_update=%s min, instagram=%s (%s), ai_limit=%s/day, tz=%s",
+        "Scheduler started: rank_baseline=%s, trend=%s, discovery=%s, store_update=%s min, instagram=%s (%s), ai_limit=%s/day, tz=%s",
+        description["rank_baseline_reset"],
         description["trend_detection"],
         description["keyword_discovery"],
         description["store_update_minutes"],

@@ -57,6 +57,7 @@ def _build_startup_message() -> str:
         [
             "[크롤러 시작]",
             f"시간대: {schedule['timezone']}",
+            f"등락 기준 초기화: {schedule['rank_baseline_reset']}",
             f"트렌드 감지: {schedule['trend_detection']}",
             f"키워드 발굴: {schedule['keyword_discovery']}",
             f"자동 AI 한도: {schedule['daily_ai_limit']}회/일",

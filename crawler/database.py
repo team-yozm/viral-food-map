@@ -142,8 +142,8 @@ RANKED_TREND_STATUSES = ["rising", "active", "declining"]
 MIN_ACTIVE_TRENDS = 10
 
 
-def snapshot_previous_ranks() -> None:
-    """활성 트렌드의 현재 순위를 previous_rank에 저장 (다음 사이클 비교용)."""
+def snapshot_daily_rank_baseline() -> None:
+    """Persist the daily midnight rank baseline into previous_rank."""
     try:
         rows = (
             get_client()
@@ -156,7 +156,7 @@ def snapshot_previous_ranks() -> None:
             .data
         )
     except Exception as exc:
-        logger.warning("snapshot_previous_ranks: 조회 실패: %s", exc)
+        logger.warning("snapshot_daily_rank_baseline: failed to fetch trends: %s", exc)
         return
 
     if not rows:
@@ -168,7 +168,11 @@ def snapshot_previous_ranks() -> None:
                 {"previous_rank": rank}
             ).eq("id", row["id"]).execute()
         except Exception as exc:
-            logger.warning("snapshot_previous_ranks: id=%s 업데이트 실패: %s", row["id"], exc)
+            logger.warning(
+                "snapshot_daily_rank_baseline: failed to update id=%s: %s",
+                row["id"],
+                exc,
+            )
 
 
 def insert_stores(stores: list[dict]):

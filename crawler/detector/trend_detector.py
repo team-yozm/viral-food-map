@@ -43,7 +43,6 @@ from database import (
     insert_trend_review,
     mark_keywords_checked,
     mark_keywords_confirmed,
-    snapshot_previous_ranks,
     update_trend_status,
     update_trend_verdict_counts,
     upsert_ai_review_queue_entry,
@@ -1418,8 +1417,6 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     await send_discord_message(
                         f"[⚠️ AI 검토 실패] 트렌드 설명 생성 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}"
                     )
-
-    snapshot_previous_ranks()
 
     for plan in trend_plans:
         primary_existing_trend = plan["primary_existing_trend"]

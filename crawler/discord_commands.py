@@ -123,6 +123,7 @@ def _format_status_message() -> str:
             "**요즘뭐먹 크롤러 상태**",
             "- 서비스: ok",
             f"- 시간대: {schedule['timezone']}",
+            f"- 등락 기준 초기화: {schedule['rank_baseline_reset']}",
             f"- 트렌드 감지 스케줄: {schedule['trend_detection']}",
             f"- 인스타 피드: {instagram_status}",
             _format_job_line("크롤링", get_trend_detection_status()),
