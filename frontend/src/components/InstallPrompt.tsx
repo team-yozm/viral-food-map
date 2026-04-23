@@ -96,7 +96,7 @@ export default function InstallPrompt() {
   // 카카오톡 Android → Chrome으로 열기
   if (showKakaoAndroid) {
     return (
-      <div className="mb-4 bg-white rounded-2xl border border-purple-100 p-4 flex items-center gap-3 shadow-sm">
+      <div className="bg-white rounded-2xl border border-purple-100 p-4 flex items-center gap-3 shadow-sm">
         <IconBox>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -122,7 +122,7 @@ export default function InstallPrompt() {
   // 카카오톡 iOS → 수동 안내
   if (showKakaoIos) {
     return (
-      <div className="mb-4 bg-white rounded-2xl border border-purple-100 p-4 flex items-start gap-3 shadow-sm">
+      <div className="bg-white rounded-2xl border border-purple-100 p-4 flex items-start gap-3 shadow-sm">
         <IconBox>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -145,7 +145,7 @@ export default function InstallPrompt() {
   // iOS Safari 안내
   if (showIos) {
     return (
-      <div className="mb-4 bg-white rounded-2xl border border-purple-100 p-4 flex items-start gap-3 shadow-sm">
+      <div className="bg-white rounded-2xl border border-purple-100 p-4 flex items-start gap-3 shadow-sm">
         <IconBox>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
@@ -175,7 +175,7 @@ export default function InstallPrompt() {
   if (!showChrome) return null;
 
   return (
-    <div className="mb-4 bg-white rounded-2xl border border-purple-100 p-4 flex items-center gap-3 shadow-sm">
+    <div className="bg-white rounded-2xl border border-purple-100 p-4 flex items-center gap-3 shadow-sm">
       <IconBox>
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
