@@ -37,7 +37,7 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
+      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
         active
           ? "bg-ink text-surface"
           : "bg-surface text-ink2 ring-1 ring-inset ring-line"
@@ -205,7 +205,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
         </div>
 
         {/* Trend filter chips */}
-        <div className="scrollbar-hide flex gap-1.5 overflow-x-auto px-5 pb-2.5">
+        <div className="scrollbar-hide flex w-full min-w-0 gap-1.5 overflow-x-auto px-5 pb-2.5">
           <Chip
             label="전체 트렌드"
             active={selectedTrendId === "all"}
