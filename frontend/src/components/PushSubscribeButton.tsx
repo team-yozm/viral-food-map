@@ -53,10 +53,11 @@ export default function PushSubscribeButton() {
         keys: { p256dh: string; auth: string };
       };
 
-      await supabase.from("push_subscriptions").upsert(
-        { endpoint, p256dh: keys.p256dh, auth: keys.auth },
-        { onConflict: "endpoint" }
-      );
+      await supabase.rpc("register_push_subscription", {
+        subscription_endpoint: endpoint,
+        subscription_p256dh: keys.p256dh,
+        subscription_auth: keys.auth,
+      });
 
       setStatus("subscribed");
     } catch {
