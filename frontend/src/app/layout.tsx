@@ -5,6 +5,7 @@ import NativeInitializer from "@/components/NativeInitializer";
 import PageViewTracker from "@/components/PageViewTracker";
 import { ADSENSE_CLIENT } from "@/lib/adsense";
 import {
+  INSTAGRAM_URL,
   NAVER_SITE_VERIFICATION,
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -63,6 +64,7 @@ export default function RootLayout({
       name: SITE_NAME,
       url: SITE_URL,
       logo: absoluteUrl("/logo.png"),
+      sameAs: [INSTAGRAM_URL],
     },
     {
       "@context": "https://schema.org",

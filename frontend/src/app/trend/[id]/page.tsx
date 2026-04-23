@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import KakaoSdkScripts from "@/components/KakaoSdkScripts";
 import TrendDetailPageClient from "./TrendDetailPageClient";
 import { buildMetadata, buildTrendDescription } from "@/lib/seo";
+import {
+  buildBreadcrumbJsonLd,
+  buildTrendArticleJsonLd,
+  buildTrendStoresItemListJsonLd,
+  jsonLdScript,
+} from "@/lib/structured-data";
 import { isTrendEligibleForIndexing } from "@/lib/trend-indexing";
 import { getTrendDetailById } from "@/lib/trends-server";
 
@@ -54,9 +60,31 @@ export async function generateMetadata({
 export default async function TrendDetailPage({ params }: TrendPageProps) {
   const { id } = await params;
   const trendData = await getTrendDetailById(id);
+  const structuredData = trendData
+    ? [
+        buildBreadcrumbJsonLd([
+          { name: "홈", path: "/" },
+          { name: "트렌드", path: "/trend" },
+          { name: trendData.trend.name, path: `/trend/${id}` },
+        ]),
+        buildTrendArticleJsonLd(trendData.trend, `/trend/${id}`),
+        buildTrendStoresItemListJsonLd(
+          trendData.trend,
+          trendData.stores,
+          `/trend/${id}`
+        ),
+      ]
+    : [];
 
   return (
     <>
+      {structuredData.map((item, index) => (
+        <script
+          key={`trend-detail-json-ld-${index}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={jsonLdScript(item)}
+        />
+      ))}
       <KakaoSdkScripts />
       <TrendDetailPageClient
         id={id}

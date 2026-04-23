@@ -6,7 +6,7 @@ interface TrendIndexCandidate {
   status?: Trend["status"] | string | null;
 }
 
-const MIN_INDEXABLE_DESCRIPTION_LENGTH = 70;
+const MIN_INDEXABLE_DESCRIPTION_LENGTH = 25;
 const MIN_INDEXABLE_STORE_COUNT = 2;
 
 function normalizeText(value: string | null | undefined): string {
