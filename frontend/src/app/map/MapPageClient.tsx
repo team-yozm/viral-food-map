@@ -32,6 +32,8 @@ type UserLocation = {
   lng: number;
 };
 
+const SEOUL_CITY_HALL_LOCATION: UserLocation = { lat: 37.5665, lng: 126.978 };
+
 function Chip({
   label,
   active,
@@ -67,6 +69,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     "all" | "franchise" | "independent"
   >("all");
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
+  const [mapCenter, setMapCenter] = useState<UserLocation | null>(null);
   const [locReady, setLocReady] = useState(false);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const trendChipDragRef = useRef({ didDrag: false });
@@ -76,16 +79,17 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
       getCurrentPosition({ timeout: 5000 })
         .then((nextLocation) => {
           setUserLoc(nextLocation);
+          setMapCenter(nextLocation);
           setLocationMessage(null);
           setLocReady(true);
           return nextLocation as UserLocation;
         })
         .catch(() => {
-          const fallbackLocation = { lat: 37.5665, lng: 126.978 };
-          setUserLoc(fallbackLocation);
+          setUserLoc(null);
+          setMapCenter(SEOUL_CITY_HALL_LOCATION);
           setLocationMessage("위치 권한이 없어 서울 시청 기준으로 표시 중입니다.");
           setLocReady(true);
-          return fallbackLocation as UserLocation;
+          return null;
         }),
     []
   );
@@ -310,10 +314,10 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
 
         {/* Map with report FAB */}
         <div className="relative mx-4 overflow-hidden rounded-[20px] border border-line">
-          {locReady && userLoc ? (
+          {locReady && mapCenter ? (
             <KakaoMap
               stores={filteredStores}
-              center={userLoc}
+              center={mapCenter}
               currentLocation={userLoc}
               level={7}
               className="map-container !h-[50vh]"
