@@ -134,20 +134,12 @@ def _keyword_terms(keyword: str) -> list[str]:
 
 
 def _build_query(keyword: str, category: str | None) -> str:
-    suffix = CATEGORY_SUFFIX.get(category or "", DEFAULT_SUFFIX)
-    return f"{keyword} {suffix}".strip()
+    return keyword.strip()
 
 
 def _build_queries(keyword: str, category: str | None) -> list[str]:
-    secondary_query = (
-        f"{keyword} 카페 메뉴 사진"
-        if category in {"음료", "주류"}
-        else f"{keyword} 맛집 후기 사진"
-    )
-    return [
-        _build_query(keyword, category),
-        secondary_query,
-    ]
+    query = _build_query(keyword, category)
+    return [query] if query else []
 
 
 def should_refresh_existing_image(existing_image_url: str | None) -> bool:
