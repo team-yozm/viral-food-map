@@ -22,15 +22,14 @@ const pillBase =
 type Delta =
   | { type: "new" }
   | { type: "up"; n: number }
-  | { type: "down"; n: number }
-  | { type: "same" };
+  | { type: "down"; n: number };
 
-function calcDelta(trend: Pick<Trend, "previous_rank">, currentRank: number): Delta {
+function calcDelta(trend: Pick<Trend, "previous_rank">, currentRank: number): Delta | null {
   const prev = trend.previous_rank;
   if (prev == null) return { type: "new" };
   if (prev > currentRank) return { type: "up", n: prev - currentRank };
   if (prev < currentRank) return { type: "down", n: currentRank - prev };
-  return { type: "same" };
+  return null;
 }
 
 interface RankDeltaBadgeProps {
@@ -40,6 +39,8 @@ interface RankDeltaBadgeProps {
 
 export default function RankDeltaBadge({ trend, currentRank }: RankDeltaBadgeProps) {
   const delta = calcDelta(trend, currentRank);
+
+  if (!delta) return null;
 
   if (delta.type === "new") {
     return (
