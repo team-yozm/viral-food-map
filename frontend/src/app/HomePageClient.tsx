@@ -759,7 +759,7 @@ export default function HomePageClient({
               </button>
 
               {!isAppClipExperience ? (
-                <section className="mb-5">
+                <section className="mb-5 flex flex-col gap-2">
                   <div className="flex justify-center">
                     <PushSubscribeButton />
                   </div>
