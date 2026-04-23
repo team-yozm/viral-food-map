@@ -707,8 +707,18 @@ export default function HomePageClient({
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="font-pretendard flex items-center gap-1 text-[10px] font-semibold tracking-[-0.01em] text-white/65">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-                              <path d="M2 19h20v2H2v-2zM2 17l4-9 6 5 4-8 4 8 4-5-4 9H2z" />
+                            <svg
+                              className="h-3 w-3 flex-shrink-0 text-[#FFD166]"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="m2.75 6.25 4.8 4.12a1 1 0 0 0 1.53-.32L12 4.5l2.92 5.55a1 1 0 0 0 1.53.32l4.8-4.12-2.85 10.3a1 1 0 0 1-.96.73H6.56a1 1 0 0 1-.96-.73L2.75 6.25Z" />
+                              <path d="M6 20h12" />
                             </svg>
                             지금 1위
                           </div>
