@@ -926,21 +926,21 @@ export default function HomePageClient({
 
         {showLocationNotice ? (
           <section className="mb-6 mt-8">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-              <p className="text-sm font-semibold text-amber-900">
+            <div className="rounded-[16px] border border-line bg-bg px-4 py-4">
+              <p className="text-[13px] font-bold text-ink">
                 {locationNoticeTitle}
               </p>
-              <p className="mt-1 text-sm leading-relaxed text-amber-800">
+              <p className="mt-1 text-[12.5px] leading-relaxed text-ink3">
                 {locationNoticeDescription}
               </p>
-              <p className="mt-2 text-xs leading-5 text-amber-700">
+              <p className="mt-1.5 text-[11.5px] leading-[1.5] text-ink4">
                 {locationNoticeHint}
               </p>
               <div className="mt-3 flex gap-2">
                 {locationStatus === "unsupported" ? (
                   <button
                     onClick={() => setLocationPickerOpen(true)}
-                    className="inline-flex rounded-lg bg-amber-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-950"
+                    className="inline-flex rounded-[10px] bg-ink px-3 py-2 text-[12px] font-semibold text-surface"
                   >
                     기준 위치 선택하기
                   </button>
@@ -956,7 +956,7 @@ export default function HomePageClient({
                       } catch {}
                       requestUserLocation();
                     }}
-                    className="inline-flex rounded-lg bg-amber-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-950"
+                    className="inline-flex rounded-[10px] bg-ink px-3 py-2 text-[12px] font-semibold text-surface"
                   >
                     {locationStatus === "invalid"
                       ? "현재 위치 다시 확인하기"
@@ -965,7 +965,7 @@ export default function HomePageClient({
                 )}
                 <Link
                   href={mapHref}
-                  className="inline-flex rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                  className="inline-flex rounded-[10px] border border-line px-3 py-2 text-[12px] font-semibold text-ink3"
                 >
                   지도에서 보기
                 </Link>
@@ -975,58 +975,70 @@ export default function HomePageClient({
         ) : null}
 
         {nearbyStores.length > 0 ? (
-          <section className="mb-6 mt-8">
-            <div className="mb-3 flex items-center justify-between">
+          <section className="mb-6">
+            {/* Section header */}
+            <div className="mb-3 flex items-baseline justify-between px-1 pt-7">
               <div>
-                <h3 className="font-bold text-gray-900">내 근처 판매처</h3>
-                <p className="mt-1 text-xs text-gray-500">
-                  트렌드를 확인했다면, 이제 가까운 판매처를 바로 찾아보세요.
-                </p>
+                <div className="font-kicker text-[10px] font-bold text-accent">Around You</div>
+                <h3 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.03em] text-ink">
+                  내 근처 판매처
+                </h3>
               </div>
-              <Link href={mapHref} className="text-xs text-primary font-medium">
-                지도에서 보기
+              <Link
+                href={mapHref}
+                className="flex items-center gap-0.5 text-[12px] font-semibold tracking-[-0.01em] text-ink3"
+              >
+                지도 보기
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
               </Link>
             </div>
-            <div className="space-y-2">
-              {nearbyStores.map((store) => (
-                <div
-                  key={store.place_url || `${store.name}-${store.address}`}
-                  className="bg-white rounded-xl border border-gray-100 p-3"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="min-w-0 flex-1 font-semibold text-sm text-gray-900 truncate">
-                          {store.name}
-                        </h4>
-                      </div>
-                      <p className="text-xs text-gray-400 truncate">{store.address}</p>
-                      {store.trend_names.length > 0 ? (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {getVisibleTrendNames(store.trend_names).map((trendName) => (
-                            <span
-                              key={trendName}
-                              className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"
-                            >
-                              {trendName}
-                            </span>
-                          ))}
-                          {store.trend_names.length > 2 ? (
-                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-                              외 {store.trend_names.length - 2}개
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
+            {/* Horizontal scroll pills */}
+            <div className="-mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+              {nearbyStores.map((store) => {
+                const distM = Math.max(Math.round(store.distance_km * 1000), 0);
+                const distLabel = distM < 1000 ? `${distM}m` : `${(distM / 1000).toFixed(1)}km`;
+                const isFranchise = store.is_franchise;
+                const firstTrend = store.trend_names[0] ?? null;
+                return (
+                  <div
+                    key={store.place_url || `${store.name}-${store.address}`}
+                    className="flex w-[200px] shrink-0 flex-col gap-2 rounded-[16px] border border-line bg-surface p-3.5"
+                  >
+                    {/* Distance + type */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.04em] text-accent">
+                        {distLabel}
+                      </span>
+                      <span
+                        className={`rounded-[4px] px-1.5 py-[2px] text-[9.5px] font-bold ${
+                          isFranchise
+                            ? "bg-line2 text-ink3"
+                            : "bg-accent-soft text-accent-ink"
+                        }`}
+                      >
+                        {isFranchise ? "프랜차이즈" : "개인"}
+                      </span>
                     </div>
-                    <span className="inline-flex h-5 shrink-0 self-center items-center justify-center whitespace-nowrap pt-px text-xs font-semibold leading-none text-primary">
-                      {formatDistanceMeters(
-                        Math.max(Math.round(store.distance_km * 1000), 0)
-                      )}
-                    </span>
+                    {/* Store name */}
+                    <div className="text-[14px] font-bold leading-[1.25] tracking-[-0.02em] text-ink">
+                      {store.name}
+                    </div>
+                    {/* Address */}
+                    <div className="truncate text-[11px] text-ink4">{store.address}</div>
+                    {/* Trend tag */}
+                    {firstTrend ? (
+                      <span className="self-start rounded-full bg-accent-soft px-2 py-[3px] text-[10.5px] font-semibold text-accent-ink">
+                        #{firstTrend}
+                        {store.trend_names.length > 1
+                          ? ` 외 ${store.trend_names.length - 1}`
+                          : ""}
+                      </span>
+                    ) : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         ) : null}
