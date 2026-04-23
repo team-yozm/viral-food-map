@@ -706,7 +706,12 @@ export default function HomePageClient({
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-kicker text-[10px] text-white/65">지금 1위</div>
+                          <div className="font-kicker flex items-center gap-1 text-[10px] text-white/65">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+                              <path d="M2 19h20v2H2v-2zM2 17l4-9 6 5 4-8 4 8 4-5-4 9H2z" />
+                            </svg>
+                            지금 1위
+                          </div>
                           <div className="mt-0.5 text-[17px] font-extrabold tracking-[-0.02em]">
                             {topTrend.name}
                           </div>
