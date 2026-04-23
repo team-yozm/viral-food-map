@@ -643,7 +643,7 @@ export default function HomePageClient({
               <section className="mb-5">
                 <div className="relative overflow-hidden rounded-3xl bg-hero-top text-white shadow-[0_12px_40px_rgba(20,18,26,0.18)]">
                   <div className="px-5 pb-4 pt-5">
-                    <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-kicker text-[10px] text-white/90">
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-pretendard text-[10px] font-bold tracking-[-0.01em] text-white/90">
                       <span
                         className="h-1.5 w-1.5 rounded-full bg-hero-accent"
                         style={{ boxShadow: "0 0 8px #8B6FE8" }}
@@ -657,22 +657,22 @@ export default function HomePageClient({
                     </h1>
                     <div className="mt-4 flex items-center">
                       <div className="flex-1 whitespace-nowrap">
-                        <div className="font-kicker text-[9.5px] text-white/55">활성 트렌드</div>
-                        <div className="font-kicker mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
+                        <div className="font-pretendard text-[9.5px] font-semibold tracking-[-0.01em] text-white/55">활성 트렌드</div>
+                        <div className="font-pretendard mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
                           {trends.length}
                         </div>
                       </div>
                       <div className="h-7 w-px flex-shrink-0 bg-white/15" />
                       <div className="flex-1 whitespace-nowrap pl-4">
-                        <div className="font-kicker text-[9.5px] text-white/55">검증 판매처</div>
-                        <div className="font-kicker mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
+                        <div className="font-pretendard text-[9.5px] font-semibold tracking-[-0.01em] text-white/55">검증 판매처</div>
+                        <div className="font-pretendard mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
                           {storeCountLabel}
                         </div>
                       </div>
                       <div className="h-7 w-px flex-shrink-0 bg-white/15" />
                       <div className="flex-1 whitespace-nowrap pl-4">
-                        <div className="font-kicker text-[9.5px] text-white/55">상승 중</div>
-                        <div className="font-kicker mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
+                        <div className="font-pretendard text-[9.5px] font-semibold tracking-[-0.01em] text-white/55">상승 중</div>
+                        <div className="font-pretendard mt-0.5 text-[18px] font-extrabold text-white tabular-nums tracking-[-0.02em]">
                           {risingCount}
                         </div>
                       </div>
@@ -706,7 +706,7 @@ export default function HomePageClient({
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-kicker flex items-center gap-1 text-[10px] text-white/65">
+                          <div className="font-pretendard flex items-center gap-1 text-[10px] font-semibold tracking-[-0.01em] text-white/65">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
                               <path d="M2 19h20v2H2v-2zM2 17l4-9 6 5 4-8 4 8 4-5-4 9H2z" />
                             </svg>
