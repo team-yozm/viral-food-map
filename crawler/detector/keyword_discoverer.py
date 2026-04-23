@@ -135,40 +135,48 @@ def strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
-async def search_blogs(query: str, display: int = 30) -> list[dict]:
+async def _search_blogs_with_client(
+    client: httpx.AsyncClient,
+    query: str,
+    display: int,
+) -> list[dict]:
     headers = {
         "X-Naver-Client-Id": settings.NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": settings.NAVER_CLIENT_SECRET,
     }
-
-    async def _request() -> list[dict]:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                NAVER_BLOG_URL,
-                params={"query": query, "display": display, "sort": "date"},
-                headers=headers,
-                timeout=15,
-            )
-            response.raise_for_status()
-            return response.json().get("items", [])
-
     try:
-        return await _request()
+        response = await client.get(
+            NAVER_BLOG_URL,
+            params={"query": query, "display": display, "sort": "date"},
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json().get("items", [])
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 429:
             logger.error("Blog search failed for '%s': %s", query, exc)
             return []
-
         logger.warning("Blog search rate-limited for '%s', retrying once", query)
         await asyncio.sleep(2)
         try:
-            return await _request()
+            response = await client.get(
+                NAVER_BLOG_URL,
+                params={"query": query, "display": display, "sort": "date"},
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json().get("items", [])
         except Exception as retry_exc:
             logger.error("Blog search retry failed for '%s': %s", query, retry_exc)
             return []
     except Exception as exc:
         logger.error("Blog search failed for '%s': %s", query, exc)
         return []
+
+
+async def search_blogs(query: str, display: int = 30) -> list[dict]:
+    async with httpx.AsyncClient(timeout=15) as client:
+        return await _search_blogs_with_client(client, query, display)
 
 
 def extract_nouns(text: str) -> list[str]:
@@ -541,21 +549,27 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
 
     blog_texts: list[str] = []
     evidence_texts: list[str] = []
-    for query in META_QUERIES:
-        items = await search_blogs(query)
-        for item in items:
-            text = strip_html(item.get("title", "")) + " " + strip_html(
-                item.get("description", "")
-            )
-            text = " ".join(text.split())
-            if text:
-                blog_texts.append(text)
-                evidence_texts.append(text)
-        await asyncio.sleep(0.5)
+    async with httpx.AsyncClient(timeout=15) as _blog_client:
+        for query in META_QUERIES:
+            items = await _search_blogs_with_client(_blog_client, query, 30)
+            for item in items:
+                text = strip_html(item.get("title", "")) + " " + strip_html(
+                    item.get("description", "")
+                )
+                text = " ".join(text.split())
+                if text:
+                    blog_texts.append(text)
+                    evidence_texts.append(text)
+            await asyncio.sleep(0.5)
 
     summary["collected_posts"] = len(blog_texts)
 
     lead_candidates: dict[str, dict] = {}
+
+    _YOUTUBE_FOOD_SIGNAL_KEYS = {
+        normalize_keyword_text(w)
+        for w in ("먹방", "브이로그", "asmr", "줄서", "오픈런", "존맛", "맛집", "핫플")
+    }
 
     youtube_videos = await collect_youtube_lead_videos()
     summary["youtube_videos"] = len(youtube_videos)
@@ -569,6 +583,12 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
 
         evidence = build_youtube_evidence(video)
         per_keyword_score = max(video.score / max(len(youtube_candidates), 1), 1.0)
+
+        # 음식 맥락 신호(먹방, 오픈런 등)가 있는 영상은 후보 점수 1.5배 부스트
+        video_word_keys = {normalize_keyword_text(t) for t in re.findall(r"[\w가-힣]+", text)}
+        if video_word_keys & _YOUTUBE_FOOD_SIGNAL_KEYS:
+            per_keyword_score = round(per_keyword_score * 1.5, 2)
+
         for candidate in youtube_candidates.values():
             register_lead_candidate(
                 lead_candidates,

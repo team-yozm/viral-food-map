@@ -857,7 +857,8 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
     invalid_active_trends = _deactivate_invalid_active_trends(active_trends)
     if invalid_active_trends:
         active_trends = get_active_trends() or []
-    _collapse_cached_active_duplicates(active_trends, alias_lookup)
+    if alias_lookup:
+        _collapse_cached_active_duplicates(active_trends, alias_lookup)
     active_trends = get_active_trends() or []
     review_statuses = get_ai_review_latest_statuses("trend")
 
@@ -885,7 +886,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             confirmed_keywords=[],
         )
 
-    trend_insights = await get_search_trend_insights(keywords)
+    trend_insights = await get_search_trend_insights(keywords, days=14)
     mark_keywords_checked(
         [item.get("keyword", "") for item in db_keywords],
         checked_at=run_started_at.isoformat(),
@@ -951,28 +952,37 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         if trend.get("name")
     }
 
-    persistable_candidates: list[dict] = []
+    # 카테고리 힌트 선할당 후 review/food 필터 통과 후보만 병렬 enrichment
     for candidate in candidates:
         keyword = candidate["keyword"]
         existing_trend = candidate_existing_trends.get(keyword)
-        category_hint = _choose_category(
+        candidate["category_hint"] = _choose_category(
             keyword,
             keyword_metadata_by_name,
             existing_trend,
         )
-        candidate["category_hint"] = category_hint
-        if review_statuses.get(normalize_keyword_text(keyword)) in {"pending", "rejected"}:
-            continue
 
-        if not is_food_specific_keyword(keyword):
-            continue
+    candidates_to_enrich = [
+        candidate for candidate in candidates
+        if review_statuses.get(normalize_keyword_text(candidate["keyword"])) not in {"pending", "rejected"}
+        and is_food_specific_keyword(candidate["keyword"])
+    ]
 
-        blog_insights = await get_blog_search_insights(
-            keyword,
-            display=settings.TREND_BLOG_SAMPLE_SIZE,
-            recent_days=settings.TREND_BLOG_RECENT_DAYS,
-        )
-        ig_count = await get_hashtag_post_count(keyword)
+    blog_insights_list, ig_count_list = await asyncio.gather(
+        asyncio.gather(*[
+            get_blog_search_insights(
+                c["keyword"],
+                display=settings.TREND_BLOG_SAMPLE_SIZE,
+                recent_days=settings.TREND_BLOG_RECENT_DAYS,
+            )
+            for c in candidates_to_enrich
+        ]),
+        asyncio.gather(*[get_hashtag_post_count(c["keyword"]) for c in candidates_to_enrich]),
+    )
+
+    persistable_candidates: list[dict] = []
+    for candidate, blog_insights, ig_count in zip(candidates_to_enrich, blog_insights_list, ig_count_list):
+        keyword = candidate["keyword"]
         novelty_lift = calculate_recent_lift(
             novelty_search_data.get(keyword, candidate["data_points"]),
             recent_days=settings.TREND_NOVELTY_RECENT_DAYS,
@@ -984,7 +994,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         )
 
         if (
-            blog_insights.sampled_count
+            blog_insights.sampled_count >= 5
             and blog_insights.recent_ratio < settings.TREND_BLOG_FRESHNESS_MIN_RATIO
             and not is_top_rank_candidate
         ):
@@ -1419,71 +1429,74 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     )
 
     for plan in trend_plans:
-        primary_existing_trend = plan["primary_existing_trend"]
         display_keyword = plan["display_keyword"]
-        category = plan["category"]
-        representative_candidate = plan["representative_candidate"]
-        existing_peak = float(
-            (primary_existing_trend or {}).get("peak_score") or 0.0
-        )
-        trend_data = {
-            "id": plan["trend_id"],
-            "name": display_keyword,
-            "category": category,
-            "status": plan["status"],
-            "detected_at": datetime.now(timezone.utc).isoformat(),
-            "peak_score": max(existing_peak, representative_candidate["score"]),
-            "score_breakdown": representative_candidate.get("score_breakdown"),
-            "search_volume_data": _build_search_volume_map(
-                representative_candidate["data_points"]
-            ),
-            "description": (
-                primary_existing_trend.get("description")
-                if primary_existing_trend
-                else None
-            ),
-            "image_url": (
-                primary_existing_trend.get("image_url")
-                if primary_existing_trend
-                else None
-            ),
-            "ai_consecutive_accepts": plan.get("consecutive_accepts", 0),
-            "ai_consecutive_rejects": 0,
-        }
-
-        # Phase 1: AI 판정 정보를 trends 테이블에 저장
-        review = plan.get("review")
-        if review is not None:
-            trend_data["ai_verdict"] = review.verdict
-            trend_data["ai_reason"] = review.reason
-            trend_data["ai_confidence"] = review.confidence
-            trend_data["ai_grounding_sources"] = review.grounding_sources
-            trend_data["ai_reviewed_at"] = datetime.now(timezone.utc).isoformat()
-            trend_data["ai_model"] = review.model
-
-        if _should_refresh_image(primary_existing_trend, display_keyword):
-            image_url = await find_food_image(
-                display_keyword,
-                category=category,
-                existing_image_url=trend_data["image_url"],
+        try:
+            primary_existing_trend = plan["primary_existing_trend"]
+            category = plan["category"]
+            representative_candidate = plan["representative_candidate"]
+            existing_peak = float(
+                (primary_existing_trend or {}).get("peak_score") or 0.0
             )
-            if image_url:
-                trend_data["image_url"] = image_url
+            trend_data = {
+                "id": plan["trend_id"],
+                "name": display_keyword,
+                "category": category,
+                "status": plan["status"],
+                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "peak_score": max(existing_peak, representative_candidate["score"]),
+                "score_breakdown": representative_candidate.get("score_breakdown"),
+                "search_volume_data": _build_search_volume_map(
+                    representative_candidate["data_points"]
+                ),
+                "description": (
+                    primary_existing_trend.get("description")
+                    if primary_existing_trend
+                    else None
+                ),
+                "image_url": (
+                    primary_existing_trend.get("image_url")
+                    if primary_existing_trend
+                    else None
+                ),
+                "ai_consecutive_accepts": plan.get("consecutive_accepts", 0),
+                "ai_consecutive_rejects": 0,
+            }
 
-        generated_description = descriptions_by_keyword.get(display_keyword)
-        if not trend_data["description"] and generated_description:
-            trend_data["description"] = generated_description
-            summary["generated_descriptions"] += 1
+            # Phase 1: AI 판정 정보를 trends 테이블에 저장
+            review = plan.get("review")
+            if review is not None:
+                trend_data["ai_verdict"] = review.verdict
+                trend_data["ai_reason"] = review.reason
+                trend_data["ai_confidence"] = review.confidence
+                trend_data["ai_grounding_sources"] = review.grounding_sources
+                trend_data["ai_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+                trend_data["ai_model"] = review.model
 
-        upsert_trend(trend_data)
-        summary["stored_trends"] += 1
+            if _should_refresh_image(primary_existing_trend, display_keyword):
+                image_url = await find_food_image(
+                    display_keyword,
+                    category=category,
+                    existing_image_url=trend_data["image_url"],
+                )
+                if image_url:
+                    trend_data["image_url"] = image_url
 
-        if plan["status"] != "watchlist":
-            stores = await find_stores_nationwide(plan["search_terms"])
-            if stores:
-                store_records = build_store_records(plan["trend_id"], stores)
-                insert_stores(store_records)
-                summary["stored_stores"] += len(store_records)
+            generated_description = descriptions_by_keyword.get(display_keyword)
+            if not trend_data["description"] and generated_description:
+                trend_data["description"] = generated_description
+                summary["generated_descriptions"] += 1
+
+            upsert_trend(trend_data)
+            summary["stored_trends"] += 1
+
+            if plan["status"] != "watchlist":
+                stores = await find_stores_nationwide(plan["search_terms"])
+                if stores:
+                    store_records = build_store_records(plan["trend_id"], stores)
+                    insert_stores(store_records)
+                    summary["stored_stores"] += len(store_records)
+        except Exception as exc:
+            logger.exception("trend plan failed for '%s': %s", display_keyword, exc)
 
     upsert_keyword_aliases(
         filter_alias_rows(alias_rows_to_upsert, blocked_pairs)

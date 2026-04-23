@@ -292,6 +292,8 @@ FOOD_CONTEXT_WORDS = {
     "핫플",
     "줄서",
     "오픈런",
+    "먹방",
+    "브이로그",
 }
 
 FOOD_SUFFIXES = (

@@ -9,7 +9,7 @@ NAVER_DATALAB_URL = "https://openapi.naver.com/v1/datalab/search"
 API_MAX_KEYWORD_GROUPS = 5
 
 
-async def get_search_trend(keywords: list[str], days: int = 7) -> dict[str, list[dict]]:
+async def get_search_trend(keywords: list[str], days: int = 14) -> dict[str, list[dict]]:
     """네이버 데이터랩에서 키워드별 검색량 추이 조회"""
     return (await get_search_trend_insights(keywords, days=days))["series"]
 
@@ -74,7 +74,7 @@ def _calculate_relative_popularity(
         if period in reference_by_period and reference_by_period[period] > 0
     ]
     if not shared_periods:
-        return _recent_average(keyword_points)
+        return 0.0
 
     shared_periods = shared_periods[-3:]
     relative_values = [
@@ -102,22 +102,22 @@ async def get_search_trend_insights(
     results: dict[str, list[dict]] = {}
     popularity_scores: dict[str, float] = {}
 
-    for batch in _build_batches(keywords, reference_keyword):
-        keyword_groups = [
-            {"groupName": kw, "keywords": [kw]} for kw in batch
-        ]
+    async with httpx.AsyncClient(timeout=10) as client:
+        for batch in _build_batches(keywords, reference_keyword):
+            keyword_groups = [
+                {"groupName": kw, "keywords": [kw]} for kw in batch
+            ]
 
-        body = {
-            "startDate": start_date,
-            "endDate": end_date,
-            "timeUnit": "date",
-            "keywordGroups": keyword_groups,
-        }
+            body = {
+                "startDate": start_date,
+                "endDate": end_date,
+                "timeUnit": "date",
+                "keywordGroups": keyword_groups,
+            }
 
-        try:
-            async with httpx.AsyncClient() as client:
+            try:
                 resp = await client.post(
-                    NAVER_DATALAB_URL, headers=headers, json=body, timeout=10
+                    NAVER_DATALAB_URL, headers=headers, json=body
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -139,8 +139,8 @@ async def get_search_trend_insights(
                         points,
                         reference_points,
                     )
-        except Exception as e:
-            logger.error(f"네이버 데이터랩 API 오류: {e}")
+            except Exception as e:
+                logger.error(f"네이버 데이터랩 API 오류: {e}")
 
     ranked_keywords = sorted(
         (
@@ -164,14 +164,14 @@ async def get_search_trend_insights(
 
 
 def calculate_acceleration(data_points: list[dict]) -> float:
-    """최근 3일 대비 이전 3일 검색량 증가율 계산"""
-    if len(data_points) < 6:
+    """최근 3일 평균 대비 이전 7일 평균 검색량 증가율 계산 (노이즈 감소)"""
+    if len(data_points) < 10:
         return 0.0
 
-    recent = sum(p.get("ratio", 0) for p in data_points[-3:])
-    previous = sum(p.get("ratio", 0) for p in data_points[-6:-3])
+    recent_avg = sum(p.get("ratio", 0) for p in data_points[-3:]) / 3
+    prev_avg = sum(p.get("ratio", 0) for p in data_points[-10:-3]) / 7
 
-    if previous == 0:
+    if prev_avg == 0:
         return 0.0
 
-    return ((recent - previous) / previous) * 100
+    return round(((recent_avg - prev_avg) / prev_avg) * 100, 2)

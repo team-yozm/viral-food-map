@@ -148,30 +148,40 @@ async def enrich_stores_with_ratings(stores: list[dict]) -> list[dict]:
     return stores
 
 
+_CITY_SEMAPHORE_LIMIT = 4
+
+
 async def find_stores_nationwide(search_terms: list[str] | str) -> list[dict]:
     terms = (
         dedupe_terms(search_terms)
         if isinstance(search_terms, list)
         else dedupe_terms([search_terms])
     )
-    all_stores: list[dict] = []
-    seen: set[tuple[str, str]] = set()
+    semaphore = asyncio.Semaphore(_CITY_SEMAPHORE_LIMIT)
 
-    for keyword in terms:
-        for city in MAJOR_CITIES:
-            city_stores = await find_stores_kakao(
+    async def _fetch(keyword: str, city: dict) -> list[dict]:
+        async with semaphore:
+            stores = await find_stores_kakao(
                 keyword=keyword,
                 x=city["x"],
                 y=city["y"],
                 radius=city["radius"],
             )
-            for store in city_stores:
-                key = (store["name"], store["address"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                all_stores.append(store)
             await asyncio.sleep(0.1)
+            return stores
+
+    tasks = [_fetch(kw, city) for kw in terms for city in MAJOR_CITIES]
+    results = await asyncio.gather(*tasks)
+
+    seen: set[tuple[str, str]] = set()
+    all_stores: list[dict] = []
+    for city_stores in results:
+        for store in city_stores:
+            key = (store["name"], store["address"])
+            if key in seen:
+                continue
+            seen.add(key)
+            all_stores.append(store)
 
     logger.info(
         "Collected %s stores for %s search terms across %s cities",
@@ -179,4 +189,4 @@ async def find_stores_nationwide(search_terms: list[str] | str) -> list[dict]:
         len(terms),
         len(MAJOR_CITIES),
     )
-    return await enrich_stores_with_ratings(all_stores)
+    return all_stores
