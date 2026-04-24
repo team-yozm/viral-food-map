@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import LoadingState from "@/components/LoadingState";
 import TrendBadge from "@/components/TrendBadge";
 import {
   fetchCrawlerHealth,
@@ -440,7 +441,7 @@ export default function DashboardTab() {
   };
 
   if (loading || !stats) {
-    return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
+    return <LoadingState label="대시보드를 불러오는 중입니다" />;
   }
 
   const apiUrl = getCrawlerBaseUrl();

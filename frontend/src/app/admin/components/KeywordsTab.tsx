@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import LoadingState from "@/components/LoadingState";
 import {
   fetchKeywordDiscoveryStatus,
   getCrawlerBaseUrl,
@@ -159,7 +160,7 @@ export default function KeywordsTab() {
   };
 
   if (loading) {
-    return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
+    return <LoadingState label="키워드 목록을 불러오는 중입니다" />;
   }
 
   const categoryColor: Record<string, string> = {

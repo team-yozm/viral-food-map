@@ -20,6 +20,7 @@ interface KakaoMapProps {
   selectedStoreId?: string | null;
   onMarkerClick?: (storeId: string) => void;
   onBoundsChange?: (bounds: MapBounds) => void;
+  onPinsReady?: () => void;
   autoFitBounds?: boolean;
   onRequestCurrentLocation?: () => Promise<{ lat: number; lng: number } | null>;
   /** trend_id → 트렌드 이름 매핑 (지도 마커에 트렌드 라벨 표시) */
@@ -54,6 +55,7 @@ export default function KakaoMap({
   selectedStoreId,
   onMarkerClick,
   onBoundsChange,
+  onPinsReady,
   autoFitBounds = true,
   onRequestCurrentLocation,
   trendLabels = {},
@@ -346,6 +348,9 @@ export default function KakaoMap({
     };
 
     renderClusters();
+    const pinsReadyFrame = window.requestAnimationFrame(() => {
+      onPinsReady?.();
+    });
     kakao.maps.event.addListener(map, "idle", renderClusters);
 
     // stores 재생성 후 선택된 store의 툴팁 복원
@@ -368,6 +373,7 @@ export default function KakaoMap({
     }
 
     return () => {
+      window.cancelAnimationFrame(pinsReadyFrame);
       closeOpenOverlay();
       kakao.maps.event.removeListener(map, "click", closeOpenOverlay);
       kakao.maps.event.removeListener(map, "idle", renderClusters);
@@ -378,7 +384,7 @@ export default function KakaoMap({
       });
       markerMapRef.current.clear();
     };
-  }, [map, stores, trendLabels]);
+  }, [map, stores, trendLabels, onPinsReady]);
 
   // React to external selection (from StoreList click)
   useEffect(() => {

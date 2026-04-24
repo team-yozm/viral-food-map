@@ -13,6 +13,7 @@ import Link from "next/link";
 import AdSlot from "@/components/AdSlot";
 import BottomNav from "@/components/BottomNav";
 import KakaoMap, { type MapBounds } from "@/components/KakaoMap";
+import LoadingState from "@/components/LoadingState";
 import { ADSENSE_MAP_SLOT } from "@/lib/adsense";
 import { openExternalUrl, openInstagramTag } from "@/lib/external-links";
 import { supabase } from "@/lib/supabase";
@@ -72,6 +73,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
   const [mapCenter, setMapCenter] = useState<UserLocation | null>(null);
   const [locReady, setLocReady] = useState(false);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [mapPinsReady, setMapPinsReady] = useState(false);
   const trendChipDragRef = useRef({ didDrag: false });
 
   const requestLocation = useCallback(
@@ -115,8 +117,13 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     void fetchTrends();
   }, [fetchTrends]);
 
+  const handlePinsReady = useCallback(() => {
+    setMapPinsReady(true);
+  }, []);
+
   useEffect(() => {
     if (!mapBounds) return;
+    let ignore = false;
 
     let query = supabase
       .from("stores")
@@ -139,17 +146,29 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
     }
 
     query.then(({ data }) => {
+      if (ignore) return;
+
       if (data) {
-        setStores(
-          data.map((store: any) => ({
-            ...store,
-            is_franchise: Boolean(store.is_franchise),
-            trend_name: store.trends?.name,
-          })) as MapStore[]
-        );
+        const nextStores = data.map((store: any) => ({
+          ...store,
+          is_franchise: Boolean(store.is_franchise),
+          trend_name: store.trends?.name,
+        })) as MapStore[];
+
+        setStores(nextStores);
+
+        if (nextStores.length === 0) {
+          setMapPinsReady(true);
+        }
+      } else {
+        setMapPinsReady(true);
       }
     });
-  }, [mapBounds, selectedTrendId]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [mapBounds, selectedTrendId, trends]);
 
   const filteredStores = useMemo(() => {
     let result = stores;
@@ -181,6 +200,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
 
   const hasStoreQuery = storeQuery.trim().length > 0;
   const showSearchInput = stores.length > 3 || hasStoreQuery;
+  const showMapLoading = !mapPinsReady;
 
   function getDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
     const R = 6371;
@@ -324,6 +344,7 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
               selectedStoreId={selectedStoreId}
               onMarkerClick={setSelectedStoreId}
               onBoundsChange={setMapBounds}
+              onPinsReady={handlePinsReady}
               autoFitBounds={false}
               onRequestCurrentLocation={requestLocation}
               trendLabels={trendLabels}
@@ -351,6 +372,17 @@ export default function MapPageClient({ initialTrends }: MapPageClientProps) {
             </svg>
             판매처 제보
           </Link>
+          {showMapLoading ? (
+            <div className="absolute inset-0 z-[6] flex items-center justify-center bg-white/45 backdrop-blur-[2px]">
+              <div className="rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-[0_14px_34px_rgba(20,18,26,0.14)]">
+                <LoadingState
+                  compact
+                  label="지도 핀을 불러오는 중입니다"
+                  description="주변 판매처를 표시하고 있어요."
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {locationMessage ? (

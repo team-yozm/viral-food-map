@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LoadingState from "@/components/LoadingState";
 import { supabase } from "@/lib/supabase";
 
 interface StoreRow {
@@ -131,7 +132,7 @@ export default function StoresTab() {
   };
 
   if (loading) {
-    return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
+    return <LoadingState label="판매처 목록을 불러오는 중입니다" />;
   }
 
   const filtered = searchQuery

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LoadingState from "@/components/LoadingState";
 import { supabase } from "@/lib/supabase";
 
 interface ReviewRow {
@@ -108,7 +109,7 @@ export default function TrendReviewsTab() {
       </div>
 
       {loading ? (
-        <p className="text-center text-gray-400 py-12">로딩 중...</p>
+        <LoadingState label="리뷰 기록을 불러오는 중입니다" />
       ) : reviews.length === 0 ? (
         <p className="text-center text-gray-400 py-12">리뷰 기록이 없습니다</p>
       ) : (

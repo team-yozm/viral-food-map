@@ -14,6 +14,7 @@ import {
   getNewProductSectorLabel,
   type NewProductSectorKey,
 } from "@/lib/new-product-taxonomy";
+import LoadingState from "@/components/LoadingState";
 import { supabase } from "@/lib/supabase";
 import type {
   NewProduct,
@@ -249,7 +250,7 @@ export default function NewProductsTab() {
   );
 
   if (loading) {
-    return <p className="py-12 text-center text-gray-400">로딩 중...</p>;
+    return <LoadingState label="신상품 데이터를 불러오는 중입니다" />;
   }
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import LoadingState from "@/components/LoadingState";
 import { supabase } from "@/lib/supabase";
 
 type QueueItemType = "keyword" | "trend";
@@ -474,7 +475,7 @@ export default function AiReviewQueueTab() {
       </div>
 
       {loading ? (
-        <p className="py-12 text-center text-gray-400">로딩 중...</p>
+        <LoadingState label="AI 보류 목록을 불러오는 중입니다" />
       ) : rows.length === 0 ? (
         <p className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-12 text-center text-sm text-gray-400">
           표시할 AI 보류 항목이 없습니다.

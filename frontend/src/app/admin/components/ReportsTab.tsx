@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LoadingState from "@/components/LoadingState";
 import { supabase } from "@/lib/supabase";
 
 interface ReportRow {
@@ -64,7 +65,7 @@ export default function ReportsTab() {
   };
 
   if (loading) {
-    return <p className="text-center text-gray-400 py-12">로딩 중...</p>;
+    return <LoadingState label="제보 목록을 불러오는 중입니다" />;
   }
 
   const filtered = filter === "all" ? reports : reports.filter((r) => r.status === filter);

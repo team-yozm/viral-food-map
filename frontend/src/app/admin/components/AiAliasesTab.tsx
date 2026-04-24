@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import LoadingState from "@/components/LoadingState";
 import { fetchCrawlerHealth, type CrawlerHealthResponse } from "@/lib/crawler";
 import { supabase } from "@/lib/supabase";
 
@@ -639,7 +640,7 @@ export default function AiAliasesTab() {
   };
 
   if (loading) {
-    return <p className="py-12 text-center text-gray-400">로딩 중..</p>;
+    return <LoadingState label="AI 동의어 매핑을 불러오는 중입니다" />;
   }
 
   return (
