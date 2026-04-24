@@ -390,13 +390,15 @@ function TopTrendRollingBanner({
               href={withAppClipParam(`/trend/${trend.id}`, isAppClipExperience)}
               aria-hidden={!isActive}
               tabIndex={isActive ? 0 : -1}
-              className={`absolute inset-0 flex select-none items-center gap-3 rounded-2xl transition-transform duration-500 ease-out ${
+              className={`absolute inset-0 flex select-none items-center gap-3 rounded-2xl transition-transform duration-[620ms] ease-in-out ${
                 isActive ? "" : "pointer-events-none"
               }`}
               draggable={false}
               style={{
-                transform: `translateX(calc(${slideOffset * 100}% + ${dragOffset}px))`,
+                transform: `translate3d(calc(${slideOffset * 100}% + ${dragOffset}px), 0, 0)`,
                 transitionDuration: isDragging || isWrapping ? "0ms" : undefined,
+                willChange: "transform",
+                backfaceVisibility: "hidden",
               }}
             >
               <div className="relative h-[92px] w-[92px] flex-shrink-0 overflow-hidden rounded-2xl bg-white/10">
