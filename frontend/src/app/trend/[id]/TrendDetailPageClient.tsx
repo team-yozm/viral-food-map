@@ -68,6 +68,8 @@ const STATUS_KICKER: Record<string, string> = {
   inactive: "PAUSED",
 };
 
+const FULL_STORE_LIST_LIMIT = 10;
+
 function SectionLabel({
   kicker,
   title,
@@ -141,6 +143,7 @@ export default function TrendDetailPageClient({
   const isAppClipExperience = useAppClipExperience();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [storeQuery, setStoreQuery] = useState("");
+  const [showAllStores, setShowAllStores] = useState(false);
   const [userLoc, setUserLoc] = useState<UserLocation | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [canRetryLocation, setCanRetryLocation] = useState(false);
@@ -201,6 +204,10 @@ export default function TrendDetailPageClient({
     : { lat: 37.5665, lng: 126.978 };
 
   const previewStores = useMemo(() => sortedStores.slice(0, 4), [sortedStores]);
+  const visibleAllStores = showAllStores
+    ? sortedStores
+    : sortedStores.slice(0, FULL_STORE_LIST_LIMIT);
+  const hasMoreStores = sortedStores.length > visibleAllStores.length;
   const detectedLabel = formatTrendDetectedDate(initialTrend?.detected_at);
 
   const momentumChart = useMemo(() => {
@@ -585,12 +592,15 @@ export default function TrendDetailPageClient({
               <input
                 type="text"
                 value={storeQuery}
-                onChange={(event) => setStoreQuery(event.target.value)}
+                onChange={(event) => {
+                  setStoreQuery(event.target.value);
+                  setShowAllStores(false);
+                }}
                 placeholder="판매처 이름이나 주소 검색"
                 className="w-full rounded-[14px] border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink4 focus:border-accent focus:outline-none"
               />
               <div className="mt-3 overflow-hidden rounded-[20px] border border-line bg-surface">
-                {sortedStores.map((store, index) => {
+                {visibleAllStores.map((store, index) => {
                   const distanceKm = userLoc
                     ? getDistance(
                         userLoc.lat,
@@ -599,7 +609,8 @@ export default function TrendDetailPageClient({
                         store.lng
                       )
                     : null;
-                  const isLast = index === sortedStores.length - 1;
+                  const isLast =
+                    index === visibleAllStores.length - 1 && !hasMoreStores;
                   return (
                     <button
                       key={store.id}
@@ -643,6 +654,18 @@ export default function TrendDetailPageClient({
                     </button>
                   );
                 })}
+                {hasMoreStores ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllStores(true)}
+                    className="flex w-full items-center justify-center gap-1 border-t border-line2 px-4 py-3 text-sm font-bold text-accent transition-colors hover:bg-bg"
+                  >
+                    판매처 더보기
+                    <span className="text-xs font-semibold text-ink4">
+                      ({sortedStores.length - visibleAllStores.length}곳)
+                    </span>
+                  </button>
+                ) : null}
                 {sortedStores.length === 0 ? (
                   <div className="px-4 py-6 text-center text-sm text-ink4">
                     검색 결과가 없어요.
