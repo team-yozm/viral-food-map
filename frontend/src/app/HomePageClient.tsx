@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -192,6 +192,11 @@ function TopTrendRollingBanner({
     width: number;
   } | null>(null);
   const shouldBlockClickRef = useRef(false);
+  const prevActiveIndexRef = useRef(activeIndex);
+
+  useLayoutEffect(() => {
+    prevActiveIndexRef.current = activeIndex;
+  });
 
   const moveToIndex = useCallback(
     (index: number) => {
@@ -367,6 +372,16 @@ function TopTrendRollingBanner({
             activeIndex,
             trends.length
           );
+          const prevSlideOffset = getWrappedSlideOffset(
+            index,
+            prevActiveIndexRef.current,
+            trends.length
+          );
+          const isWrapping =
+            !isDragging &&
+            Math.abs(prevSlideOffset) >= 1 &&
+            Math.abs(slideOffset) >= 1 &&
+            Math.sign(prevSlideOffset) !== Math.sign(slideOffset);
           const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
 
           return (
@@ -381,7 +396,7 @@ function TopTrendRollingBanner({
               draggable={false}
               style={{
                 transform: `translateX(calc(${slideOffset * 100}% + ${dragOffset}px))`,
-                transitionDuration: isDragging ? "0ms" : undefined,
+                transitionDuration: isDragging || isWrapping ? "0ms" : undefined,
               }}
             >
               <div className="relative h-[92px] w-[92px] flex-shrink-0 overflow-hidden rounded-2xl bg-white/10">
