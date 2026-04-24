@@ -113,7 +113,8 @@ def reserve_automation_ai_call(job_name: str, trigger: str) -> AIBudgetReservati
                 logger.warning("AI budget DB insert failed, retrying: %s", exc)
             else:
                 logger.error("AI budget DB insert unavailable after retry, using local fallback: %s", exc)
-                used_today = _fallback_reserve(day_key)
+                _fallback_reserve(day_key)
+                used_today += 1
 
     return AIBudgetReservation(
         allowed=True,

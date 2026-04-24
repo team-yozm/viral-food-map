@@ -1,7 +1,10 @@
 import httpx
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from config import settings
 import logging
+
+_KST = ZoneInfo("Asia/Seoul")
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +92,9 @@ async def get_search_trend_insights(
     days: int = 7,
 ) -> dict[str, dict[str, list[dict]] | dict[str, float] | dict[str, int]]:
     """네이버 데이터랩 검색 추이와 배치 간 비교용 상대 인기도를 함께 반환"""
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    now = datetime.now(_KST)
+    end_date = now.strftime("%Y-%m-%d")
+    start_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
     reference_keyword = settings.TREND_REFERENCE_KEYWORD.strip() or "마라탕"
 
     headers = {

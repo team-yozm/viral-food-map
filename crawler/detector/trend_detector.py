@@ -488,8 +488,11 @@ def _deactivate_stale_trends(confirmed_keywords: list[str]) -> list[str]:
         if not trend_id or not keyword or normalize_keyword_text(keyword) in confirmed_keyword_set:
             continue
 
-        detected_at = _parse_detected_at(trend.get("detected_at"))
-        if detected_at and detected_at > cutoff:
+        reference_at = (
+            _parse_detected_at(trend.get("last_confirmed_at"))
+            or _parse_detected_at(trend.get("detected_at"))
+        )
+        if reference_at and reference_at > cutoff:
             continue
 
         is_watchlist = trend.get("status") == "watchlist"
@@ -1437,12 +1440,18 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             existing_peak = float(
                 (primary_existing_trend or {}).get("peak_score") or 0.0
             )
+            now_iso = datetime.now(timezone.utc).isoformat()
             trend_data = {
                 "id": plan["trend_id"],
                 "name": display_keyword,
                 "category": category,
                 "status": plan["status"],
-                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "detected_at": (
+                    primary_existing_trend.get("detected_at")
+                    if primary_existing_trend
+                    else now_iso
+                ),
+                "last_confirmed_at": now_iso,
                 "peak_score": max(existing_peak, representative_candidate["score"]),
                 "score_breakdown": representative_candidate.get("score_breakdown"),
                 "search_volume_data": _build_search_volume_map(
@@ -1459,7 +1468,6 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     else None
                 ),
                 "ai_consecutive_accepts": plan.get("consecutive_accepts", 0),
-                "ai_consecutive_rejects": 0,
             }
 
             # Phase 1: AI 판정 정보를 trends 테이블에 저장

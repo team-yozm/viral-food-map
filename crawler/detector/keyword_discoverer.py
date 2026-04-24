@@ -59,11 +59,8 @@ logger = logging.getLogger(__name__)
 NAVER_BLOG_URL = "https://openapi.naver.com/v1/search/blog"
 DEFAULT_CATEGORY = "기타"
 
-_CURRENT_YEAR = str(__import__("datetime").datetime.now().year)
-
-META_QUERIES = [
-    # 일반 트렌드
-    f"{_CURRENT_YEAR} 음식 트렌드",
+_META_QUERIES_BASE = [
+    # 일반 트렌드 (연도 포함 쿼리는 _get_meta_queries()에서 동적 생성)
     "이번달 뜨는 음식",
     "요즘 핫한 먹거리",
     # 카테고리별
@@ -79,9 +76,20 @@ META_QUERIES = [
     "줄서서 먹는 맛집 메뉴",
     "오픈런 디저트",
     "품절대란 음식",
-    f"{_CURRENT_YEAR} 편의점 신상",
     "요즘 핫한 빵 베이커리",
 ]
+
+
+def _get_meta_queries() -> list[str]:
+    year = str(__import__("datetime").datetime.now().year)
+    return [
+        f"{year} 음식 트렌드",
+        *_META_QUERIES_BASE,
+        f"{year} 편의점 신상",
+    ]
+
+
+META_QUERIES = _get_meta_queries()
 
 CATEGORY_PATTERNS = {
     "디저트": re.compile(
@@ -489,7 +497,7 @@ def _is_ai_accept(review: TrendReviewResult) -> bool:
 def _build_summary() -> dict:
     _, remaining_today = get_automation_ai_budget_snapshot()
     return {
-        "queries": len(META_QUERIES),
+        "queries": len(_get_meta_queries()),
         "collected_posts": 0,
         "youtube_videos": 0,
         "lead_candidates": 0,
@@ -546,11 +554,12 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
     alias_rows = get_keyword_aliases()
     alias_lookup = build_alias_lookup(alias_rows)
     blocked_pairs, _ = parse_alias_decisions(alias_rows)
+    meta_queries = _get_meta_queries()
 
     blog_texts: list[str] = []
     evidence_texts: list[str] = []
     async with httpx.AsyncClient(timeout=15) as _blog_client:
-        for query in META_QUERIES:
+        for query in meta_queries:
             items = await _search_blogs_with_client(_blog_client, query, 30)
             for item in items:
                 text = strip_html(item.get("title", "")) + " " + strip_html(

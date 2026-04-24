@@ -422,10 +422,12 @@ async def _fetch_text(client: httpx.AsyncClient, url: str) -> str:
         response.raise_for_status()
         return response.text
     except httpx.HTTPError as exc:
-        # 일부 대상 사이트가 SSL 체인 문제를 가진 경우가 있어 verify=False로 재시도한다.
-        # 보안상 위험한 동작이므로 경고 로그로 가시화한다.
+        # SSL 체인 문제가 있는 사이트만 verify=False로 재시도한다.
+        # HTTP 상태 에러(4xx, 5xx)는 재시도해도 의미 없으므로 바로 전파.
+        if not isinstance(exc, (httpx.ConnectError, httpx.RemoteProtocolError)):
+            raise
         logger.warning(
-            "HTTP 에러로 verify=False 재시도 (url=%s): %s", url, exc
+            "SSL/연결 에러로 verify=False 재시도 (url=%s): %s", url, exc
         )
         async with httpx.AsyncClient(
             timeout=client.timeout,

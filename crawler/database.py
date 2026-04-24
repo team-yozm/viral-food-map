@@ -80,14 +80,17 @@ def get_active_trends():
 
 
 def get_all_keywords():
-    return (
-        get_client()
-        .table("keywords")
-        .select("*")
-        .eq("is_active", True)
-        .execute()
-        .data
-    )
+    def _call():
+        return (
+            get_client()
+            .table("keywords")
+            .select("*")
+            .eq("is_active", True)
+            .execute()
+            .data
+        )
+
+    return _execute_with_retry(_call)
 
 
 def get_trends_by_names(names: list[str]):
@@ -98,7 +101,7 @@ def get_trends_by_names(names: list[str]):
         .table("trends")
         .select(
             "id,name,category,description,image_url,status,peak_score,detected_at,"
-            "ai_consecutive_accepts,ai_consecutive_rejects"
+            "last_confirmed_at,ai_consecutive_accepts,ai_consecutive_rejects"
         )
         .in_("name", names)
         .execute()
