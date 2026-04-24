@@ -67,7 +67,7 @@ from detector.keyword_manager import (
     is_food_specific_keyword,
     requires_trend_revalidation,
 )
-from detector.store_updater import build_store_records
+from detector.store_updater import build_store_records, mark_stores_recently_searched
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +473,11 @@ def _build_keyword_metadata_by_name(
     return keyword_metadata_by_name
 
 
-def _deactivate_stale_trends(confirmed_keywords: list[str]) -> list[str]:
+def _deactivate_stale_trends(
+    confirmed_keywords: list[str],
+    *,
+    active_trends: list[dict] | None = None,
+) -> list[str]:
     cutoff = datetime.now(timezone.utc) - timedelta(
         hours=settings.ACTIVE_TREND_TTL_HOURS
     )
@@ -482,7 +486,7 @@ def _deactivate_stale_trends(confirmed_keywords: list[str]) -> list[str]:
     }
     deactivated_trends: list[str] = []
 
-    for trend in get_active_trends() or []:
+    for trend in (active_trends if active_trends is not None else get_active_trends() or []):
         trend_id = trend.get("id")
         keyword = trend.get("name")
         if not trend_id or not keyword or normalize_keyword_text(keyword) in confirmed_keyword_set:
@@ -613,7 +617,11 @@ def _deactivate_invalid_active_trends(active_trends: list[dict]) -> list[str]:
     return deactivated_trends
 
 
-def _deactivate_rejected_active_trends(rejected_keywords: list[str]) -> list[str]:
+def _deactivate_rejected_active_trends(
+    rejected_keywords: list[str],
+    *,
+    active_trends: list[dict] | None = None,
+) -> list[str]:
     rejected_keys = {
         normalize_keyword_text(keyword)
         for keyword in rejected_keywords
@@ -623,7 +631,7 @@ def _deactivate_rejected_active_trends(rejected_keywords: list[str]) -> list[str
         return []
 
     deactivated_trends: list[str] = []
-    for trend in get_active_trends() or []:
+    for trend in (active_trends if active_trends is not None else get_active_trends() or []):
         trend_id = trend.get("id")
         keyword = clean_display_keyword(trend.get("name"))
         if not trend_id or not keyword:
@@ -923,9 +931,10 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     summary["candidates"] = len(candidates)
     if not candidates:
+        _early_active = get_active_trends() or []
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
-            _deactivate_stale_trends([]),
+            _deactivate_stale_trends([], active_trends=_early_active),
         )
         return _finalize_keyword_lifecycle(
             summary,
@@ -1048,10 +1057,11 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         persistable_candidates.append(candidate)
 
     if not persistable_candidates:
+        _early_active = get_active_trends() or []
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
-            _deactivate_rejected_active_trends(rejected_keywords),
-            _deactivate_stale_trends([]),
+            _deactivate_rejected_active_trends(rejected_keywords, active_trends=_early_active),
+            _deactivate_stale_trends([], active_trends=_early_active),
         )
         return _finalize_keyword_lifecycle(
             summary,
@@ -1257,10 +1267,11 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             group["consecutive_accepts"] = consecutive_accepts
 
     if not confirmed_groups:
+        _early_active = get_active_trends() or []
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
-            _deactivate_rejected_active_trends(rejected_keywords),
-            _deactivate_stale_trends([]),
+            _deactivate_rejected_active_trends(rejected_keywords, active_trends=_early_active),
+            _deactivate_stale_trends([], active_trends=_early_active),
         )
         return _finalize_keyword_lifecycle(
             summary,
@@ -1503,6 +1514,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     store_records = build_store_records(plan["trend_id"], stores)
                     insert_stores(store_records)
                     summary["stored_stores"] += len(store_records)
+                mark_stores_recently_searched([plan["trend_id"]])
         except Exception as exc:
             logger.exception("trend plan failed for '%s': %s", display_keyword, exc)
 
@@ -1514,10 +1526,11 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
     summary["confirmed"] = len(deduped_confirmed_keywords)
     summary["confirmed_keywords"] = deduped_confirmed_keywords
     summary["new_confirmed_keywords"] = deduped_new_confirmed_keywords
+    final_active_trends = get_active_trends() or []
     summary["deactivated_trends"] = _merge_deactivated_trends(
         invalid_active_trends,
-        _deactivate_rejected_active_trends(rejected_keywords),
-        _deactivate_stale_trends(deduped_confirmed_keywords),
+        _deactivate_rejected_active_trends(rejected_keywords, active_trends=final_active_trends),
+        _deactivate_stale_trends(deduped_confirmed_keywords, active_trends=final_active_trends),
     )
     _finalize_keyword_lifecycle(
         summary,

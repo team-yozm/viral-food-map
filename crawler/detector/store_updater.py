@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
@@ -15,6 +16,28 @@ from database import (
 from detector.alias_manager import build_alias_terms_by_canonical, dedupe_terms
 
 logger = logging.getLogger(__name__)
+
+# detect_trends에서 방금 판매처를 검색한 트렌드를 기록 — store_update_job 중복 방지
+_RECENTLY_SEARCHED_TTL = 3600.0  # 1시간
+_recently_searched: dict[str, float] = {}
+
+
+def mark_stores_recently_searched(trend_ids: list[str]) -> None:
+    now = time.monotonic()
+    for tid in trend_ids:
+        _recently_searched[tid] = now
+
+
+def _is_recently_searched(trend_id: str) -> bool:
+    ts = _recently_searched.get(trend_id)
+    return ts is not None and (time.monotonic() - ts) < _RECENTLY_SEARCHED_TTL
+
+
+def _evict_stale_searches() -> None:
+    cutoff = time.monotonic() - _RECENTLY_SEARCHED_TTL
+    stale = [tid for tid, ts in _recently_searched.items() if ts < cutoff]
+    for tid in stale:
+        del _recently_searched[tid]
 
 
 def _store_key(name: str, address: str) -> tuple[str, str]:
@@ -52,6 +75,7 @@ def build_store_records(
 
 async def refresh_stores_for_active_trends() -> dict:
     logger.info("=== store refresh started ===")
+    _evict_stale_searches()
 
     all_trends = get_active_trends() or []
     trends = [t for t in all_trends if t.get("status") != "watchlist"]
@@ -82,6 +106,10 @@ async def refresh_stores_for_active_trends() -> dict:
         trend_id = trend.get("id")
         keyword = trend.get("name")
         if not trend_id or not keyword:
+            continue
+
+        if _is_recently_searched(trend_id):
+            summary["processed_trends"] += 1
             continue
 
         summary["processed_trends"] += 1

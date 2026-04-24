@@ -20,6 +20,7 @@ from routers.new_products import router as new_products_router
 from routers.stores import router as stores_router
 from routers.trends import router as trends_router
 from routers.yomechu import router as yomechu_router
+from discord_reviews import register_main_event_loop
 from scheduler.jobs import (
     get_scheduler_description,
     run_new_products_refresh_job,
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI):
     startup_new_products_refresh: asyncio.Task | None = None
 
     try:
+        register_main_event_loop(asyncio.get_running_loop())
         start_scheduler()
         await send_discord_message(_build_startup_message())
 

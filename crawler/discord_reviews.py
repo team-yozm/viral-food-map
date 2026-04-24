@@ -1589,7 +1589,34 @@ async def sync_pending_review_messages() -> dict[str, int]:
     return counts
 
 
+_main_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+def register_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
+    global _main_event_loop
+    _main_event_loop = loop
+
+
 def _schedule_background_task(coro: Any, description: str) -> None:
+    def _done_callback(done_task: asyncio.Task) -> None:
+        try:
+            done_task.result()
+        except Exception:
+            logger.exception("Background Discord review task failed: %s", description)
+
+    def _future_done_callback(future: "asyncio.Future[Any]") -> None:
+        try:
+            future.result()
+        except Exception:
+            logger.exception("Background Discord review task failed: %s", description)
+
+    # FastAPI 메인 루프가 등록된 경우: 스케줄러 스레드에서도 안전하게 실행
+    if _main_event_loop is not None and _main_event_loop.is_running():
+        future = asyncio.run_coroutine_threadsafe(coro, _main_event_loop)
+        future.add_done_callback(_future_done_callback)
+        return
+
+    # 현재 스레드에 실행 중인 루프가 있으면 태스크로 등록
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -1597,13 +1624,6 @@ def _schedule_background_task(coro: Any, description: str) -> None:
         return
 
     task = loop.create_task(coro)
-
-    def _done_callback(done_task: asyncio.Task) -> None:
-        try:
-            done_task.result()
-        except Exception:
-            logger.exception("Background Discord review task failed: %s", description)
-
     task.add_done_callback(_done_callback)
 
 
