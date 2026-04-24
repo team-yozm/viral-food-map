@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -132,9 +133,30 @@ interface TopTrendRollingBannerProps {
 }
 
 const rankMedals = ["🥇", "🥈", "🥉"] as const;
+const TAP_CANCEL_THRESHOLD_PX = 8;
+const MIN_SWIPE_THRESHOLD_PX = 36;
+const MAX_SWIPE_THRESHOLD_PX = 80;
 
 function getRankMedal(rank: number) {
   return rankMedals[rank - 1] ?? "🏅";
+}
+
+function getWrappedSlideOffset(index: number, activeIndex: number, total: number) {
+  let offset = index - activeIndex;
+
+  if (total <= 2) {
+    return offset;
+  }
+
+  const half = total / 2;
+
+  if (offset > half) {
+    offset -= total;
+  } else if (offset < -half) {
+    offset += total;
+  }
+
+  return offset;
 }
 
 function TopCrownIcon({ className }: { className?: string }) {
@@ -161,6 +183,26 @@ function TopTrendRollingBanner({
 }: TopTrendRollingBannerProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    latestX: number;
+    width: number;
+  } | null>(null);
+  const shouldBlockClickRef = useRef(false);
+
+  const moveToIndex = useCallback(
+    (index: number) => {
+      if (trends.length === 0) {
+        return;
+      }
+
+      setActiveIndex((index + trends.length) % trends.length);
+    },
+    [trends.length]
+  );
 
   useEffect(() => {
     if (activeIndex >= trends.length) {
@@ -169,7 +211,7 @@ function TopTrendRollingBanner({
   }, [activeIndex, trends.length]);
 
   useEffect(() => {
-    if (trends.length <= 1 || isPaused) {
+    if (trends.length <= 1 || isPaused || isDragging) {
       return;
     }
 
@@ -178,7 +220,97 @@ function TopTrendRollingBanner({
     }, 4200);
 
     return () => window.clearInterval(intervalId);
-  }, [isPaused, trends.length]);
+  }, [isDragging, isPaused, trends.length]);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (trends.length <= 1 || !event.isPrimary) {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      latestX: event.clientX,
+      width: event.currentTarget.clientWidth || 1,
+    };
+    setIsDragging(true);
+    setDragOffset(0);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - dragState.startX;
+    const boundedDeltaX = Math.max(
+      -dragState.width,
+      Math.min(dragState.width, deltaX)
+    );
+
+    dragState.latestX = event.clientX;
+    setDragOffset(boundedDeltaX);
+
+    if (Math.abs(deltaX) > TAP_CANCEL_THRESHOLD_PX) {
+      shouldBlockClickRef.current = true;
+    }
+  };
+
+  const finishSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = dragState.latestX - dragState.startX;
+    const swipeThreshold = Math.min(
+      MAX_SWIPE_THRESHOLD_PX,
+      Math.max(MIN_SWIPE_THRESHOLD_PX, dragState.width * 0.18)
+    );
+
+    if (Math.abs(deltaX) >= swipeThreshold) {
+      moveToIndex(activeIndex + (deltaX < 0 ? 1 : -1));
+    }
+
+    dragStateRef.current = null;
+    setIsDragging(false);
+    setDragOffset(0);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (shouldBlockClickRef.current) {
+      window.setTimeout(() => {
+        shouldBlockClickRef.current = false;
+      }, 250);
+    }
+  };
+
+  const cancelSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    dragStateRef.current = null;
+    shouldBlockClickRef.current = false;
+    setIsDragging(false);
+    setDragOffset(0);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   if (trends.length === 0) {
     return null;
@@ -210,10 +342,31 @@ function TopTrendRollingBanner({
         </div>
       </div>
 
-      <div className="relative h-[116px] overflow-hidden">
+      <div
+        className="relative h-[116px] touch-pan-y overflow-hidden"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishSwipe}
+        onPointerCancel={cancelSwipe}
+        onLostPointerCapture={cancelSwipe}
+        onClickCapture={(event) => {
+          if (!shouldBlockClickRef.current) {
+            return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          shouldBlockClickRef.current = false;
+        }}
+      >
         {trends.map((trend, index) => {
           const rank = index + 1;
           const isActive = activeIndex === index;
+          const slideOffset = getWrappedSlideOffset(
+            index,
+            activeIndex,
+            trends.length
+          );
           const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
 
           return (
@@ -222,11 +375,14 @@ function TopTrendRollingBanner({
               href={withAppClipParam(`/trend/${trend.id}`, isAppClipExperience)}
               aria-hidden={!isActive}
               tabIndex={isActive ? 0 : -1}
-              className={`absolute inset-0 flex items-center gap-3 rounded-2xl transition-all duration-500 ${
-                isActive
-                  ? "translate-x-0 opacity-100"
-                  : "pointer-events-none translate-x-4 opacity-0"
+              className={`absolute inset-0 flex select-none items-center gap-3 rounded-2xl transition-transform duration-500 ease-out ${
+                isActive ? "" : "pointer-events-none"
               }`}
+              draggable={false}
+              style={{
+                transform: `translateX(calc(${slideOffset * 100}% + ${dragOffset}px))`,
+                transitionDuration: isDragging ? "0ms" : undefined,
+              }}
             >
               <div className="relative h-[92px] w-[92px] flex-shrink-0 overflow-hidden rounded-2xl bg-white/10">
                 {trend.image_url ? (
