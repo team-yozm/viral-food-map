@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 
 import BottomNav from "@/components/BottomNav";
 import Footer from "@/components/Footer";
-import Header from "@/components/Header";
 import { getNewProductsPageData } from "@/lib/new-products-server";
 import { buildMetadata } from "@/lib/seo";
 import {
@@ -64,9 +63,10 @@ export default async function NewProductsPage({
           dangerouslySetInnerHTML={jsonLdScript(item)}
         />
       ))}
-      <Header />
-
-      <main className="page-with-bottom-nav max-w-lg mx-auto px-4 py-4">
+      <main
+        className="page-with-bottom-nav max-w-lg mx-auto px-4 pb-4"
+        style={{ paddingTop: "calc(var(--safe-top) + 16px)" }}
+      >
         <NewProductsClient
           initialProducts={pageData.products}
           initialSectorCounts={pageData.sectorCounts}

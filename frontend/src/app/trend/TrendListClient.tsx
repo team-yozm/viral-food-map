@@ -4,7 +4,6 @@ import { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
-import Header from "@/components/Header";
 import RankDeltaBadge from "@/components/RankDeltaBadge";
 import { shouldUseUnoptimizedImage } from "@/lib/image-optimization";
 import type { Trend } from "@/lib/types";
@@ -155,10 +154,12 @@ export default function TrendListClient({ initialTrends }: TrendListClientProps)
 
   return (
     <>
-      <Header />
-      <main className="page-with-bottom-nav mx-auto max-w-lg pb-8">
+      <main
+        className="page-with-bottom-nav mx-auto max-w-lg pb-8"
+        style={{ paddingTop: "var(--safe-top)" }}
+      >
         {/* Editorial header */}
-        <section className="px-5 pb-4 pt-3">
+        <section className="px-5 pb-4 pt-4">
           <div className="font-kicker text-[10px] font-bold text-accent">Trend Index</div>
           <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.03em] text-ink">트렌드</h1>
           <p className="mt-1.5 text-[12.5px] tracking-[-0.01em] text-ink4">
