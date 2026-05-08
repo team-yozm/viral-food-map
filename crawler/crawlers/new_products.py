@@ -131,6 +131,25 @@ def _parse_dash_datetime(value: str | None) -> str | None:
     return _parse_datetime(value, ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"))
 
 
+def _parse_iso_datetime(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 def _parse_dash_date_end(value: str | None) -> str | None:
     parsed = _parse_dash_date(value)
     if not parsed:
@@ -280,6 +299,8 @@ def _parse_date_value(value: str | None, format_name: str | None) -> str | None:
         return _parse_dash_date(value)
     if format_name == "dash_datetime":
         return _parse_dash_datetime(value)
+    if format_name == "iso_datetime":
+        return _parse_iso_datetime(value)
     if format_name == "dot":
         return _parse_dot_date(value)
     if format_name == "short_dot":
@@ -298,6 +319,8 @@ def _parse_date_end_value(value: str | None, format_name: str | None) -> str | N
         return _parse_dash_date_end(value)
     if format_name == "dash_datetime":
         return _parse_dash_datetime(value)
+    if format_name == "iso_datetime":
+        return _parse_iso_datetime(value)
     if format_name == "dot":
         return _parse_dot_date_end(value)
     if format_name == "short_dot":
@@ -2664,6 +2687,129 @@ async def _crawl_json_menu_feed(
     return list(products_by_id.values())
 
 
+async def _crawl_json_product_feed(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    config = _get_parser_config(source)
+    endpoint_url = str(config.get("endpoint_url") or source.crawl_url)
+    http_method = str(config.get("http_method") or "GET").upper()
+    list_path = str(config.get("list_path") or "")
+    id_field = str(config.get("id_field") or "id")
+    name_field = str(config.get("name_field") or "name")
+    category_field = str(config.get("category_field") or "")
+    summary_field = str(config.get("summary_field") or "")
+    image_field = str(config.get("image_field") or "")
+    start_date_field = str(config.get("start_date_field") or "")
+    end_date_field = str(config.get("end_date_field") or "")
+    start_date_format = str(config.get("start_date_format") or "")
+    end_date_format = str(config.get("end_date_format") or "")
+    new_flag_field = str(config.get("new_flag_field") or "")
+    new_flag_value = config.get("new_flag_value")
+    limited_flag_field = str(config.get("limited_flag_field") or "")
+    limited_flag_value = config.get("limited_flag_value")
+    product_url_template = str(config.get("product_url_template") or source.site_url)
+    default_category = str(config.get("default_category") or "신규 메뉴")
+    summary_fallback = str(config.get("summary_fallback") or "{brand} 공식 신규 메뉴")
+    max_items = int(config.get("max_items", 40))
+    recency_required = bool(config.get("recency_required", True))
+
+    response = await client.request(
+        http_method,
+        endpoint_url,
+        headers={
+            **REQUEST_HEADERS,
+            "Accept": "application/json, text/plain, */*",
+            "Referer": source.crawl_url,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    items = _get_nested_value(payload, list_path)
+    if not isinstance(items, list):
+        return []
+
+    products: list[ParsedNewProduct] = []
+    for item in items[:max_items]:
+        if not isinstance(item, dict):
+            continue
+
+        if new_flag_field and item.get(new_flag_field) != new_flag_value:
+            continue
+
+        external_id = _normalize_text(str(item.get(id_field) or ""))
+        name = _normalize_text(str(item.get(name_field) or ""))
+        if not external_id or not name or not _looks_like_food(name):
+            continue
+
+        published_at = _parse_date_value(
+            str(item.get(start_date_field) or ""),
+            start_date_format,
+        )
+        available_to = _parse_date_end_value(
+            str(item.get(end_date_field) or ""),
+            end_date_format,
+        )
+        if recency_required and not _is_recent_or_active(published_at, available_to):
+            continue
+
+        category_value = item.get(category_field) if category_field else None
+        if isinstance(category_value, list):
+            category = " / ".join(
+                _normalize_text(str(value)) for value in category_value if value
+            )
+        else:
+            category = _normalize_text(str(category_value or ""))
+        category = category or default_category
+
+        summary = _normalize_text(str(item.get(summary_field) or ""))
+        product_url = _format_template_value(
+            product_url_template,
+            external_id=external_id,
+            brand=source.brand,
+        ) or source.site_url
+        limited_flag = item.get(limited_flag_field) if limited_flag_field else None
+
+        products.append(
+            ParsedNewProduct(
+                external_id=external_id,
+                name=name,
+                brand=source.brand,
+                source_type=source.source_type,
+                channel=source.channel,
+                category=category,
+                summary=summary
+                or _format_template_value(
+                    summary_fallback,
+                    brand=source.brand,
+                    category=category,
+                ),
+                image_url=_build_absolute_url(
+                    source.site_url,
+                    str(item.get(image_field) or ""),
+                ),
+                product_url=product_url,
+                published_at=published_at,
+                available_from=published_at,
+                available_to=available_to,
+                is_limited=(
+                    limited_flag == limited_flag_value
+                    if limited_flag_field
+                    else available_to is not None
+                ),
+                is_food=True,
+                raw_payload={
+                    "new_flag": item.get(new_flag_field) if new_flag_field else None,
+                    "limited_flag": limited_flag,
+                    "start_date": item.get(start_date_field) if start_date_field else None,
+                    "end_date": item.get(end_date_field) if end_date_field else None,
+                },
+            )
+        )
+
+    return products
+
+
 async def _crawl_json_event_feed(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
@@ -2878,6 +3024,7 @@ _PARSER_HANDLERS: dict[str, Any] = {
     "html_linked_menu_cards": _crawl_html_linked_menu_cards,
     "mcdonalds_promotion": _crawl_mcdonalds_promotion,
     "json_menu_feed": _crawl_json_menu_feed,
+    "json_product_feed": _crawl_json_product_feed,
     "json_event_feed": _crawl_json_event_feed,
     "mega_seasonal_menu": _crawl_mega_seasonal_menu,
 }
