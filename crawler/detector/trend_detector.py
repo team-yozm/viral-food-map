@@ -316,6 +316,33 @@ def _build_review_queue_payload(
     }
 
 
+def _is_datalab_health_usable(
+    health: dict | None,
+    *,
+    expected_keywords: int,
+) -> bool:
+    if not health or int(health.get("successful_batches") or 0) <= 0:
+        return False
+
+    if expected_keywords <= 0:
+        return True
+
+    returned_keywords = int(health.get("returned_keywords") or 0)
+    minimum_coverage = max(1, int(expected_keywords * 0.5))
+    return returned_keywords >= minimum_coverage
+
+
+def _build_source_skip_reason(source_name: str, health: dict | None) -> str:
+    if not health:
+        return f"{source_name}_missing_health"
+    if int(health.get("successful_batches") or 0) <= 0:
+        return f"{source_name}_all_batches_failed"
+    return (
+        f"{source_name}_coverage_low:"
+        f"{health.get('returned_keywords', 0)}/{health.get('requested_keywords', 0)}"
+    )
+
+
 def _summarize_ai_grounding(
     review_results: dict[str, TrendReviewResult],
 ) -> tuple[str | None, str | None, list[str], list[str]]:
@@ -414,7 +441,66 @@ def _build_summary() -> dict:
         "skipped_reference_keywords": [],
         "filtered_stale_keywords": [],
         "filtered_generic_keywords": [],
+        "queued_for_review": 0,
+        "source_health": {},
+        "skipped_lifecycle_reason": None,
     }
+
+
+def _queue_trend_candidate_for_review(
+    summary: dict,
+    candidate: dict,
+    *,
+    category: str,
+    trigger: str,
+    reason: str,
+    existing_trend: dict | None,
+) -> None:
+    keyword = clean_display_keyword(candidate.get("keyword"))
+    if not keyword:
+        return
+
+    review = TrendReviewResult(
+        verdict="review",
+        confidence=0.0,
+        category=category,
+        reason=reason,
+        model=settings.AI_REVIEW_MODEL if settings.AI_REVIEW_ENABLED else None,
+    )
+    payload = _build_review_queue_payload(
+        candidate,
+        category=category,
+        review=review,
+        existing_trend=existing_trend,
+    )
+    payload["review_unavailable_reason"] = reason
+    queue_result = upsert_ai_review_queue_entry(
+        {
+            "source_job": "trend_detection",
+            "item_type": "trend",
+            "candidate_key": normalize_keyword_text(keyword),
+            "candidate_name": keyword,
+            "category": category,
+            "confidence": review.confidence,
+            "ai_verdict": review.verdict,
+            "reason": reason,
+            "model": review.model,
+            "trend_id": existing_trend.get("id") if existing_trend else None,
+            "trigger": trigger,
+            "payload": payload,
+        }
+    )
+    if queue_result is not None:
+        summary["queued_for_review"] += 1
+        summary["ai_reviews_queued"] += 1
+    summary["ai_review_details"].append(
+        _build_ai_detail_line(
+            keyword,
+            confidence=None,
+            category=category,
+            reason=reason,
+        )
+    )
 
 
 def _append_canonicalization(
@@ -583,6 +669,7 @@ def _finalize_keyword_lifecycle(
     db_keywords: list[dict],
     alias_lookup: dict[str, str],
     confirmed_keywords: list[str],
+    deactivate_stale_keywords: bool = True,
 ) -> dict:
     confirmed_db_keywords = _collect_confirmed_db_keywords(
         db_keywords,
@@ -592,10 +679,14 @@ def _finalize_keyword_lifecycle(
     if confirmed_db_keywords:
         mark_keywords_confirmed(confirmed_db_keywords)
 
-    summary["deactivated_keywords"] = _deactivate_stale_discovered_keywords(
-        db_keywords,
-        confirmed_keywords=confirmed_keywords,
-        alias_lookup=alias_lookup,
+    summary["deactivated_keywords"] = (
+        _deactivate_stale_discovered_keywords(
+            db_keywords,
+            confirmed_keywords=confirmed_keywords,
+            alias_lookup=alias_lookup,
+        )
+        if deactivate_stale_keywords
+        else []
     )
     return summary
 
@@ -898,10 +989,18 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         )
 
     trend_insights = await get_search_trend_insights(keywords, days=14)
-    mark_keywords_checked(
-        [item.get("keyword", "") for item in db_keywords],
-        checked_at=run_started_at.isoformat(),
-    )
+    datalab_health = trend_insights.get("source_health", {})
+    summary["source_health"]["naver_datalab"] = datalab_health
+    if not _is_datalab_health_usable(
+        datalab_health,
+        expected_keywords=len(keywords),
+    ):
+        summary["skipped_lifecycle_reason"] = _build_source_skip_reason(
+            "naver_datalab",
+            datalab_health,
+        )
+        return summary
+
     search_data = trend_insights["series"]
     popularity_scores = trend_insights["popularity_scores"]
     popularity_ranks = trend_insights["popularity_ranks"]
@@ -931,6 +1030,10 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     summary["candidates"] = len(candidates)
     if not candidates:
+        mark_keywords_checked(
+            [item.get("keyword", "") for item in db_keywords],
+            checked_at=run_started_at.isoformat(),
+        )
         _early_active = get_active_trends() or []
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
@@ -955,6 +1058,22 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         [candidate["keyword"] for candidate in candidates],
         days=novelty_lookback_days,
     )
+    novelty_health = novelty_insights.get("source_health", {})
+    summary["source_health"]["naver_datalab_novelty"] = novelty_health
+    if not _is_datalab_health_usable(
+        novelty_health,
+        expected_keywords=len(candidates),
+    ):
+        summary["skipped_lifecycle_reason"] = _build_source_skip_reason(
+            "naver_datalab_novelty",
+            novelty_health,
+        )
+        return summary
+
+    mark_keywords_checked(
+        [item.get("keyword", "") for item in db_keywords],
+        checked_at=run_started_at.isoformat(),
+    )
     novelty_search_data = novelty_insights["series"]
     rejected_keywords: list[str] = []
 
@@ -974,6 +1093,11 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             existing_trend,
         )
 
+    pending_review_candidates = [
+        candidate
+        for candidate in candidates
+        if review_statuses.get(normalize_keyword_text(candidate["keyword"])) == "pending"
+    ]
     candidates_to_enrich = [
         candidate for candidate in candidates
         if review_statuses.get(normalize_keyword_text(candidate["keyword"])) not in {"pending", "rejected"}
@@ -991,6 +1115,17 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         ]),
         asyncio.gather(*[get_hashtag_post_count(c["keyword"]) for c in candidates_to_enrich]),
     )
+    summary["source_health"]["naver_blog"] = {
+        "ok": all(insight.ok for insight in blog_insights_list),
+        "requested_keywords": len(candidates_to_enrich),
+        "successful_keywords": sum(1 for insight in blog_insights_list if insight.ok),
+        "failed_keywords": sum(1 for insight in blog_insights_list if not insight.ok),
+        "errors": [
+            insight.error
+            for insight in blog_insights_list
+            if insight.error
+        ][:5],
+    }
 
     persistable_candidates: list[dict] = []
     for candidate, blog_insights, ig_count in zip(candidates_to_enrich, blog_insights_list, ig_count_list):
@@ -1006,6 +1141,8 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         )
 
         if (
+            blog_insights.ok
+            and
             blog_insights.sampled_count >= 5
             and blog_insights.recent_ratio < settings.TREND_BLOG_FRESHNESS_MIN_RATIO
             and not is_top_rank_candidate
@@ -1014,7 +1151,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             rejected_keywords.append(keyword)
             continue
 
-        if requires_trend_revalidation(keyword):
+        if requires_trend_revalidation(keyword) and blog_insights.ok:
             if (
                 novelty_lift is None
                 or novelty_lift < settings.TREND_GENERIC_MIN_LIFT_PCT
@@ -1058,6 +1195,16 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     if not persistable_candidates:
         _early_active = get_active_trends() or []
+        if pending_review_candidates:
+            summary["skipped_lifecycle_reason"] = "candidates_pending_review"
+            summary["deactivated_trends"] = invalid_active_trends
+            return _finalize_keyword_lifecycle(
+                summary,
+                db_keywords=db_keywords,
+                alias_lookup=alias_lookup,
+                confirmed_keywords=[],
+                deactivate_stale_keywords=False,
+            )
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
             _deactivate_rejected_active_trends(rejected_keywords, active_trends=_early_active),
@@ -1072,16 +1219,24 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     review_results: dict[str, TrendReviewResult] = {}
     review_payloads_by_keyword: dict[str, TrendReviewPayload] = {}
-    review_candidates = [
-        candidate
-        for candidate in persistable_candidates
-        if float(candidate.get("score", 0.0)) >= settings.TREND_SCORE_THRESHOLD
-    ]
-    if settings.AI_REVIEW_ENABLED and review_candidates:
+    unreviewed_queue_reasons: dict[str, str] = {}
+    review_candidates = list(persistable_candidates)
+    if not settings.AI_REVIEW_ENABLED:
+        for candidate in review_candidates:
+            unreviewed_queue_reasons[normalize_keyword_text(candidate["keyword"])] = (
+                "AI 검토가 비활성화되어 자동 확정하지 않고 Discord 검토로 보냅니다."
+            )
+    elif review_candidates:
         reservation = reserve_automation_ai_call("trend_detection", trigger)
         summary["ai_calls_remaining"] = reservation.remaining_today
         if not reservation.allowed:
             summary["budget_exhausted"] = True
+            reason = (
+                f"AI 자동화 예산을 사용할 수 없어 Discord 검토로 보냅니다."
+                f" ({reservation.reason or 'budget_unavailable'})"
+            )
+            for candidate in review_candidates:
+                unreviewed_queue_reasons[normalize_keyword_text(candidate["keyword"])] = reason
         else:
             review_payloads = await _build_review_payloads(review_candidates)
             review_payloads_by_keyword = {
@@ -1125,6 +1280,15 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     await send_discord_message(
                         f"[⚠️ AI 검토 실패] 트렌드 배치 리뷰 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}"
                     )
+                reason = f"AI 트렌드 검토 실패로 자동 확정하지 않고 Discord 검토로 보냅니다: {exc}"
+                reviewed_keys = {
+                    normalize_keyword_text(keyword)
+                    for keyword in review_results
+                }
+                for candidate in review_candidates:
+                    candidate_key = normalize_keyword_text(candidate["keyword"])
+                    if candidate_key not in reviewed_keys:
+                        unreviewed_queue_reasons[candidate_key] = reason
 
     confirmed_groups: dict[str, dict] = {}
     alias_rows_to_upsert: list[dict] = []
@@ -1136,6 +1300,22 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         cluster_key = normalize_keyword_text(keyword)
         ai_terms = [keyword]
         confidence: float | None = None
+        consecutive_accepts = 0
+        existing_for_review = candidate_existing_trends.get(keyword)
+
+        if review is None:
+            _queue_trend_candidate_for_review(
+                summary,
+                candidate,
+                category=category,
+                trigger=trigger,
+                reason=unreviewed_queue_reasons.get(
+                    cluster_key,
+                    "AI 검토 결과가 없어 자동 확정하지 않고 Discord 검토로 보냅니다.",
+                ),
+                existing_trend=existing_for_review,
+            )
+            continue
 
         if review is not None:
             if review.category != DEFAULT_CATEGORY or category == DEFAULT_CATEGORY:
@@ -1148,7 +1328,6 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             )
 
             # Phase 1: AI 리뷰 결과를 trend_reviews 테이블에 저장
-            existing_for_review = candidate_existing_trends.get(keyword)
             review_trend_id = (
                 existing_for_review.get("id") if existing_for_review else None
             )
@@ -1263,11 +1442,30 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             group["confidence"] = max(group["confidence"] or 0.0, confidence)
         if review is not None:
             group["review"] = review
-        if review is not None and existing_for_review:
+        if review is not None:
             group["consecutive_accepts"] = consecutive_accepts
 
     if not confirmed_groups:
         _early_active = get_active_trends() or []
+        if summary["queued_for_review"] > 0:
+            summary["skipped_lifecycle_reason"] = (
+                summary.get("skipped_lifecycle_reason")
+                or "candidates_queued_for_review"
+            )
+            summary["deactivated_trends"] = _merge_deactivated_trends(
+                invalid_active_trends,
+                _deactivate_rejected_active_trends(
+                    rejected_keywords,
+                    active_trends=_early_active,
+                ),
+            )
+            return _finalize_keyword_lifecycle(
+                summary,
+                db_keywords=db_keywords,
+                alias_lookup=alias_lookup,
+                confirmed_keywords=[],
+                deactivate_stale_keywords=False,
+            )
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
             _deactivate_rejected_active_trends(rejected_keywords, active_trends=_early_active),
@@ -1378,6 +1576,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             summary["watchlist_count"] += 1
         elif existing_status == "watchlist" and status in ("active", "rising"):
             summary["promoted_from_watchlist"].append(display_keyword)
+            new_confirmed_keywords.append(display_keyword)
         if is_new_trend and status != "watchlist":
             new_confirmed_keywords.append(display_keyword)
         trend_plans.append(
@@ -1527,16 +1726,37 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
     summary["confirmed_keywords"] = deduped_confirmed_keywords
     summary["new_confirmed_keywords"] = deduped_new_confirmed_keywords
     final_active_trends = get_active_trends() or []
-    summary["deactivated_trends"] = _merge_deactivated_trends(
+    skip_stale_lifecycle = summary["queued_for_review"] > 0 or bool(pending_review_candidates)
+    if skip_stale_lifecycle:
+        summary["skipped_lifecycle_reason"] = (
+            summary.get("skipped_lifecycle_reason")
+            or (
+                "candidates_queued_for_review"
+                if summary["queued_for_review"] > 0
+                else "candidates_pending_review"
+            )
+        )
+    deactivated_groups = [
         invalid_active_trends,
-        _deactivate_rejected_active_trends(rejected_keywords, active_trends=final_active_trends),
-        _deactivate_stale_trends(deduped_confirmed_keywords, active_trends=final_active_trends),
-    )
+        _deactivate_rejected_active_trends(
+            rejected_keywords,
+            active_trends=final_active_trends,
+        ),
+    ]
+    if not skip_stale_lifecycle:
+        deactivated_groups.append(
+            _deactivate_stale_trends(
+                deduped_confirmed_keywords,
+                active_trends=final_active_trends,
+            )
+        )
+    summary["deactivated_trends"] = _merge_deactivated_trends(*deactivated_groups)
     _finalize_keyword_lifecycle(
         summary,
         db_keywords=db_keywords,
         alias_lookup=alias_lookup,
         confirmed_keywords=deduped_confirmed_keywords,
+        deactivate_stale_keywords=not skip_stale_lifecycle,
     )
 
     logger.info(

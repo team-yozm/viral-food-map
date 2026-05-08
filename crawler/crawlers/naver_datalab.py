@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from config import settings
 import logging
+from typing import Any
 
 _KST = ZoneInfo("Asia/Seoul")
 
@@ -90,7 +91,7 @@ def _calculate_relative_popularity(
 async def get_search_trend_insights(
     keywords: list[str],
     days: int = 7,
-) -> dict[str, dict[str, list[dict]] | dict[str, float] | dict[str, int]]:
+) -> dict[str, Any]:
     """네이버 데이터랩 검색 추이와 배치 간 비교용 상대 인기도를 함께 반환"""
     now = datetime.now(_KST)
     end_date = now.strftime("%Y-%m-%d")
@@ -105,6 +106,14 @@ async def get_search_trend_insights(
 
     results: dict[str, list[dict]] = {}
     popularity_scores: dict[str, float] = {}
+    source_health: dict[str, Any] = {
+        "ok": True,
+        "requested_keywords": len({str(keyword or "").strip() for keyword in keywords if str(keyword or "").strip()}),
+        "returned_keywords": 0,
+        "successful_batches": 0,
+        "failed_batches": 0,
+        "errors": [],
+    }
 
     async with httpx.AsyncClient(timeout=10) as client:
         for batch in _build_batches(keywords, reference_keyword):
@@ -124,6 +133,7 @@ async def get_search_trend_insights(
                     NAVER_DATALAB_URL, headers=headers, json=body
                 )
                 resp.raise_for_status()
+                source_health["successful_batches"] += 1
                 data = resp.json()
                 batch_results = {
                     result["title"]: result.get("data", [])
@@ -144,7 +154,15 @@ async def get_search_trend_insights(
                         reference_points,
                     )
             except Exception as e:
+                source_health["failed_batches"] += 1
+                source_health["errors"].append(str(e)[:240])
                 logger.error(f"네이버 데이터랩 API 오류: {e}")
+
+    source_health["returned_keywords"] = len(results)
+    source_health["ok"] = (
+        source_health["successful_batches"] > 0
+        and source_health["failed_batches"] == 0
+    )
 
     ranked_keywords = sorted(
         (
@@ -164,6 +182,7 @@ async def get_search_trend_insights(
         "series": results,
         "popularity_scores": popularity_scores,
         "popularity_ranks": popularity_ranks,
+        "source_health": source_health,
     }
 
 
@@ -176,6 +195,6 @@ def calculate_acceleration(data_points: list[dict]) -> float:
     prev_avg = sum(p.get("ratio", 0) for p in data_points[-10:-3]) / 7
 
     if prev_avg == 0:
-        return 0.0
+        return 100.0 if recent_avg > 0 else 0.0
 
     return round(((recent_avg - prev_avg) / prev_avg) * 100, 2)

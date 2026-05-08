@@ -1,5 +1,9 @@
 """
-키워드 디스커버리: 네이버 블로그/쇼핑 트렌드에서 신규 음식 키워드 자동 발견
+Deprecated keyword discovery prototype.
+
+Runtime keyword discovery now lives in detector.keyword_discoverer.discover_keywords,
+where AI/Discord review gating and source-health handling are enforced.
+Keep this module only as a legacy reference until it can be removed safely.
 """
 import re
 import httpx

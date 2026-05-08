@@ -20,7 +20,7 @@ from automation_budget import (
     reserve_automation_ai_call,
 )
 from notifications import send_discord_message
-from crawlers.youtube_data import collect_youtube_lead_videos
+from crawlers.youtube_data import collect_youtube_lead_videos_with_health
 from config import settings
 from database import (
     get_ai_review_latest_statuses,
@@ -147,7 +147,7 @@ async def _search_blogs_with_client(
     client: httpx.AsyncClient,
     query: str,
     display: int,
-) -> list[dict]:
+) -> tuple[list[dict], bool, str | None]:
     headers = {
         "X-Naver-Client-Id": settings.NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": settings.NAVER_CLIENT_SECRET,
@@ -159,7 +159,7 @@ async def _search_blogs_with_client(
             headers=headers,
         )
         response.raise_for_status()
-        return response.json().get("items", [])
+        return response.json().get("items", []), True, None
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 429:
             logger.error("Blog search failed for '%s': %s", query, exc)
@@ -173,18 +173,19 @@ async def _search_blogs_with_client(
                 headers=headers,
             )
             response.raise_for_status()
-            return response.json().get("items", [])
+            return response.json().get("items", []), True, None
         except Exception as retry_exc:
             logger.error("Blog search retry failed for '%s': %s", query, retry_exc)
-            return []
+            return [], False, str(retry_exc)[:240]
     except Exception as exc:
         logger.error("Blog search failed for '%s': %s", query, exc)
-        return []
+        return [], False, str(exc)[:240]
 
 
 async def search_blogs(query: str, display: int = 30) -> list[dict]:
     async with httpx.AsyncClient(timeout=15) as client:
-        return await _search_blogs_with_client(client, query, display)
+        items, _, _ = await _search_blogs_with_client(client, query, display)
+        return items
 
 
 def extract_nouns(text: str) -> list[str]:
@@ -518,7 +519,63 @@ def _build_summary() -> dict:
         "alias_matches": 0,
         "canonicalized_keywords": [],
         "budget_exhausted": False,
+        "queued_for_review": 0,
+        "source_health": {},
+        "skipped_lifecycle_reason": None,
     }
+
+
+def _queue_keyword_candidate_for_review(
+    summary: dict,
+    candidate: dict,
+    *,
+    category: str,
+    trigger: str,
+    reason: str,
+) -> None:
+    keyword = clean_display_keyword(candidate.get("noun"))
+    if not keyword:
+        return
+
+    review = TrendReviewResult(
+        verdict="review",
+        confidence=0.0,
+        category=category,
+        reason=reason,
+        model=settings.AI_REVIEW_MODEL if settings.AI_REVIEW_ENABLED else None,
+    )
+    payload = _build_review_queue_payload(
+        candidate,
+        category=category,
+        review=review,
+    )
+    payload["review_unavailable_reason"] = reason
+    queue_result = upsert_ai_review_queue_entry(
+        {
+            "source_job": "keyword_discovery",
+            "item_type": "keyword",
+            "candidate_key": normalize_keyword_text(keyword),
+            "candidate_name": keyword,
+            "category": category,
+            "confidence": review.confidence,
+            "ai_verdict": review.verdict,
+            "reason": reason,
+            "model": review.model,
+            "trigger": trigger,
+            "payload": payload,
+        }
+    )
+    if queue_result is not None:
+        summary["queued_for_review"] += 1
+        summary["ai_reviews_queued"] += 1
+    summary["ai_review_details"].append(
+        _build_ai_detail_line(
+            keyword,
+            confidence=None,
+            category=category,
+            reason=reason,
+        )
+    )
 
 
 def _append_canonicalization(
@@ -558,9 +615,18 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
 
     blog_texts: list[str] = []
     evidence_texts: list[str] = []
+    blog_successes = 0
+    blog_failures = 0
+    blog_errors: list[str] = []
     async with httpx.AsyncClient(timeout=15) as _blog_client:
         for query in meta_queries:
-            items = await _search_blogs_with_client(_blog_client, query, 30)
+            items, ok, error = await _search_blogs_with_client(_blog_client, query, 30)
+            if ok:
+                blog_successes += 1
+            else:
+                blog_failures += 1
+                if error:
+                    blog_errors.append(f"{query}: {error}"[:240])
             for item in items:
                 text = strip_html(item.get("title", "")) + " " + strip_html(
                     item.get("description", "")
@@ -572,6 +638,14 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
             await asyncio.sleep(0.5)
 
     summary["collected_posts"] = len(blog_texts)
+    summary["source_health"]["naver_blog"] = {
+        "ok": blog_failures == 0 or blog_successes > 0,
+        "queries": len(meta_queries),
+        "successful_queries": blog_successes,
+        "failed_queries": blog_failures,
+        "collected_posts": len(blog_texts),
+        "errors": blog_errors[:5],
+    }
 
     lead_candidates: dict[str, dict] = {}
 
@@ -580,7 +654,9 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         for w in ("먹방", "브이로그", "asmr", "줄서", "오픈런", "존맛", "맛집", "핫플")
     }
 
-    youtube_videos = await collect_youtube_lead_videos()
+    youtube_result = await collect_youtube_lead_videos_with_health()
+    youtube_videos = youtube_result.videos
+    summary["source_health"]["youtube"] = youtube_result.source_health
     summary["youtube_videos"] = len(youtube_videos)
     for video in youtube_videos:
         text = " ".join(part for part in (video.title, video.description) if part).strip()
@@ -610,6 +686,8 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
 
     summary["lead_candidates"] = len(lead_candidates)
     if not blog_texts and not lead_candidates:
+        if blog_failures > 0 and blog_successes == 0 and not youtube_result.source_health.get("ok", True):
+            summary["skipped_lifecycle_reason"] = "all_discovery_sources_failed"
         return summary
 
     noun_counter = Counter()
@@ -773,16 +851,28 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         )
 
     candidates.sort(key=lambda item: item["food_score"], reverse=True)
-    candidates = candidates[: settings.DISCOVERY_MAX_NEW_KEYWORDS]
+    candidates = candidates[: settings.AI_DISCOVERY_REVIEW_MAX_CANDIDATES]
     if not candidates:
         return summary
 
     review_results: dict[str, TrendReviewResult] = {}
-    if settings.AI_REVIEW_ENABLED:
+    unreviewed_queue_reasons: dict[str, str] = {}
+    if not settings.AI_REVIEW_ENABLED:
+        for candidate in candidates:
+            unreviewed_queue_reasons[normalize_keyword_text(candidate["noun"])] = (
+                "AI 검토가 비활성화되어 자동 등록하지 않고 Discord 검토로 보냅니다."
+            )
+    elif settings.AI_REVIEW_ENABLED:
         reservation = reserve_automation_ai_call("keyword_discovery", trigger)
         summary["ai_calls_remaining"] = reservation.remaining_today
         if not reservation.allowed:
             summary["budget_exhausted"] = True
+            reason = (
+                f"AI 자동화 예산을 사용할 수 없어 Discord 검토로 보냅니다."
+                f" ({reservation.reason or 'budget_unavailable'})"
+            )
+            for candidate in candidates:
+                unreviewed_queue_reasons[normalize_keyword_text(candidate["noun"])] = reason
         else:
             review_payloads = [
                 DiscoveryReviewPayload(
@@ -811,6 +901,15 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
                 ) = _summarize_ai_grounding(review_results)
             except AIReviewError as exc:
                 summary["ai_calls_used"] += exc.request_count
+                review_results = dict(exc.partial_results)
+                if review_results:
+                    summary["ai_reviewed"] = len(review_results)
+                    (
+                        summary["ai_grounding_status"],
+                        summary["ai_grounding_detail"],
+                        summary["ai_grounding_queries"],
+                        summary["ai_grounding_sources"],
+                    ) = _summarize_ai_grounding(review_results)
                 summary["ai_fallback_details"].append(
                     _build_ai_detail_line(
                         "batch",
@@ -821,6 +920,15 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
                 )
                 logger.warning("AI discovery batch review failed: %s", exc)
                 await send_discord_message(f"[⚠️ AI 검토 실패] 키워드 발견 배치 리뷰 실패 (모델: {settings.AI_REVIEW_MODEL}): {exc}")
+                reason = f"AI 키워드 검토 실패로 자동 등록하지 않고 Discord 검토로 보냅니다: {exc}"
+                reviewed_keys = {
+                    normalize_keyword_text(keyword)
+                    for keyword in review_results
+                }
+                for candidate in candidates:
+                    candidate_key = normalize_keyword_text(candidate["noun"])
+                    if candidate_key not in reviewed_keys:
+                        unreviewed_queue_reasons[candidate_key] = reason
 
     grouped_candidates: dict[str, dict] = {}
     for candidate in candidates:
@@ -830,6 +938,19 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
         cluster_key = normalize_keyword_text(keyword)
         ai_terms = [keyword]
         confidence: float | None = None
+
+        if review is None:
+            _queue_keyword_candidate_for_review(
+                summary,
+                candidate,
+                category=category,
+                trigger=trigger,
+                reason=unreviewed_queue_reasons.get(
+                    cluster_key,
+                    "AI 검토 결과가 없어 자동 등록하지 않고 Discord 검토로 보냅니다.",
+                ),
+            )
+            continue
 
         if review is not None:
             if review.category != DEFAULT_CATEGORY or category == DEFAULT_CATEGORY:
@@ -904,6 +1025,9 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
     alias_rows_to_upsert: list[dict] = []
     seen_inserted_keys: set[str] = set(existing_keys)
 
+    if summary["queued_for_review"] > 0 and not grouped_candidates:
+        summary["skipped_lifecycle_reason"] = "candidates_queued_for_review"
+
     for group in grouped_candidates.values():
         group_candidates = group["candidates"]
         display_keyword = _select_display_keyword(group_candidates)
@@ -944,6 +1068,9 @@ async def discover_keywords(trigger: str = "scheduler") -> dict:
             group_candidates,
             key=lambda item: float(item.get("food_score", 0)),
         )
+        if len(new_keywords) >= settings.DISCOVERY_MAX_NEW_KEYWORDS:
+            continue
+
         new_keywords.append(
             {
                 "keyword": display_keyword,

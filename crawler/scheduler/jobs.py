@@ -108,6 +108,9 @@ TREND_LABELS = {
     "ai_review_details": "AI 보류 상세",
     "ai_fallback_details": "AI fallback 상세",
     "generated_descriptions": "AI 설명 생성",
+    "queued_for_review": "Discord 검토 대기",
+    "source_health": "소스 상태",
+    "skipped_lifecycle_reason": "생명주기 스킵 사유",
 }
 
 TREND_IMAGE_LABELS = {
@@ -142,6 +145,9 @@ DISCOVERY_LABELS = {
     "ai_rejected_details": "AI 거절 상세",
     "ai_review_details": "AI 보류 상세",
     "ai_fallback_details": "AI fallback 상세",
+    "queued_for_review": "Discord 검토 대기",
+    "source_health": "소스 상태",
+    "skipped_lifecycle_reason": "처리 스킵 사유",
 }
 
 STORE_UPDATE_LABELS = {

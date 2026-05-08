@@ -20,6 +20,8 @@ class BlogSearchInsights:
     sampled_count: int
     recent_count: int
     recent_ratio: float
+    ok: bool = True
+    error: str | None = None
 
 
 def _build_headers() -> dict[str, str]:
@@ -96,6 +98,8 @@ async def get_blog_search_insights(
             sampled_count=0,
             recent_count=0,
             recent_ratio=0.0,
+            ok=False,
+            error=str(exc)[:240],
         )
 
     items = payload.get("items", [])

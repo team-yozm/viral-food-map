@@ -40,6 +40,12 @@ class YouTubeLeadVideo:
     score: float
 
 
+@dataclass(slots=True)
+class YouTubeCollectionResult:
+    videos: list[YouTubeLeadVideo]
+    source_health: dict[str, Any]
+
+
 def _safe_int(value: Any) -> int:
     try:
         return int(value or 0)
@@ -166,13 +172,23 @@ async def _load_video_details(
     return videos
 
 
-async def collect_youtube_lead_videos() -> list[YouTubeLeadVideo]:
+async def collect_youtube_lead_videos_with_health() -> YouTubeCollectionResult:
+    source_health: dict[str, Any] = {
+        "ok": True,
+        "enabled": settings.YOUTUBE_DISCOVERY_ENABLED,
+        "queries": 0,
+        "successful_queries": 0,
+        "failed_queries": 0,
+        "videos": 0,
+        "errors": [],
+    }
     if not settings.YOUTUBE_DISCOVERY_ENABLED:
-        return []
+        return YouTubeCollectionResult(videos=[], source_health=source_health)
 
     queries = _build_queries()
+    source_health["queries"] = len(queries)
     if not queries:
-        return []
+        return YouTubeCollectionResult(videos=[], source_health=source_health)
 
     published_after = _published_after()
     video_ids_by_query: dict[str, list[str]] = {}
@@ -180,11 +196,17 @@ async def collect_youtube_lead_videos() -> list[YouTubeLeadVideo]:
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             for query in queries:
-                video_ids_by_query[query] = await _search_videos_for_query(
-                    client,
-                    query=query,
-                    published_after=published_after,
-                )
+                try:
+                    video_ids_by_query[query] = await _search_videos_for_query(
+                        client,
+                        query=query,
+                        published_after=published_after,
+                    )
+                    source_health["successful_queries"] += 1
+                except Exception as exc:
+                    source_health["failed_queries"] += 1
+                    source_health["errors"].append(f"{query}: {exc}"[:240])
+                    logger.warning("YouTube discovery query failed for '%s': %s", query, exc)
 
             deduped_ids: list[str] = []
             seen_ids: set[str] = set()
@@ -199,11 +221,23 @@ async def collect_youtube_lead_videos() -> list[YouTubeLeadVideo]:
     except httpx.HTTPStatusError as exc:
         logger.warning("YouTube discovery request failed with status %s", exc.response.status_code)
         await send_discord_message(f"[⚠️ YouTube 실패] 요청 오류 (status {exc.response.status_code})")
-        return []
+        source_health["ok"] = False
+        source_health["failed_queries"] = max(
+            int(source_health["failed_queries"]),
+            int(source_health["queries"]),
+        )
+        source_health["errors"].append(f"status {exc.response.status_code}")
+        return YouTubeCollectionResult(videos=[], source_health=source_health)
     except Exception as exc:
         logger.warning("YouTube discovery failed: %s", exc)
         await send_discord_message(f"[⚠️ YouTube 실패] {exc}")
-        return []
+        source_health["ok"] = False
+        source_health["failed_queries"] = max(
+            int(source_health["failed_queries"]),
+            int(source_health["queries"]),
+        )
+        source_health["errors"].append(str(exc)[:240])
+        return YouTubeCollectionResult(videos=[], source_health=source_health)
 
     query_lookup = {
         video_id: query
@@ -215,4 +249,14 @@ async def collect_youtube_lead_videos() -> list[YouTubeLeadVideo]:
         video.query = query_lookup.get(video.video_id, "")
 
     videos.sort(key=lambda item: item.score, reverse=True)
-    return videos[: settings.YOUTUBE_DISCOVERY_MAX_VIDEOS]
+    videos = videos[: settings.YOUTUBE_DISCOVERY_MAX_VIDEOS]
+    source_health["videos"] = len(videos)
+    source_health["ok"] = (
+        int(source_health["failed_queries"]) == 0
+        or int(source_health["successful_queries"]) > 0
+    )
+    return YouTubeCollectionResult(videos=videos, source_health=source_health)
+
+
+async def collect_youtube_lead_videos() -> list[YouTubeLeadVideo]:
+    return (await collect_youtube_lead_videos_with_health()).videos
