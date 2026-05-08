@@ -10,9 +10,11 @@ import httpx
 
 from config import settings
 from scheduler.jobs import (
+    get_new_products_refresh_status,
     get_scheduler_description,
     get_trend_detection_status,
     get_trend_image_refresh_status,
+    queue_new_products_refresh_job,
     queue_trend_detection_job,
     queue_trend_image_refresh_job,
     run_instagram_feed_job,
@@ -40,6 +42,11 @@ COMMAND_ALIASES = {
     "이미지": "images",
     "이미지갱신": "images",
     "images": "images",
+    "신상": "new_products",
+    "신상수집": "new_products",
+    "신상품": "new_products",
+    "newproducts": "new_products",
+    "new-products": "new_products",
     "인스타": "instagram",
     "인스타게시": "instagram",
     "instagram": "instagram",
@@ -117,6 +124,11 @@ def _format_status_message() -> str:
         if settings.INSTAGRAM_POSTING_ENABLED
         else "스케줄 비활성화"
     )
+    new_products_status = (
+        f"활성화, {schedule['new_products_interval_hours']}시간 간격"
+        if settings.NEW_PRODUCTS_ENABLED
+        else "스케줄 비활성화"
+    )
 
     return "\n".join(
         [
@@ -125,9 +137,11 @@ def _format_status_message() -> str:
             f"- 시간대: {schedule['timezone']}",
             f"- 등락 기준 초기화: {schedule['rank_baseline_reset']}",
             f"- 트렌드 감지 스케줄: {schedule['trend_detection']}",
+            f"- 신상 수집: {new_products_status}",
             f"- 인스타 피드: {instagram_status}",
             _format_job_line("크롤링", get_trend_detection_status()),
             _format_job_line("사진 갱신", get_trend_image_refresh_status()),
+            _format_job_line("신상 수집", get_new_products_refresh_status()),
         ]
     )
 
@@ -225,6 +239,10 @@ async def process_application_command(interaction: dict[str, Any]) -> str:
         result = queue_trend_image_refresh_job(trigger="discord")
         return _format_queue_message("사진 갱신", result)
 
+    if command == "new_products":
+        result = queue_new_products_refresh_job(trigger="discord")
+        return _format_queue_message("신상 수집", result)
+
     if command == "instagram":
         dry_run = _get_bool_option(options, "미리보기", "dry_run", "dry-run")
         force_retry = _get_bool_option(options, "강제재시도", "force_retry", "force-retry")
@@ -238,7 +256,7 @@ async def process_application_command(interaction: dict[str, Any]) -> str:
     return (
         "지원하지 않는 명령입니다. "
         "`/요즘뭐먹 상태`, `/요즘뭐먹 크롤링`, `/요즘뭐먹 사진갱신`, "
-        "`/요즘뭐먹 인스타게시` 중 하나를 사용해 주세요."
+        "`/요즘뭐먹 신상수집`, `/요즘뭐먹 인스타게시` 중 하나를 사용해 주세요."
     )
 
 

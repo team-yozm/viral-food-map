@@ -32,9 +32,11 @@ new_products_lock = threading.Lock()
 _trend_detection_queue_lock = threading.Lock()
 _trend_image_refresh_queue_lock = threading.Lock()
 _keyword_discovery_queue_lock = threading.Lock()
+_new_products_queue_lock = threading.Lock()
 trend_detection_task: asyncio.Task | None = None
 trend_image_refresh_task: asyncio.Task | None = None
 keyword_discovery_thread: threading.Thread | None = None
+new_products_task: asyncio.Task | None = None
 trend_detection_status: dict[str, object | None] = {
     "state": "idle",
     "last_trigger": None,
@@ -225,6 +227,37 @@ def _build_job_message(
 
     if error is not None:
         lines.append(f"오류: {error.__class__.__name__}: {error}")
+
+    return "\n".join(lines)
+
+
+def _truncate_alert_text(value: object, limit: int = 320) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit].rstrip()}..."
+
+
+def _build_new_products_failed_sources_message(
+    trigger: str,
+    failed_sources: list[dict[str, object]],
+) -> str:
+    lines = [
+        "[신상 수집 소스 실패]",
+        f"트리거: {trigger}",
+        f"실패 소스: {len(failed_sources)}건",
+    ]
+
+    for source in failed_sources[:MAX_DETAIL_LINES]:
+        title = _truncate_alert_text(source.get("title"), 80) or "알 수 없는 소스"
+        source_key = _truncate_alert_text(source.get("source_key"), 80)
+        error = _truncate_alert_text(source.get("error"))
+        label = f"{title} ({source_key})" if source_key and source_key != title else title
+        lines.append(f"- {label}: {error or '알 수 없는 오류'}")
+
+    remaining = len(failed_sources) - MAX_DETAIL_LINES
+    if remaining > 0:
+        lines.append(f"- 외 {remaining}건")
 
     return "\n".join(lines)
 
@@ -448,6 +481,12 @@ def _mark_new_products_running(trigger: str) -> None:
     new_products_status["last_error"] = None
 
 
+def _mark_new_products_queued(trigger: str) -> None:
+    new_products_status["state"] = "queued"
+    new_products_status["last_trigger"] = trigger
+    new_products_status["last_error"] = None
+
+
 def _mark_new_products_finished(summary: dict) -> None:
     new_products_status["state"] = "completed"
     new_products_status["last_finished_at"] = _utc_now_iso()
@@ -464,9 +503,25 @@ def _mark_new_products_failed(error: str) -> None:
 def get_new_products_refresh_status() -> dict[str, object | None]:
     status = dict(new_products_status)
     status["running"] = bool(
-        new_products_lock.locked() or status.get("state") == "running"
+        new_products_lock.locked()
+        or status.get("state") in {"queued", "running"}
+        or (new_products_task and not new_products_task.done())
     )
     return status
+
+
+def _handle_new_products_task_result(task: asyncio.Task) -> None:
+    global new_products_task
+
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.info("%s detached task cancelled", NEW_PRODUCTS_JOB_NAME)
+    except Exception:
+        logger.exception("%s detached task failed", NEW_PRODUCTS_JOB_NAME)
+    finally:
+        if new_products_task is task:
+            new_products_task = None
 
 
 def _run_keyword_discovery_thread(trigger: str) -> None:
@@ -563,6 +618,33 @@ def queue_trend_image_refresh_job(trigger: str = "manual") -> dict[str, object]:
             "status": "queued",
             "message": "Trend image refresh queued.",
             "job": get_trend_image_refresh_status(),
+        }
+
+
+def queue_new_products_refresh_job(trigger: str = "manual") -> dict[str, object]:
+    global new_products_task
+
+    with _new_products_queue_lock:
+        if new_products_lock.locked() or (
+            new_products_task and not new_products_task.done()
+        ):
+            return {
+                "accepted": False,
+                "status": "running",
+                "message": "New products refresh is already running.",
+                "job": get_new_products_refresh_status(),
+            }
+
+        _mark_new_products_queued(trigger)
+        new_products_task = asyncio.create_task(
+            run_new_products_refresh_job(trigger=trigger)
+        )
+        new_products_task.add_done_callback(_handle_new_products_task_result)
+        return {
+            "accepted": True,
+            "status": "queued",
+            "message": "New products refresh queued.",
+            "job": get_new_products_refresh_status(),
         }
 
 
@@ -832,7 +914,12 @@ async def run_new_products_refresh_job(trigger: str = "scheduler") -> dict:
 
     try:
         summary = await refresh_new_products(trigger=trigger)
-        if summary.get("visible_products", 0) > 0:
+        failed_sources = summary.get("failed_sources") or []
+        if failed_sources:
+            await send_discord_message(
+                _build_new_products_failed_sources_message(trigger, failed_sources)
+            )
+        if trigger == "discord" or summary.get("visible_products", 0) > 0:
             await send_discord_message(
                 _build_job_message(job_name, trigger, "완료", summary=summary)
             )

@@ -46,6 +46,11 @@ COMMANDS: list[dict[str, Any]] = [
                 "type": OPTION_TYPE_SUB_COMMAND,
             },
             {
+                "name": "신상수집",
+                "description": "편의점/프랜차이즈 공식 신상품 소스를 전체 수집합니다.",
+                "type": OPTION_TYPE_SUB_COMMAND,
+            },
+            {
                 "name": "인스타게시",
                 "description": "오늘의 인스타 피드 게시 작업을 실행합니다.",
                 "type": OPTION_TYPE_SUB_COMMAND,

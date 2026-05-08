@@ -8,6 +8,7 @@ from auth import AdminUser, require_admin_user
 from crawlers.new_product_discovery import discover_new_product_source
 from crawlers.new_products import preview_new_products_source, refresh_new_products_for_source
 from database import get_new_product_source_by_source_key, upsert_new_product_source
+from notifications import send_discord_message
 from scheduler.jobs import (
     get_new_products_refresh_status,
     run_new_products_refresh_job,
@@ -88,6 +89,23 @@ async def auto_register_new_product_source(
             "Auto-register crawl failed for %s (%s)",
             discovered.source.source_key,
             discovered.source.brand,
+        )
+        error_text = str(exc).strip()
+        if len(error_text) > 320:
+            error_text = f"{error_text[:320].rstrip()}..."
+        await send_discord_message(
+            "\n".join(
+                [
+                    "[신상 수집 소스 실패]",
+                    "트리거: manual-auto-register",
+                    (
+                        "소스: "
+                        f"{discovered.source.title} "
+                        f"({discovered.source.source_key})"
+                    ),
+                    f"오류: {exc.__class__.__name__}: {error_text or '알 수 없는 오류'}",
+                ]
+            )
         )
         return {
             "message": (

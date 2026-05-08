@@ -218,7 +218,7 @@ export interface NewProductsRefreshSummary {
 }
 
 export interface NewProductsRefreshStatus {
-  state: "idle" | "running" | "completed" | "failed";
+  state: "idle" | "queued" | "running" | "completed" | "failed";
   last_trigger: string | null;
   last_started_at: string | null;
   last_finished_at: string | null;
