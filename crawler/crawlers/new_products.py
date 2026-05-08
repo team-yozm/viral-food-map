@@ -165,8 +165,10 @@ def _parse_month_day_range(value: str | None) -> tuple[str | None, str | None]:
         return None, None
 
     match = re.search(
-        r"(?P<start_month>\d{1,2})\s*/\s*(?P<start_day>\d{1,2})\s*~\s*"
-        r"(?P<end_month>\d{1,2})\s*/\s*(?P<end_day>\d{1,2})",
+        r"(?P<start_month>\d{1,2})\s*/\s*(?P<start_day>\d{1,2})"
+        r"(?:\s*\([^)]*\))?\s*~\s*"
+        r"(?P<end_month>\d{1,2})\s*/\s*(?P<end_day>\d{1,2})"
+        r"(?:\s*\([^)]*\))?",
         value,
     )
     if not match:
@@ -316,6 +318,24 @@ def _extract_date_range_values(
     return available_from, available_to
 
 
+def _parse_date_from_asset_path(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    for pattern in (
+        r"(?<!\d)(20\d{2})[._/-](\d{1,2})[._/-](\d{1,2})(?!\d)",
+        r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)",
+    ):
+        match = re.search(pattern, value)
+        if not match:
+            continue
+
+        year, month, day = match.groups()
+        return _parse_dash_date(f"{year}-{int(month):02d}-{int(day):02d}")
+
+    return None
+
+
 def _extract_detail_published_at(detail_soup: BeautifulSoup | Any) -> str | None:
     if not detail_soup:
         return None
@@ -357,6 +377,21 @@ def _extract_detail_published_at(detail_soup: BeautifulSoup | Any) -> str | None
             published_at = _parse_date_value(
                 date_text,
                 "dot" if "." in date_text else "dash",
+            )
+            if published_at:
+                return published_at
+
+    for image in detail_soup.find_all("img"):
+        for attr_name in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy",
+            "data-url",
+        ):
+            attr_value = image.get(attr_name)
+            published_at = _parse_date_from_asset_path(
+                str(attr_value) if attr_value else None
             )
             if published_at:
                 return published_at
