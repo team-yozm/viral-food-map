@@ -71,6 +71,16 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         parser_type="emart24_fresh_food",
         parser_config={
             "max_pages": 3,
+            "category_max_pages": 1,
+            "max_items_per_category": 10,
+            "categories": (
+                {"code": "41", "label": "도시락"},
+                {"code": "42", "label": "김밥"},
+                {"code": "43", "label": "햄버거"},
+                {"code": "45", "label": "주먹밥"},
+                {"code": "46", "label": "샌드위치"},
+                {"code": "47", "label": "즉석식"},
+            ),
         },
     ),
     NewProductSourceDefinition(
@@ -84,7 +94,14 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         parser_type="cu_fresh_food",
         parser_config={
             "max_pages": 2,
+            "category_max_pages": 1,
+            "max_items_per_category": 30,
             "main_category": "10",
+            "categories": (
+                {"code": "1", "label": "도시락"},
+                {"code": "2", "label": "김밥/주먹밥"},
+                {"code": "3", "label": "샌드위치/햄버거"},
+            ),
         },
     ),
     NewProductSourceDefinition(
@@ -99,6 +116,12 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         parser_config={
             "max_pages": 2,
             "page_size": 20,
+            "categories": (
+                {"code": "productLunch", "label": "도시락"},
+                {"code": "productRice", "label": "김밥/주먹밥"},
+                {"code": "productBurger", "label": "샌드위치/햄버거"},
+                {"code": "productSnack", "label": "간편식"},
+            ),
         },
     ),
     NewProductSourceDefinition(
@@ -112,6 +135,11 @@ SOURCE_DEFINITIONS: tuple[NewProductSourceDefinition, ...] = (
         parser_type="seven_eleven_fresh_food",
         parser_config={
             "max_items": 40,
+            "categories": (
+                {"code": "mini", "label": "도시락/조리면"},
+                {"code": "noodle", "label": "김밥/주먹밥"},
+                {"code": "d_group", "label": "샌드위치/햄버거"},
+            ),
         },
     ),
     NewProductSourceDefinition(

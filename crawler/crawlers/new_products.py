@@ -745,73 +745,168 @@ def _open_ended_datetime() -> str:
     return datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc).isoformat()
 
 
+def _get_configured_categories(
+    config: dict[str, Any],
+    fallback: tuple[dict[str, str], ...],
+) -> list[dict[str, str]]:
+    raw_categories = config.get("categories") or fallback
+    categories: list[dict[str, str]] = []
+
+    for raw_category in raw_categories:
+        if not isinstance(raw_category, dict):
+            continue
+
+        label = _normalize_text(str(raw_category.get("label") or ""))
+        if not label:
+            continue
+
+        categories.append(
+            {
+                "code": str(raw_category.get("code") or ""),
+                "label": label,
+            }
+        )
+
+    return categories or list(fallback)
+
+
+def _infer_convenience_category_from_name(name: str, fallback: str) -> str:
+    normalized = _normalize_text(name)
+    if any(keyword in normalized for keyword in ("김밥", "삼각", "주먹밥", "유부")):
+        return "김밥/주먹밥"
+    if any(keyword in normalized for keyword in ("샌드", "버거", "햄버거", "토스트")):
+        return "샌드위치/햄버거"
+    if any(keyword in normalized for keyword in ("도시락", "정식", "비빔밥", "덮밥", "조리면")):
+        return "도시락/조리면"
+    if any(
+        keyword in normalized
+        for keyword in (
+            "파스타",
+            "스파게티",
+            "리조또",
+            "샐러드",
+            "닭강정",
+            "치킨",
+            "돈까스",
+            "튀김",
+            "스틱",
+            "핫바",
+        )
+    ):
+        return "간편식"
+
+    return fallback
+
+
 async def _crawl_emart24_fresh_food(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
 ) -> list[ParsedNewProduct]:
     products: list[ParsedNewProduct] = []
-    max_pages = int(_get_parser_config(source).get("max_pages", 3))
+    seen_external_ids: set[str] = set()
+    config = _get_parser_config(source)
+    category_max_pages = int(config.get("category_max_pages") or config.get("max_pages", 3))
+    max_items_per_category = int(config.get("max_items_per_category") or 0)
+    categories = _get_configured_categories(
+        config,
+        (
+            {"code": "41", "label": "도시락"},
+            {"code": "42", "label": "김밥"},
+            {"code": "43", "label": "햄버거"},
+            {"code": "45", "label": "주먹밥"},
+            {"code": "46", "label": "샌드위치"},
+            {"code": "47", "label": "즉석식"},
+        ),
+    )
 
-    for page in range(1, max_pages + 1):
-        params = {"page": page}
-        html = await _fetch_text(client, f"{source.crawl_url}?{urlencode(params)}")
-        soup = BeautifulSoup(html, "html.parser")
-        items = soup.select(".itemWrap")
-        if not items:
-            break
+    for category in categories:
+        category_code = category["code"]
+        category_label = category["label"]
+        added_in_category = 0
 
-        added_in_page = 0
-        for item in items:
-            badge = item.select_one(".itemTit span")
-            badge_text = badge.get_text(" ", strip=True) if badge else ""
-            if "NEW" not in badge_text.upper():
-                continue
+        for page in range(1, category_max_pages + 1):
+            params = {
+                "search": "",
+                "page": page,
+                "category_seq": "",
+                "base_category_seq": category_code,
+                "align": "",
+            }
+            listing_url = f"{source.crawl_url}?{urlencode(params)}"
+            html = await _fetch_text(client, listing_url)
+            soup = BeautifulSoup(html, "html.parser")
+            items = soup.select(".itemWrap")
+            if not items:
+                break
 
-            name_element = item.select_one(".itemtitle a")
-            price_element = item.select_one(".price")
-            image_element = item.select_one(".itemSpImg img")
+            added_in_page = 0
+            for item in items:
+                badge = item.select_one(".itemTit span")
+                badge_text = badge.get_text(" ", strip=True) if badge else ""
+                if "NEW" not in badge_text.upper():
+                    continue
 
-            name = name_element.get_text(" ", strip=True) if name_element else ""
-            if not name:
-                continue
+                name_element = item.select_one(".itemtitle a")
+                price_element = item.select_one(".price")
+                image_element = item.select_one(".itemSpImg img")
 
-            image_url = _build_absolute_url(
-                source.site_url,
-                image_element.get("src") if image_element else None,
-            )
-            external_id = (
-                (image_url or "").rstrip("/").rsplit("/", 1)[-1]
-                or f"emart24::{page}::{name}"
-            )
-            price_text = price_element.get_text(" ", strip=True) if price_element else None
+                name = name_element.get_text(" ", strip=True) if name_element else ""
+                if not name:
+                    continue
 
-            products.append(
-                ParsedNewProduct(
-                    external_id=external_id,
-                    name=name,
-                    brand=source.brand,
-                    source_type=source.source_type,
-                    channel=source.channel,
-                    category="Fresh Food",
-                    summary=f"{source.title} 신상품{f' · {price_text}' if price_text else ''}",
-                    image_url=image_url,
-                    product_url=source.site_url,
-                    published_at=None,
-                    available_from=None,
-                    available_to=None,
-                    is_limited=False,
-                    is_food=True,
-                    raw_payload={
-                        "page": page,
-                        "badge": badge_text,
-                        "price": price_text,
-                    },
+                image_url = _build_absolute_url(
+                    source.site_url,
+                    image_element.get("src") if image_element else None,
                 )
-            )
-            added_in_page += 1
+                external_id = (
+                    (image_url or "").rstrip("/").rsplit("/", 1)[-1]
+                    or f"emart24::{page}::{name}"
+                )
+                if external_id in seen_external_ids:
+                    continue
+                seen_external_ids.add(external_id)
 
-        if added_in_page == 0:
-            break
+                price_text = price_element.get_text(" ", strip=True) if price_element else None
+
+                products.append(
+                    ParsedNewProduct(
+                        external_id=external_id,
+                        name=name,
+                        brand=source.brand,
+                        source_type=source.source_type,
+                        channel=source.channel,
+                        category=category_label,
+                        summary=(
+                            f"{source.title} {category_label}"
+                            f"{f' · {price_text}' if price_text else ''}"
+                        ),
+                        image_url=image_url,
+                        product_url=listing_url,
+                        published_at=None,
+                        available_from=None,
+                        available_to=None,
+                        is_limited=False,
+                        is_food=True,
+                        raw_payload={
+                            "page": page,
+                            "badge": badge_text,
+                            "price": price_text,
+                            "category_code": category_code,
+                            "category": category_label,
+                        },
+                    )
+                )
+                added_in_page += 1
+                added_in_category += 1
+
+                if max_items_per_category and added_in_category >= max_items_per_category:
+                    break
+
+            if max_items_per_category and added_in_category >= max_items_per_category:
+                break
+
+            if added_in_page == 0:
+                break
 
     return products
 
@@ -823,104 +918,137 @@ async def _crawl_cu_fresh_food(
     products: list[ParsedNewProduct] = []
     seen_external_ids: set[str] = set()
     config = _get_parser_config(source)
-    max_pages = int(config.get("max_pages", 2))
+    max_pages = int(config.get("category_max_pages") or config.get("max_pages", 2))
+    max_items_per_category = int(config.get("max_items_per_category") or 0)
     main_category = str(config.get("main_category") or "10")
+    categories = _get_configured_categories(
+        config,
+        (
+            {"code": "1", "label": "도시락"},
+            {"code": "2", "label": "김밥/주먹밥"},
+            {"code": "3", "label": "샌드위치/햄버거"},
+        ),
+    )
 
-    for page in range(1, max_pages + 1):
-        form_data = {
-            "pageIndex": str(page),
-            "searchMainCategory": main_category,
-            "searchSubCategory": "",
-            "listType": "0",
-            "searchCondition": "setC",
-            "searchUseYn": "",
-            "gdIdx": "0",
-            "codeParent": main_category,
-            "user_id": "",
-            "prodS": "",
-            "search1": "",
-            "search2": "",
-            "searchKeyword": "",
-        }
-        response = await client.post(
-            source.crawl_url,
-            data=form_data,
-            headers={
-                **REQUEST_HEADERS,
-                "Referer": source.site_url,
-            },
-        )
-        response.raise_for_status()
+    for category in categories:
+        category_code = category["code"]
+        category_label = category["label"]
+        added_in_category = 0
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        items = soup.select("li.prod_list")
-        if not items:
-            break
-
-        added_in_page = 0
-        for item in items:
-            name_element = item.select_one(".name")
-            price_element = item.select_one(".price")
-            image_element = item.select_one("img")
-            product_link_element = item.select_one(".prod_img")
-
-            name = _normalize_text(name_element.get_text(" ", strip=True) if name_element else "")
-            if not name or not _looks_like_food(name):
-                continue
-
-            image_url = _build_absolute_url(
-                source.site_url,
-                image_element.get("src") if image_element else None,
+        for page in range(1, max_pages + 1):
+            form_data = {
+                "pageIndex": str(page),
+                "searchMainCategory": main_category,
+                "searchSubCategory": category_code,
+                "listType": "0",
+                "searchCondition": "setC",
+                "searchUseYn": "",
+                "gdIdx": "0",
+                "codeParent": main_category,
+                "user_id": "",
+                "prodS": "",
+                "search1": "",
+                "search2": "",
+                "searchKeyword": "",
+            }
+            response = await client.post(
+                source.crawl_url,
+                data=form_data,
+                headers={
+                    **REQUEST_HEADERS,
+                    "Referer": source.site_url,
+                },
             )
-            onclick = product_link_element.get("onclick", "") if product_link_element else ""
-            product_id_match = re.search(r"view\((\d+)\)", onclick)
-            product_id = product_id_match.group(1) if product_id_match else None
-            external_id = (
-                f"cu::{product_id}"
-                if product_id
-                else _build_stable_external_id(
-                    source=source,
-                    detail_url=None,
-                    image_url=image_url,
-                    name=name,
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            items = soup.select("li.prod_list")
+            if not items:
+                break
+
+            added_in_page = 0
+            for item in items:
+                new_badge_element = item.select_one(".tag .new")
+                if not new_badge_element:
+                    continue
+
+                name_element = item.select_one(".name")
+                price_element = item.select_one(".price")
+                image_element = item.select_one("img")
+                product_link_element = item.select_one(".prod_img")
+
+                name = _normalize_text(
+                    name_element.get_text(" ", strip=True) if name_element else ""
                 )
-            )
-            if external_id in seen_external_ids:
-                continue
-            seen_external_ids.add(external_id)
+                if not name or not _looks_like_food(name):
+                    continue
 
-            price_text = (
-                _normalize_text(price_element.get_text(" ", strip=True))
-                if price_element
-                else None
-            )
-            products.append(
-                ParsedNewProduct(
-                    external_id=external_id,
-                    name=name,
-                    brand=source.brand,
-                    source_type=source.source_type,
-                    channel=source.channel,
-                    category="Fresh Food",
-                    summary=f"{source.title} 신상품{f' · {price_text}' if price_text else ''}",
-                    image_url=image_url,
-                    product_url=source.site_url,
-                    published_at=None,
-                    available_from=None,
-                    available_to=None,
-                    is_limited=False,
-                    is_food=True,
-                    raw_payload={
-                        "page": page,
-                        "product_id": product_id,
-                        "price": price_text,
-                    },
+                image_url = _build_absolute_url(
+                    source.site_url,
+                    image_element.get("src") if image_element else None,
                 )
-            )
-            added_in_page += 1
+                onclick = product_link_element.get("onclick", "") if product_link_element else ""
+                product_id_match = re.search(r"view\((\d+)\)", onclick)
+                product_id = product_id_match.group(1) if product_id_match else None
+                external_id = (
+                    f"cu::{product_id}"
+                    if product_id
+                    else _build_stable_external_id(
+                        source=source,
+                        detail_url=None,
+                        image_url=image_url,
+                        name=name,
+                    )
+                )
+                if external_id in seen_external_ids:
+                    continue
+                seen_external_ids.add(external_id)
 
-        if added_in_page == 0:
-            break
+                price_text = (
+                    _normalize_text(price_element.get_text(" ", strip=True))
+                    if price_element
+                    else None
+                )
+                products.append(
+                    ParsedNewProduct(
+                        external_id=external_id,
+                        name=name,
+                        brand=source.brand,
+                        source_type=source.source_type,
+                        channel=source.channel,
+                        category=category_label,
+                        summary=(
+                            f"{source.title} {category_label}"
+                            f"{f' · {price_text}' if price_text else ''}"
+                        ),
+                        image_url=image_url,
+                        product_url=source.site_url,
+                        published_at=None,
+                        available_from=None,
+                        available_to=None,
+                        is_limited=False,
+                        is_food=True,
+                        raw_payload={
+                            "page": page,
+                            "badge": "NEW",
+                            "product_id": product_id,
+                            "price": price_text,
+                            "category_code": category_code,
+                            "category": category_label,
+                        },
+                    )
+                )
+                added_in_page += 1
+                added_in_category += 1
+
+                if max_items_per_category and added_in_category >= max_items_per_category:
+                    break
+
+            if max_items_per_category and added_in_category >= max_items_per_category:
+                break
+
+            if added_in_page == 0:
+                break
 
     return products
 
@@ -934,21 +1062,148 @@ async def _crawl_gs25_fresh_food(
     config = _get_parser_config(source)
     max_pages = int(config.get("max_pages", 2))
     page_size = int(config.get("page_size", 20))
+    categories = _get_configured_categories(
+        config,
+        (
+            {"code": "productLunch", "label": "도시락"},
+            {"code": "productRice", "label": "김밥/주먹밥"},
+            {"code": "productBurger", "label": "샌드위치/햄버거"},
+            {"code": "productSnack", "label": "간편식"},
+        ),
+    )
 
-    for page in range(1, max_pages + 1):
-        params = {
-            "pageNum": str(page),
-            "pageSize": str(page_size),
-            "searchWord": "",
-            "searchHPrice": "",
-            "searchTPrice": "",
-            "searchProduct": "productALL",
-            "searchSort": "searchNewDateSort",
-            "searchSrvFoodCK": "FreshFoodKey",
-        }
-        response = await client.get(
+    for category in categories:
+        category_code = category["code"]
+        category_label = category["label"]
+
+        for page in range(1, max_pages + 1):
+            params = {
+                "pageNum": str(page),
+                "pageSize": str(page_size),
+                "searchWord": "",
+                "searchHPrice": "",
+                "searchTPrice": "",
+                "searchProduct": category_code,
+                "searchSort": "searchNewDateSort",
+                "searchSrvFoodCK": "FreshFoodKey",
+            }
+            response = await client.get(
+                source.crawl_url,
+                params=params,
+                headers={
+                    **REQUEST_HEADERS,
+                    "Referer": source.site_url,
+                },
+            )
+            response.raise_for_status()
+
+            payload = json.loads(response.text)
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            items = payload.get("SubPageListData") if isinstance(payload, dict) else None
+            if not isinstance(items, list) or not items:
+                break
+
+            added_in_page = 0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("isNew") or "").upper() != "T":
+                    continue
+
+                name = _normalize_text(str(item.get("goodsNm") or ""))
+                if not name or not _looks_like_food(name):
+                    continue
+
+                code = _normalize_text(str(item.get("code") or ""))
+                image_url = _build_absolute_url(source.site_url, item.get("attFileNm"))
+                external_id = (
+                    f"gs25::{code}"
+                    if code
+                    else _build_stable_external_id(
+                        source=source,
+                        detail_url=None,
+                        image_url=image_url,
+                        name=name,
+                    )
+                )
+                if external_id in seen_external_ids:
+                    continue
+                seen_external_ids.add(external_id)
+
+                price_value = item.get("price")
+                price_text = (
+                    f"{int(price_value):,}원"
+                    if isinstance(price_value, (int, float))
+                    else None
+                )
+                products.append(
+                    ParsedNewProduct(
+                        external_id=external_id,
+                        name=name,
+                        brand=source.brand,
+                        source_type=source.source_type,
+                        channel=source.channel,
+                        category=category_label,
+                        summary=(
+                            f"{source.title} {category_label}"
+                            f"{f' · {price_text}' if price_text else ''}"
+                        ),
+                        image_url=image_url,
+                        product_url=source.site_url,
+                        published_at=None,
+                        available_from=None,
+                        available_to=None,
+                        is_limited=False,
+                        is_food=True,
+                        raw_payload={
+                            "page": page,
+                            "code": code or None,
+                            "price": price_value,
+                            "is_new": item.get("isNew"),
+                            "category_code": category_code,
+                            "category": category_label,
+                            "class_cd": item.get("classCd"),
+                            "line_cd": item.get("lineCd"),
+                            "subclass_cd": item.get("subclassCd"),
+                        },
+                    )
+                )
+                added_in_page += 1
+
+            if added_in_page == 0:
+                break
+
+    return products
+
+
+async def _crawl_seven_eleven_fresh_food(
+    client: httpx.AsyncClient,
+    source: NewProductSourceDefinition,
+) -> list[ParsedNewProduct]:
+    config = _get_parser_config(source)
+    max_items = int(config.get("max_items", 40))
+    categories = _get_configured_categories(
+        config,
+        (
+            {"code": "mini", "label": "도시락/조리면"},
+            {"code": "noodle", "label": "김밥/주먹밥"},
+            {"code": "d_group", "label": "샌드위치/햄버거"},
+        ),
+    )
+    products: list[ParsedNewProduct] = []
+    seen_external_ids: set[str] = set()
+    requests = categories + [{"code": "", "label": "Fresh Food"}]
+
+    for category in requests:
+        category_code = category["code"]
+        fallback_category = category["label"]
+        response = await client.post(
             source.crawl_url,
-            params=params,
+            data={
+                "intPageSize": str(max_items),
+                "pTab": category_code,
+            },
             headers={
                 **REQUEST_HEADERS,
                 "Referer": source.site_url,
@@ -956,29 +1211,46 @@ async def _crawl_gs25_fresh_food(
         )
         response.raise_for_status()
 
-        payload = json.loads(response.text)
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        items = payload.get("SubPageListData") if isinstance(payload, dict) else None
-        if not isinstance(items, list) or not items:
-            break
-
-        added_in_page = 0
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("isNew") or "").upper() != "T":
+        soup = BeautifulSoup(response.text, "html.parser")
+        for product_image in soup.select(".pic_product"):
+            item = product_image.find_parent("li")
+            if not item:
                 continue
 
-            name = _normalize_text(str(item.get("goodsNm") or ""))
+            tags_text = _normalize_text(
+                " ".join(
+                    tag.get_text(" ", strip=True)
+                    for tag in item.select(".tag_list_01 li")
+                )
+            )
+            if "신상품" not in tags_text:
+                continue
+
+            name_element = item.select_one(".pic_product .name")
+            price_element = item.select_one(".pic_product .price")
+            image_element = item.select_one(".pic_product img")
+            link_element = item.select_one("a.btn_product_01")
+
+            name = _normalize_text(
+                name_element.get_text(" ", strip=True)
+                if name_element
+                else image_element.get("alt", "")
+                if image_element
+                else ""
+            )
             if not name or not _looks_like_food(name):
                 continue
 
-            code = _normalize_text(str(item.get("code") or ""))
-            image_url = _build_absolute_url(source.site_url, item.get("attFileNm"))
+            href = link_element.get("href", "") if link_element else ""
+            product_id_match = re.search(r"fncGoView\(['\"]?(\d+)['\"]?\)", href)
+            product_id = product_id_match.group(1) if product_id_match else None
+            image_url = _build_absolute_url(
+                source.site_url,
+                image_element.get("src") if image_element else None,
+            )
             external_id = (
-                f"gs25::{code}"
-                if code
+                f"seven-eleven::{product_id}"
+                if product_id
                 else _build_stable_external_id(
                     source=source,
                     detail_url=None,
@@ -990,11 +1262,20 @@ async def _crawl_gs25_fresh_food(
                 continue
             seen_external_ids.add(external_id)
 
-            price_value = item.get("price")
             price_text = (
-                f"{int(price_value):,}원"
-                if isinstance(price_value, (int, float))
+                f"{_normalize_text(price_element.get_text(' ', strip=True))}원"
+                if price_element
                 else None
+            )
+            category_label = (
+                fallback_category
+                if category_code
+                else _infer_convenience_category_from_name(name, fallback_category)
+            )
+            product_url = (
+                f"{source.site_url}?{urlencode({'pTab': category_code})}"
+                if category_code
+                else source.site_url
             )
             products.append(
                 ParsedNewProduct(
@@ -1003,129 +1284,27 @@ async def _crawl_gs25_fresh_food(
                     brand=source.brand,
                     source_type=source.source_type,
                     channel=source.channel,
-                    category="Fresh Food",
-                    summary=f"{source.title} 신상품{f' · {price_text}' if price_text else ''}",
+                    category=category_label,
+                    summary=(
+                        f"{source.title} {category_label}"
+                        f"{f' · {price_text}' if price_text else ''}"
+                    ),
                     image_url=image_url,
-                    product_url=source.site_url,
+                    product_url=product_url,
                     published_at=None,
                     available_from=None,
                     available_to=None,
                     is_limited=False,
                     is_food=True,
                     raw_payload={
-                        "page": page,
-                        "code": code or None,
-                        "price": price_value,
-                        "is_new": item.get("isNew"),
+                        "product_id": product_id,
+                        "price": price_text,
+                        "tags": tags_text,
+                        "category_code": category_code or None,
+                        "category": category_label,
                     },
                 )
             )
-            added_in_page += 1
-
-        if added_in_page == 0:
-            break
-
-    return products
-
-
-async def _crawl_seven_eleven_fresh_food(
-    client: httpx.AsyncClient,
-    source: NewProductSourceDefinition,
-) -> list[ParsedNewProduct]:
-    config = _get_parser_config(source)
-    max_items = int(config.get("max_items", 40))
-    response = await client.post(
-        source.crawl_url,
-        data={
-            "intPageSize": str(max_items),
-            "pTab": "",
-        },
-        headers={
-            **REQUEST_HEADERS,
-            "Referer": source.site_url,
-        },
-    )
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    products: list[ParsedNewProduct] = []
-    seen_external_ids: set[str] = set()
-
-    for product_image in soup.select(".pic_product"):
-        item = product_image.find_parent("li")
-        if not item:
-            continue
-
-        tags_text = _normalize_text(
-            " ".join(tag.get_text(" ", strip=True) for tag in item.select(".tag_list_01 li"))
-        )
-        if "신상품" not in tags_text:
-            continue
-
-        name_element = item.select_one(".pic_product .name")
-        price_element = item.select_one(".pic_product .price")
-        image_element = item.select_one(".pic_product img")
-        link_element = item.select_one("a.btn_product_01")
-
-        name = _normalize_text(
-            name_element.get_text(" ", strip=True)
-            if name_element
-            else image_element.get("alt", "")
-            if image_element
-            else ""
-        )
-        if not name or not _looks_like_food(name):
-            continue
-
-        href = link_element.get("href", "") if link_element else ""
-        product_id_match = re.search(r"fncGoView\(['\"]?(\d+)['\"]?\)", href)
-        product_id = product_id_match.group(1) if product_id_match else None
-        image_url = _build_absolute_url(
-            source.site_url,
-            image_element.get("src") if image_element else None,
-        )
-        external_id = (
-            f"seven-eleven::{product_id}"
-            if product_id
-            else _build_stable_external_id(
-                source=source,
-                detail_url=None,
-                image_url=image_url,
-                name=name,
-            )
-        )
-        if external_id in seen_external_ids:
-            continue
-        seen_external_ids.add(external_id)
-
-        price_text = (
-            f"{_normalize_text(price_element.get_text(' ', strip=True))}원"
-            if price_element
-            else None
-        )
-        products.append(
-            ParsedNewProduct(
-                external_id=external_id,
-                name=name,
-                brand=source.brand,
-                source_type=source.source_type,
-                channel=source.channel,
-                category="Fresh Food",
-                summary=f"{source.title} 신상품{f' · {price_text}' if price_text else ''}",
-                image_url=image_url,
-                product_url=source.site_url,
-                published_at=None,
-                available_from=None,
-                available_to=None,
-                is_limited=False,
-                is_food=True,
-                raw_payload={
-                    "product_id": product_id,
-                    "price": price_text,
-                    "tags": tags_text,
-                },
-            )
-        )
 
     return products
 
