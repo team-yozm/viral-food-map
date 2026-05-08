@@ -34,7 +34,10 @@ REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0 Safari/537.36"
-    )
+    ),
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
 NEW_PRODUCT_KEYWORDS = ("출시", "신메뉴", "신제품", "런칭", "론칭")
 NON_FOOD_KEYWORDS = (
@@ -70,6 +73,12 @@ class ParsedNewProduct:
     is_limited: bool
     is_food: bool
     raw_payload: dict[str, Any]
+
+
+def _format_exception_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    return message or type(exc).__name__
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -3014,7 +3023,7 @@ async def _refresh_single_source(
                 run_id,
                 {
                     "status": "failed",
-                    "error_message": str(exc),
+                    "error_message": _format_exception_message(exc),
                     "finished_at": finished_at,
                 },
             )
@@ -3109,7 +3118,11 @@ async def refresh_new_products(trigger: str = "scheduler") -> dict[str, Any]:
                         source.source_key,
                         source.title,
                     )
-                    return {"ok": False, "source": source, "error": str(exc)}
+                    return {
+                        "ok": False,
+                        "source": source,
+                        "error": _format_exception_message(exc),
+                    }
 
         outcomes = await asyncio.gather(
             *(_run_one(source) for source in runtime_sources)
