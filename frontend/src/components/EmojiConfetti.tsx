@@ -2,19 +2,37 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const CONFETTI_EMOJIS = [
-  "🎉", "🎊", "🥳", "🍔", "🍕", "🍜", "🌮", "🍣",
-  "🔥", "⭐", "💜", "✨", "🎶", "🥂", "🍗", "🍰",
+const FOOD_EMOJIS = [
+  "🍜",
+  "🍕",
+  "🍔",
+  "🍗",
+  "🍣",
+  "🍰",
+  "🌮",
+  "🥟",
+  "🍙",
+  "🍟",
 ];
 
-const PARTICLE_COUNT = 42;
-const BASE_LIFETIME_MS = 2200;
-const MAX_DELAY_MS = 180;
-const GRAVITY = 1180;
+const BURST_EMOJIS = ["✨", "💜", "🔥", "⭐", "🎉", "🎊"];
+
+const BASE_LIFETIME_MS = 2100;
+const MAX_DELAY_MS = 220;
+const SIDE_GRAVITY = 1120;
+
+type ConfettiVariant = "reveal" | "share";
+type ParticleKind = "emoji" | "sparkle";
+
+interface EmojiConfettiProps {
+  fire: boolean;
+  variant?: ConfettiVariant;
+}
 
 interface ParticleModel {
   id: number;
   emoji: string;
+  kind: ParticleKind;
   originX: number;
   originY: number;
   velocityX: number;
@@ -28,16 +46,20 @@ interface ParticleModel {
   wobbleAmplitude: number;
   wobbleFrequency: number;
   wobblePhase: number;
+  scaleStart: number;
+  scaleEnd: number;
 }
 
 interface ParticleFrame {
   id: number;
   emoji: string;
+  kind: ParticleKind;
   x: number;
   y: number;
   rotation: number;
   size: number;
   opacity: number;
+  scale: number;
 }
 
 let particleId = 0;
@@ -46,36 +68,65 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function generateParticles(width: number, height: number): ParticleModel[] {
-  const particles: ParticleModel[] = [];
-  const half = Math.floor(PARTICLE_COUNT / 2);
+function randomFrom<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)];
+}
 
-  for (let index = 0; index < PARTICLE_COUNT; index += 1) {
+function createParticle(
+  particle: Omit<ParticleModel, "id">
+): ParticleModel {
+  return {
+    id: particleId++,
+    ...particle,
+  };
+}
+
+function generateSideBurst(
+  width: number,
+  height: number,
+  variant: ConfettiVariant
+): ParticleModel[] {
+  const count = variant === "reveal" ? 28 : 20;
+  const half = Math.floor(count / 2);
+
+  return Array.from({ length: count }, (_, index) => {
     const fromLeft = index < half;
     const horizontalDirection = fromLeft ? 1 : -1;
+    const origin = {
+      x: fromLeft
+        ? width * (0.05 + Math.random() * 0.08)
+        : width * (0.87 + Math.random() * 0.08),
+      y: height * (0.78 + Math.random() * 0.1),
+    };
 
-    particles.push({
-      id: particleId++,
-      emoji: CONFETTI_EMOJIS[Math.floor(Math.random() * CONFETTI_EMOJIS.length)],
-      originX: fromLeft
-        ? width * (0.04 + Math.random() * 0.08)
-        : width * (0.88 + Math.random() * 0.08),
-      originY: height * (0.86 + Math.random() * 0.08),
-      velocityX: horizontalDirection * (220 + Math.random() * 260),
-      velocityY: -(760 + Math.random() * 260),
-      gravity: GRAVITY + Math.random() * 180,
+    return createParticle({
+      emoji: randomFrom(index % 4 === 0 ? BURST_EMOJIS : FOOD_EMOJIS),
+      kind: index % 4 === 0 ? "sparkle" : "emoji",
+      originX: origin.x,
+      originY: origin.y,
+      velocityX: horizontalDirection * (190 + Math.random() * 300),
+      velocityY: -(620 + Math.random() * 300),
+      gravity: SIDE_GRAVITY + Math.random() * 160,
       rotationStart: (Math.random() - 0.5) * 80,
-      angularVelocity: horizontalDirection * (260 + Math.random() * 520),
-      size: 1 + Math.random() * 1.1,
-      delayMs: Math.random() * MAX_DELAY_MS,
-      lifetimeMs: BASE_LIFETIME_MS + Math.random() * 700,
-      wobbleAmplitude: 14 + Math.random() * 28,
+      angularVelocity: horizontalDirection * (260 + Math.random() * 560),
+      size: 0.95 + Math.random() * 0.96,
+      delayMs: 110 + Math.random() * MAX_DELAY_MS,
+      lifetimeMs: BASE_LIFETIME_MS + Math.random() * 620,
+      wobbleAmplitude: 12 + Math.random() * 28,
       wobbleFrequency: 5 + Math.random() * 3,
       wobblePhase: Math.random() * Math.PI * 2,
+      scaleStart: 0.68,
+      scaleEnd: 1,
     });
-  }
+  });
+}
 
-  return particles;
+function generateParticles(
+  width: number,
+  height: number,
+  variant: ConfettiVariant
+): ParticleModel[] {
+  return generateSideBurst(width, height, variant);
 }
 
 function getOpacity(progress: number) {
@@ -90,6 +141,15 @@ function getOpacity(progress: number) {
   return 1;
 }
 
+function getScale(particle: ParticleModel, progress: number) {
+  const popProgress = clamp(progress / 0.18, 0, 1);
+  const settleProgress = clamp((progress - 0.18) / 0.82, 0, 1);
+  const popped =
+    particle.scaleStart + (particle.scaleEnd - particle.scaleStart) * popProgress;
+
+  return popped - settleProgress * 0.12;
+}
+
 function buildFrame(
   particle: ParticleModel,
   elapsedMs: number
@@ -100,11 +160,13 @@ function buildFrame(
     return {
       id: particle.id,
       emoji: particle.emoji,
+      kind: particle.kind,
       x: particle.originX,
       y: particle.originY,
       rotation: particle.rotationStart,
       size: particle.size,
       opacity: 0,
+      scale: particle.scaleStart,
     };
   }
 
@@ -122,6 +184,7 @@ function buildFrame(
   return {
     id: particle.id,
     emoji: particle.emoji,
+    kind: particle.kind,
     x: particle.originX + particle.velocityX * elapsedSeconds + wobble,
     y:
       particle.originY +
@@ -130,10 +193,14 @@ function buildFrame(
     rotation: particle.rotationStart + particle.angularVelocity * elapsedSeconds,
     size: particle.size,
     opacity: clamp(getOpacity(progress), 0, 1),
+    scale: getScale(particle, progress),
   };
 }
 
-export default function EmojiConfetti({ fire }: { fire: boolean }) {
+export default function EmojiConfetti({
+  fire,
+  variant = "reveal",
+}: EmojiConfettiProps) {
   const [frames, setFrames] = useState<ParticleFrame[]>([]);
   const rafRef = useRef<number | null>(null);
 
@@ -147,7 +214,11 @@ export default function EmojiConfetti({ fire }: { fire: boolean }) {
       return;
     }
 
-    const particles = generateParticles(window.innerWidth, window.innerHeight);
+    const particles = generateParticles(
+      window.innerWidth,
+      window.innerHeight,
+      variant
+    );
     const startedAt = performance.now();
 
     const tick = (now: number) => {
@@ -169,11 +240,13 @@ export default function EmojiConfetti({ fire }: { fire: boolean }) {
       particles.map((particle) => ({
         id: particle.id,
         emoji: particle.emoji,
+        kind: particle.kind,
         x: particle.originX,
         y: particle.originY,
         rotation: particle.rotationStart,
         size: particle.size,
         opacity: 0,
+        scale: particle.scaleStart,
       }))
     );
 
@@ -185,7 +258,7 @@ export default function EmojiConfetti({ fire }: { fire: boolean }) {
         rafRef.current = null;
       }
     };
-  }, [fire]);
+  }, [fire, variant]);
 
   if (frames.length === 0) {
     return null;
@@ -201,9 +274,13 @@ export default function EmojiConfetti({ fire }: { fire: boolean }) {
           key={particle.id}
           className="absolute left-0 top-0 select-none will-change-transform"
           style={{
+            filter:
+              particle.kind === "sparkle"
+                ? "drop-shadow(0 0 10px rgba(255,255,255,0.62))"
+                : "drop-shadow(0 8px 18px rgba(17,24,39,0.24))",
             fontSize: `${particle.size}rem`,
             opacity: particle.opacity,
-            transform: `translate3d(${particle.x}px, ${particle.y}px, 0) rotate(${particle.rotation}deg)`,
+            transform: `translate3d(${particle.x}px, ${particle.y}px, 0) translate(-50%, -50%) rotate(${particle.rotation}deg) scale(${particle.scale})`,
           }}
         >
           {particle.emoji}

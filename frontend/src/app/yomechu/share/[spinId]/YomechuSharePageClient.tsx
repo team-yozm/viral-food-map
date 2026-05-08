@@ -143,7 +143,10 @@ export default function YomechuSharePageClient({
 
   return (
     <>
-      <EmojiConfetti fire={confetti} />
+      <EmojiConfetti
+        fire={confetti}
+        variant="share"
+      />
       <Header />
       <main className="page-with-bottom-nav mx-auto max-w-lg px-4 py-4">
         <motion.section
@@ -167,23 +170,60 @@ export default function YomechuSharePageClient({
               </h1>
             </div>
 
-            <div className="rounded-[28px] border border-white/10 bg-white/7 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/75">
-                  Winner
-                </span>
-                {usedFallback ? (
-                  <span className="rounded-full bg-amber-300/18 px-2.5 py-1 text-[10px] font-semibold text-amber-100">
-                    업종 후보가 적어서 전체 후보까지 확장했습니다
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="rounded-[24px] border border-primary/45 bg-white/12 p-5 shadow-[0_16px_40px_rgba(155,125,212,0.26)]">
-                <div className="inline-flex">
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.97 }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: [0.97, 1.025, 1],
+              }}
+              transition={{
+                duration: 0.52,
+                delay: 0.04,
+                ease: "easeOut",
+                scale: {
+                  duration: 0.58,
+                  delay: 0.04,
+                  ease: [0.16, 1, 0.3, 1],
+                  times: [0, 0.5, 1],
+                },
+              }}
+              className="relative overflow-hidden rounded-[24px] border border-primary/45 bg-white/12 p-5 shadow-[0_16px_40px_rgba(155,125,212,0.26)]"
+            >
+              <motion.div
+                aria-hidden
+                initial={{ opacity: 0.62, scale: 0.78 }}
+                animate={{ opacity: 0, scale: 1.45 }}
+                transition={{ duration: 0.74, delay: 0.08, ease: "easeOut" }}
+                className="pointer-events-none absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_50%_14%,_rgba(255,255,255,0.42),_rgba(255,255,255,0)_44%)]"
+              />
+              <motion.div
+                aria-hidden
+                initial={{ opacity: 0.82 }}
+                animate={{ opacity: 0 }}
+                transition={{ duration: 0.88, delay: 0.08, ease: "easeOut" }}
+                className="pointer-events-none absolute inset-0 rounded-[24px] ring-2 ring-white/40"
+              />
+              <div className="relative z-10">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <span className="inline-flex items-center rounded-full border border-primary/35 bg-primary/18 px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-white shadow-[0_10px_22px_rgba(155,125,212,0.24)] backdrop-blur-sm">
                     {primaryWinner.category_label}
                   </span>
+                  <motion.span
+                    initial={{ y: 6, scale: 0.92 }}
+                    animate={{ y: [6, -3, 0], scale: [0.92, 1.06, 1] }}
+                    transition={{ duration: 0.42, delay: 0.08, ease: "easeOut" }}
+                    className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/75"
+                  >
+                    Winner
+                  </motion.span>
+                  {usedFallback ? (
+                    <div className="basis-full">
+                      <span className="inline-flex rounded-full bg-amber-300/18 px-2.5 py-1 text-[10px] font-semibold text-amber-100">
+                        업종 후보가 적어서 전체 후보까지 확장했습니다
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <h2 className="mt-2 break-keep text-[28px] font-black tracking-[-0.05em] text-white sm:text-[30px]">
                   {primaryWinner.name}
@@ -211,7 +251,7 @@ export default function YomechuSharePageClient({
                   ))}
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/55">
               <span>후보 {poolSize}곳</span>

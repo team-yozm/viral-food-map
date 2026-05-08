@@ -230,7 +230,10 @@ export default function YomechuRevealModal({
             paddingBottom: "calc(var(--safe-bottom) + 16px)",
           }}
         >
-          <EmojiConfetti fire={confettiFired} />
+          <EmojiConfetti
+            fire={confettiFired}
+            variant="reveal"
+          />
           <motion.div
             initial={{ opacity: 0, y: 32, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -291,35 +294,78 @@ export default function YomechuRevealModal({
               </div>
             ) : activePlace ? (
               <>
-                <div className="rounded-[28px] border border-white/10 bg-white/7 p-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/75">
-                      {phase === "winner" ? "Winner" : "Shuffle"}
-                    </span>
-                    {result?.used_fallback ? (
-                      <span className="rounded-full bg-amber-300/18 px-2.5 py-1 text-[10px] font-semibold text-amber-100">
-                        업종 후보가 적어서 전체 후보까지 확장했습니다
-                      </span>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${activePlace.place_id}-${currentIndex}-${phase}`}
+                    initial={{ opacity: 0, y: 24, rotateX: -12 }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                      rotateX: 0,
+                      scale: phase === "winner" ? [0.96, 1.045, 1] : 1,
+                    }}
+                    exit={{ opacity: 0, y: -18, rotateX: 10 }}
+                    transition={
+                      phase === "winner"
+                        ? {
+                            duration: 0.52,
+                            ease: "easeOut",
+                            scale: {
+                              duration: 0.58,
+                              ease: [0.16, 1, 0.3, 1],
+                              times: [0, 0.48, 1],
+                            },
+                          }
+                        : { duration: 0.16 }
+                    }
+                    className={`relative overflow-hidden rounded-[24px] border p-5 ${
+                      phase === "winner"
+                        ? "border-primary/45 bg-white/12 shadow-[0_16px_40px_rgba(155,125,212,0.26)]"
+                        : "border-white/10 bg-black/15"
+                    }`}
+                  >
+                    {phase === "winner" ? (
+                      <>
+                        <motion.div
+                          aria-hidden
+                          initial={{ opacity: 0.7, scale: 0.76 }}
+                          animate={{ opacity: 0, scale: 1.5 }}
+                          transition={{ duration: 0.72, ease: "easeOut" }}
+                          className="pointer-events-none absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_50%_14%,_rgba(255,255,255,0.46),_rgba(255,255,255,0)_44%)]"
+                        />
+                        <motion.div
+                          aria-hidden
+                          initial={{ opacity: 0.92 }}
+                          animate={{ opacity: 0 }}
+                          transition={{ duration: 0.84, ease: "easeOut" }}
+                          className="pointer-events-none absolute inset-0 rounded-[24px] ring-2 ring-white/45"
+                        />
+                      </>
                     ) : null}
-                  </div>
-
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={`${activePlace.place_id}-${currentIndex}-${phase}`}
-                      initial={{ opacity: 0, y: 24, rotateX: -12 }}
-                      animate={{ opacity: 1, y: 0, rotateX: 0 }}
-                      exit={{ opacity: 0, y: -18, rotateX: 10 }}
-                      transition={{ duration: phase === "winner" ? 0.34 : 0.16 }}
-                      className={`rounded-[24px] border p-5 ${
-                        phase === "winner"
-                          ? "border-primary/45 bg-white/12 shadow-[0_16px_40px_rgba(155,125,212,0.26)]"
-                          : "border-white/10 bg-black/15"
-                      }`}
-                    >
-                      <div className="inline-flex">
+                    <div className="relative z-10">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <span className="inline-flex items-center rounded-full border border-primary/35 bg-primary/18 px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-white shadow-[0_10px_22px_rgba(155,125,212,0.24)] backdrop-blur-sm">
                           {activePlace.category_label}
                         </span>
+                        <motion.span
+                          initial={false}
+                          animate={
+                            phase === "winner"
+                              ? { y: [6, -4, 0], scale: [0.92, 1.08, 1] }
+                              : { y: 0, scale: 1 }
+                          }
+                          transition={{ duration: 0.42, ease: "easeOut" }}
+                          className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/75"
+                        >
+                          {phase === "winner" ? "Winner" : "Shuffle"}
+                        </motion.span>
+                        {result?.used_fallback ? (
+                          <div className="basis-full">
+                            <span className="inline-flex rounded-full bg-amber-300/18 px-2.5 py-1 text-[10px] font-semibold text-amber-100">
+                              업종 후보가 적어서 전체 후보까지 확장했습니다
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                       <h4 className="mt-2 break-keep text-[28px] font-black tracking-[-0.05em] text-white sm:text-[30px]">
                         {activePlace.name}
@@ -346,9 +392,9 @@ export default function YomechuRevealModal({
                           </span>
                         ))}
                       </div>
-                    </motion.div>
-                  </AnimatePresence>
-                </div>
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-white/55">
                   <span>후보 {result?.pool_size ?? 0}곳</span>
