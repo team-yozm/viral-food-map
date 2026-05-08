@@ -252,7 +252,7 @@ class Settings:
     )
     INSTAGRAM_IMAGE_REVIEW_ENABLED: bool = _env_bool(
         "INSTAGRAM_IMAGE_REVIEW_ENABLED",
-        default=False,
+        default=True,
     )
     INSTAGRAM_IMAGE_REVIEW_MIN_CONFIDENCE: float = float(
         os.getenv(
