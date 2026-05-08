@@ -842,6 +842,25 @@ def _infer_convenience_category_from_name(name: str, fallback: str) -> str:
     return fallback
 
 
+def _infer_emart24_category_from_name(name: str, fallback: str = "즉석식") -> str:
+    normalized = _normalize_text(name)
+    if "김밥" in normalized:
+        return "김밥"
+    if any(keyword in normalized for keyword in ("삼각", "주먹밥")):
+        return "주먹밥"
+    if any(keyword in normalized for keyword in ("샌드", "토스트")):
+        return "샌드위치"
+    if any(keyword in normalized for keyword in ("버거", "햄버거")):
+        return "햄버거"
+    if any(
+        keyword in normalized
+        for keyword in ("도시락", "정식", "비빔밥", "덮밥", "쌈밥", "반상")
+    ):
+        return "도시락"
+
+    return fallback
+
+
 async def _crawl_emart24_fresh_food(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
@@ -951,6 +970,77 @@ async def _crawl_emart24_fresh_food(
 
             if added_in_page == 0:
                 break
+
+    max_pages = int(config.get("max_pages", 3))
+    for page in range(1, max_pages + 1):
+        params = {"page": page}
+        listing_url = f"{source.crawl_url}?{urlencode(params)}"
+        html = await _fetch_text(client, listing_url)
+        soup = BeautifulSoup(html, "html.parser")
+        items = soup.select(".itemWrap")
+        if not items:
+            break
+
+        added_in_page = 0
+        for item in items:
+            badge = item.select_one(".itemTit span")
+            badge_text = badge.get_text(" ", strip=True) if badge else ""
+            if "NEW" not in badge_text.upper():
+                continue
+
+            name_element = item.select_one(".itemtitle a")
+            price_element = item.select_one(".price")
+            image_element = item.select_one(".itemSpImg img")
+
+            name = name_element.get_text(" ", strip=True) if name_element else ""
+            if not name:
+                continue
+
+            image_url = _build_absolute_url(
+                source.site_url,
+                image_element.get("src") if image_element else None,
+            )
+            external_id = (
+                (image_url or "").rstrip("/").rsplit("/", 1)[-1]
+                or f"emart24::{page}::{name}"
+            )
+            if external_id in seen_external_ids:
+                continue
+            seen_external_ids.add(external_id)
+
+            price_text = price_element.get_text(" ", strip=True) if price_element else None
+            category_label = _infer_emart24_category_from_name(name)
+
+            products.append(
+                ParsedNewProduct(
+                    external_id=external_id,
+                    name=name,
+                    brand=source.brand,
+                    source_type=source.source_type,
+                    channel=source.channel,
+                    category=category_label,
+                    summary=(
+                        f"{source.title} {category_label}"
+                        f"{f' · {price_text}' if price_text else ''}"
+                    ),
+                    image_url=image_url,
+                    product_url=listing_url,
+                    published_at=None,
+                    available_from=None,
+                    available_to=None,
+                    is_limited=False,
+                    is_food=True,
+                    raw_payload={
+                        "page": page,
+                        "badge": badge_text,
+                        "price": price_text,
+                        "category_code": None,
+                        "category": category_label,
+                        "category_source": "all_fallback",
+                    },
+                )
+            )
+            added_in_page += 1
 
     return products
 
