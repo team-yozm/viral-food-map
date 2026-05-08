@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -11,6 +13,60 @@ logger = logging.getLogger(__name__)
 
 NAVER_DATALAB_URL = "https://openapi.naver.com/v1/datalab/search"
 API_MAX_KEYWORD_GROUPS = 5
+DATALAB_MAX_ATTEMPTS = 3
+DATALAB_RETRY_DELAY_SECONDS = 0.75
+DATALAB_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+
+def _format_datalab_error(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        detail = " ".join(response.text.strip().split())[:200]
+        message = f"{type(exc).__name__}: HTTP {response.status_code}"
+        return f"{message} {detail}" if detail else message
+
+    message = str(exc).strip()
+    if message:
+        return f"{type(exc).__name__}: {message}"
+    return type(exc).__name__
+
+
+def _is_retryable_datalab_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in DATALAB_RETRYABLE_STATUS_CODES
+    return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
+
+
+async def _request_datalab_batch(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    body: dict[str, Any],
+    source_health: dict[str, Any],
+) -> dict[str, Any] | None:
+    for attempt in range(1, DATALAB_MAX_ATTEMPTS + 1):
+        try:
+            resp = await client.post(NAVER_DATALAB_URL, headers=headers, json=body)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            error_detail = _format_datalab_error(exc)
+            if _is_retryable_datalab_error(exc) and attempt < DATALAB_MAX_ATTEMPTS:
+                source_health["retry_attempts"] += 1
+                logger.warning(
+                    "Naver Datalab API retry (%s/%s): %s",
+                    attempt,
+                    DATALAB_MAX_ATTEMPTS,
+                    error_detail,
+                )
+                await asyncio.sleep(DATALAB_RETRY_DELAY_SECONDS * attempt)
+                continue
+
+            source_health["failed_batches"] += 1
+            source_health["errors"].append(error_detail[:240])
+            logger.error("Naver Datalab API error: %s", error_detail)
+            return None
+
+    return None
 
 
 async def get_search_trend(keywords: list[str], days: int = 14) -> dict[str, list[dict]]:
@@ -112,6 +168,7 @@ async def get_search_trend_insights(
         "returned_keywords": 0,
         "successful_batches": 0,
         "failed_batches": 0,
+        "retry_attempts": 0,
         "errors": [],
     }
 
@@ -129,12 +186,15 @@ async def get_search_trend_insights(
             }
 
             try:
-                resp = await client.post(
-                    NAVER_DATALAB_URL, headers=headers, json=body
+                data = await _request_datalab_batch(
+                    client,
+                    headers,
+                    body,
+                    source_health,
                 )
-                resp.raise_for_status()
+                if data is None:
+                    continue
                 source_health["successful_batches"] += 1
-                data = resp.json()
                 batch_results = {
                     result["title"]: result.get("data", [])
                     for result in data.get("results", [])
@@ -154,9 +214,10 @@ async def get_search_trend_insights(
                         reference_points,
                     )
             except Exception as e:
+                error_detail = _format_datalab_error(e)
                 source_health["failed_batches"] += 1
-                source_health["errors"].append(str(e)[:240])
-                logger.error(f"네이버 데이터랩 API 오류: {e}")
+                source_health["errors"].append(error_detail[:240])
+                logger.error("Naver Datalab API error: %s", error_detail)
 
     source_health["returned_keywords"] = len(results)
     source_health["ok"] = (
