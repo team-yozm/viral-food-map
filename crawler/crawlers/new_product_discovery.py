@@ -28,6 +28,11 @@ DISCOVERY_QUERY_KEYWORDS = {
     "convenience": ("신상품", "신상", "도시락", "삼각김밥", "샌드위치"),
 }
 BRAND_ALIAS_SOURCE_KEYS = {
+    "7-ELEVEN": "seven_eleven_fresh_food",
+    "7eleven": "seven_eleven_fresh_food",
+    "7일레븐": "seven_eleven_fresh_food",
+    "세븐": "seven_eleven_fresh_food",
+    "세븐일레븐": "seven_eleven_fresh_food",
     "롯데리아": "lotteeatz_launch_events",
     "엔제리너스": "lotteeatz_launch_events",
     "크리스피크림": "lotteeatz_launch_events",
@@ -134,7 +139,16 @@ RESULT_HOST_BLOCKLIST = {
     "www.facebook.com",
     "facebook.com",
     "m.facebook.com",
+    "namu.wiki",
+    "www.namu.wiki",
+    "ko.wikipedia.org",
+    "en.wikipedia.org",
+    "wikipedia.org",
 }
+RESULT_HOST_SUFFIX_BLOCKLIST = (
+    ".wikipedia.org",
+    ".wikimedia.org",
+)
 INTERNAL_LINK_HINTS = (
     "new",
     "menu",
@@ -271,6 +285,8 @@ def _is_supported_result_url(url: str) -> bool:
 
     host = parsed.netloc.lower()
     if not host or host in RESULT_HOST_BLOCKLIST:
+        return False
+    if any(host.endswith(suffix) for suffix in RESULT_HOST_SUFFIX_BLOCKLIST):
         return False
 
     return True

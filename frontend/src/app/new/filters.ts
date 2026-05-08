@@ -1,4 +1,7 @@
-import type { NewProductsPeriod } from "@/lib/new-products";
+import type {
+  NewProductSourceFilter,
+  NewProductsPeriod,
+} from "@/lib/new-products";
 import {
   NEW_PRODUCT_SECTOR_OPTIONS,
   getNewProductSectorLabel,
@@ -13,6 +16,14 @@ export const PERIOD_OPTIONS: Array<{ key: NewProductsPeriod; label: string }> = 
   { key: "all", label: "전체" },
 ];
 
+export const SOURCE_OPTIONS: Array<{
+  key: NewProductSourceFilter;
+  label: string;
+}> = [
+  { key: "franchise", label: "프랜차이즈" },
+  { key: "convenience", label: "편의점" },
+];
+
 export const SECTOR_OPTIONS = NEW_PRODUCT_SECTOR_OPTIONS;
 
 // 기본값 "30d"는 UI 노출 기간(출시일 기준 최근 30일).
@@ -22,6 +33,10 @@ export function normalizePeriod(period?: string): NewProductsPeriod {
   return PERIOD_OPTIONS.some((option) => option.key === period)
     ? (period as NewProductsPeriod)
     : "30d";
+}
+
+export function normalizeSource(source?: string): NewProductSourceFilter {
+  return source === "convenience" ? "convenience" : "franchise";
 }
 
 export function normalizeSector(sector?: string): NewProductSectorFilter {
@@ -36,21 +51,26 @@ export function normalizeBrand(brand?: string) {
 }
 
 export function buildFilterHref(
+  source: NewProductSourceFilter,
   period: NewProductsPeriod,
   sector: NewProductSectorFilter,
   brand?: string | null
 ) {
   const params = new URLSearchParams();
 
+  if (source !== "franchise") {
+    params.set("source", source);
+  }
+
   if (period !== "30d") {
     params.set("period", period);
   }
 
-  if (sector !== "all") {
+  if (source === "franchise" && sector !== "all") {
     params.set("sector", sector);
   }
 
-  if (sector !== "all" && brand) {
+  if ((source === "convenience" || sector !== "all") && brand) {
     params.set("brand", brand);
   }
 

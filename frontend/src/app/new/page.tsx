@@ -12,7 +12,12 @@ import {
 } from "@/lib/structured-data";
 
 import NewProductsClient from "./NewProductsClient";
-import { normalizeBrand, normalizePeriod, normalizeSector } from "./filters";
+import {
+  normalizeBrand,
+  normalizePeriod,
+  normalizeSector,
+  normalizeSource,
+} from "./filters";
 
 interface NewProductsPageProps {
   searchParams?: Promise<{
@@ -26,9 +31,9 @@ interface NewProductsPageProps {
 export const metadata: Metadata = buildMetadata({
   title: "신상 음식 모아보기",
   description:
-    "프랜차이즈 공식 채널의 신상 메뉴를 업종과 브랜드별로 모아봅니다.",
+    "프랜차이즈와 편의점 공식 채널의 신상 메뉴를 브랜드별로 모아봅니다.",
   path: "/new",
-  keywords: ["신상 음식", "프랜차이즈 신메뉴", "브랜드 신상", "신상 메뉴"],
+  keywords: ["신상 음식", "프랜차이즈 신메뉴", "편의점 신상", "브랜드 신상", "신상 메뉴"],
 });
 
 export const revalidate = 300;
@@ -37,14 +42,16 @@ export default async function NewProductsPage({
   searchParams,
 }: NewProductsPageProps) {
   const resolvedSearchParams = (await searchParams) ?? {};
+  const source = normalizeSource(resolvedSearchParams.source);
   const period = normalizePeriod(resolvedSearchParams.period);
-  const sector = normalizeSector(resolvedSearchParams.sector);
+  const sector =
+    source === "convenience" ? "all" : normalizeSector(resolvedSearchParams.sector);
   const brand = normalizeBrand(resolvedSearchParams.brand);
-  const pageData = await getNewProductsPageData({ period, sector, brand });
+  const pageData = await getNewProductsPageData({ source, period, sector, brand });
   const structuredData = [
     buildWebPageJsonLd({
       name: "신상 음식 모아보기",
-      description: "프랜차이즈 공식 채널의 신상 메뉴를 업종과 브랜드별로 모아봅니다.",
+      description: "프랜차이즈와 편의점 공식 채널의 신상 메뉴를 브랜드별로 모아봅니다.",
       path: "/new",
     }),
     buildBreadcrumbJsonLd([
@@ -74,6 +81,7 @@ export default async function NewProductsPage({
           initialBrandCount={pageData.brandCount}
           initialTotalCount={pageData.totalCount}
           initialLastUpdated={pageData.lastUpdated}
+          initialSource={source}
           initialPeriod={period}
           initialSector={sector}
           initialBrand={pageData.selectedBrand}

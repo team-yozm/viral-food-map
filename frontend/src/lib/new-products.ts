@@ -4,6 +4,7 @@ import type {
 } from "./new-product-taxonomy";
 
 export type NewProductsPeriod = "1d" | "3d" | "7d" | "30d" | "all";
+export type NewProductSourceFilter = "franchise" | "convenience";
 
 export interface NewProductBrandOption {
   key: string;
@@ -26,6 +27,8 @@ export interface NewProductDisplayItem {
   image_url: string | null;
   product_url: string | null;
   is_limited: boolean;
+  source_type: NewProductSourceFilter;
+  source_label: string;
   source: NewProductDisplaySource | null;
   effective_at: string;
   filter_at: string | null;
@@ -47,6 +50,7 @@ export interface NewProductsViewData {
 }
 
 interface DeriveNewProductsViewOptions {
+  source: NewProductSourceFilter;
   period: NewProductsPeriod;
   sector: NewProductSectorFilter;
   brand: string | null;
@@ -107,13 +111,16 @@ function buildBrandOptions(products: NewProductDisplayItem[]): NewProductBrandOp
 
 export function deriveNewProductsView(
   products: NewProductDisplayItem[],
-  { period, sector, brand }: DeriveNewProductsViewOptions
+  { source, period, sector, brand }: DeriveNewProductsViewOptions
 ): NewProductsViewData {
   const now = Date.now();
   const cutoffMs =
     period === "all" ? null : now - PERIOD_DAYS[period] * 24 * 60 * 60 * 1000;
+  const filteredBySource = products.filter(
+    (product) => product.source_type === source
+  );
 
-  const filteredByPeriod = products.filter((product) => {
+  const filteredByPeriod = filteredBySource.filter((product) => {
     if (cutoffMs === null) {
       return true;
     }
@@ -131,13 +138,16 @@ export function deriveNewProductsView(
   }, createEmptySectorCounts());
 
   const filteredBySector =
-    sector === "all"
+    source === "convenience" || sector === "all"
       ? filteredByPeriod
       : filteredByPeriod.filter((product) => product.sector_key === sector);
 
-  const brandOptions = sector === "all" ? [] : buildBrandOptions(filteredBySector);
+  const brandOptions =
+    source === "convenience" || sector !== "all"
+      ? buildBrandOptions(filteredBySector)
+      : [];
   const selectedBrand =
-    sector === "all" || !brand
+    !brand || brandOptions.length === 0
       ? null
       : brandOptions.some((option) => option.key === brand)
         ? brand

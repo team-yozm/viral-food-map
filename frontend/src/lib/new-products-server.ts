@@ -4,6 +4,7 @@ import {
   deriveNewProductsView,
   type NewProductDisplayItem,
   type NewProductDisplaySource,
+  type NewProductSourceFilter,
   type NewProductsPeriod,
   type NewProductsViewData,
 } from "./new-products";
@@ -21,6 +22,7 @@ export type {
   NewProductDisplayItem,
   NewProductDisplaySource,
   NewProductListItem,
+  NewProductSourceFilter,
   NewProductsPeriod,
   NewProductsViewData,
 } from "./new-products";
@@ -35,6 +37,7 @@ export interface NewProductsCatalogData {
 }
 
 interface NewProductsPageOptions {
+  source: NewProductSourceFilter;
   period: NewProductsPeriod;
   sector: NewProductSectorFilter;
   brand: string | null;
@@ -55,6 +58,7 @@ type NewProductQueryRow = Pick<
   | "summary"
   | "image_url"
   | "product_url"
+  | "source_type"
   | "published_at"
   | "available_from"
   | "first_seen_at"
@@ -65,13 +69,19 @@ type NewProductQueryRow = Pick<
 };
 
 function getFilterDate(
-  product: Pick<NewProduct, "published_at" | "available_from">
+  product: Pick<
+    NewProduct,
+    "published_at" | "available_from" | "first_seen_at"
+  >
 ): string | null {
-  return product.published_at || product.available_from || null;
+  return product.published_at || product.available_from || product.first_seen_at;
 }
 
 function getEffectiveDate(
-  product: Pick<NewProduct, "published_at" | "available_from" | "first_seen_at">
+  product: Pick<
+    NewProduct,
+    "published_at" | "available_from" | "first_seen_at"
+  >
 ) {
   return getFilterDate(product) || product.first_seen_at;
 }
@@ -79,7 +89,11 @@ function getEffectiveDate(
 function getDateLabel(
   product: Pick<NewProduct, "published_at" | "available_from">
 ): "공개일" | "첫 수집" {
-  return getFilterDate(product) ? "공개일" : "첫 수집";
+  return product.published_at || product.available_from ? "공개일" : "첫 수집";
+}
+
+function getSourceLabel(sourceType: NewProductSourceFilter) {
+  return sourceType === "convenience" ? "편의점" : "프랜차이즈";
 }
 
 function getResolvedBrand(
@@ -111,6 +125,8 @@ function mapNewProductRow(product: NewProductQueryRow): NewProductDisplayItem {
     image_url: product.image_url,
     product_url: product.product_url,
     is_limited: product.is_limited,
+    source_type: product.source_type,
+    source_label: getSourceLabel(product.source_type),
     source,
     effective_at: getEffectiveDate(product),
     filter_at: getFilterDate(product),
@@ -122,7 +138,7 @@ function mapNewProductRow(product: NewProductQueryRow): NewProductDisplayItem {
 }
 
 const getCachedVisibleNewProducts = unstable_cache(
-  async (): Promise<NewProductQueryRow[]> => {
+  async (source: NewProductSourceFilter): Promise<NewProductQueryRow[]> => {
     const supabase = createServerSupabaseClient();
 
     if (!supabase) {
@@ -141,6 +157,7 @@ const getCachedVisibleNewProducts = unstable_cache(
           "summary",
           "image_url",
           "product_url",
+          "source_type",
           "published_at",
           "available_from",
           "first_seen_at",
@@ -151,7 +168,7 @@ const getCachedVisibleNewProducts = unstable_cache(
       )
       .eq("status", "visible")
       .eq("is_food", true)
-      .eq("source_type", "franchise")
+      .eq("source_type", source)
       .order("last_seen_at", { ascending: false })
       .limit(1000);
 
@@ -163,8 +180,10 @@ const getCachedVisibleNewProducts = unstable_cache(
   { revalidate: 300 }
 );
 
-export async function getNewProductsCatalogData(): Promise<NewProductsCatalogData> {
-  const rows = await getCachedVisibleNewProducts();
+export async function getNewProductsCatalogData(
+  source: NewProductSourceFilter = "franchise"
+): Promise<NewProductsCatalogData> {
+  const rows = await getCachedVisibleNewProducts(source);
 
   return {
     products: rows.map(mapNewProductRow),
@@ -173,12 +192,16 @@ export async function getNewProductsCatalogData(): Promise<NewProductsCatalogDat
 }
 
 export async function getNewProductsPageData({
+  source,
   period,
   sector,
   brand,
 }: NewProductsPageOptions): Promise<NewProductsPageData> {
-  const { products, lastUpdated } = await getNewProductsCatalogData();
-  const view = deriveNewProductsView(products, { period, sector, brand });
+  const rows = await getCachedVisibleNewProducts(source);
+
+  const products = rows.map(mapNewProductRow);
+  const lastUpdated = rows[0]?.last_seen_at ?? null;
+  const view = deriveNewProductsView(products, { source, period, sector, brand });
 
   return {
     ...view,

@@ -12,6 +12,10 @@ interface NewProductCardProps {
 export default function NewProductCard({ product }: NewProductCardProps) {
   const officialUrl = product.product_url || product.source?.site_url || null;
   const useUnoptimizedImage = shouldUseUnoptimizedImage(product.image_url);
+  const detailLabel =
+    product.source_type === "convenience"
+      ? [product.source_label, product.category].filter(Boolean).join(" · ")
+      : `${product.sector_label}${product.category ? ` · ${product.category}` : ""}`;
 
   const body = (
     <>
@@ -47,8 +51,7 @@ export default function NewProductCard({ product }: NewProductCardProps) {
           {product.name}
         </div>
         <div className="mt-1 text-[10.5px] text-ink4">
-          {product.sector_label}
-          {product.category ? ` · ${product.category}` : ""}
+          {detailLabel}
         </div>
       </div>
     </>

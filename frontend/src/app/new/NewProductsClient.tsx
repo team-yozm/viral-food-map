@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
@@ -10,6 +9,7 @@ import {
   deriveNewProductsView,
   type NewProductBrandOption,
   type NewProductListItem,
+  type NewProductSourceFilter,
   type NewProductsPeriod,
   type NewProductsViewData,
 } from "@/lib/new-products";
@@ -21,6 +21,7 @@ import type {
 import {
   PERIOD_OPTIONS,
   SECTOR_OPTIONS,
+  SOURCE_OPTIONS,
   buildFilterHref,
   getPeriodLabel,
   getSectorLabel,
@@ -43,6 +44,7 @@ interface NewProductsClientProps {
   initialBrandCount: number;
   initialTotalCount: number;
   initialLastUpdated: string | null;
+  initialSource: NewProductSourceFilter;
   initialPeriod: NewProductsPeriod;
   initialSector: NewProductSectorFilter;
   initialBrand: string | null;
@@ -59,6 +61,7 @@ interface FilterDropdownProps<T extends string> {
 }
 
 interface FilterState {
+  source: NewProductSourceFilter;
   period: NewProductsPeriod;
   sector: NewProductSectorFilter;
   brand: string | null;
@@ -70,11 +73,23 @@ type IdleCapableWindow = Window &
     cancelIdleCallback?: (handle: number) => void;
   };
 
-let catalogRequestPromise: Promise<CatalogResponse> | null = null;
+const catalogRequestPromises = new Map<NewProductSourceFilter, Promise<CatalogResponse>>();
+const UPDATED_AT_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Seoul",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
-function fetchNewProductsCatalog() {
-  if (!catalogRequestPromise) {
-    catalogRequestPromise = fetch("/api/new-products/catalog")
+function fetchNewProductsCatalog(source: NewProductSourceFilter) {
+  const existingRequest = catalogRequestPromises.get(source);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = fetch(`/api/new-products/catalog?source=${source}`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("Failed to fetch new products catalog.");
@@ -83,12 +98,12 @@ function fetchNewProductsCatalog() {
         return (await response.json()) as CatalogResponse;
       })
       .catch((error) => {
-        catalogRequestPromise = null;
+        catalogRequestPromises.delete(source);
         throw error;
       });
-  }
 
-  return catalogRequestPromise;
+  catalogRequestPromises.set(source, request);
+  return request;
 }
 
 function scheduleIdleTask(callback: () => void) {
@@ -113,12 +128,21 @@ function formatUpdatedAt(value: string | null) {
     return "방금";
   }
 
-  return parsed.toLocaleString("ko-KR", {
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const parts = UPDATED_AT_FORMATTER.formatToParts(parsed);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const month = getPart("month");
+  const day = getPart("day");
+  const hour = Number(getPart("hour"));
+  const minute = getPart("minute");
+
+  if (!month || !day || !minute || Number.isNaN(hour)) {
+    return "방금";
+  }
+
+  const period = hour < 12 ? "오전" : "오후";
+  const displayHour = hour % 12 || 12;
+  return `${month}월 ${day}일 ${period} ${displayHour}:${minute}`;
 }
 
 function ChevronDown() {
@@ -233,6 +257,7 @@ export default function NewProductsClient({
   initialBrandCount,
   initialTotalCount,
   initialLastUpdated,
+  initialSource,
   initialPeriod,
   initialSector,
   initialBrand,
@@ -260,6 +285,7 @@ export default function NewProductsClient({
   );
 
   const [filters, setFilters] = useState<FilterState>({
+    source: initialSource,
     period: initialPeriod,
     sector: initialSector,
     brand: initialBrand,
@@ -268,16 +294,19 @@ export default function NewProductsClient({
   const [openDropdown, setOpenDropdown] = useState<DropdownKey | null>(null);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("idle");
   const [filterMode, setFilterMode] = useState<FilterMode>("server");
-  const [catalogData, setCatalogData] = useState<CatalogResponse | null>(null);
+  const [catalogDataBySource, setCatalogDataBySource] = useState<
+    Partial<Record<NewProductSourceFilter, CatalogResponse>>
+  >({});
 
   useEffect(() => {
     setFilters({
+      source: initialSource,
       period: initialPeriod,
       sector: initialSector,
       brand: initialBrand,
     });
     setFilterMode("server");
-  }, [initialPeriod, initialSector, initialBrand, initialTotalCount]);
+  }, [initialSource, initialPeriod, initialSector, initialBrand, initialTotalCount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,13 +314,16 @@ export default function NewProductsClient({
     setCatalogStatus((current) => (current === "ready" ? current : "loading"));
 
     const cancelScheduledTask = scheduleIdleTask(() => {
-      void fetchNewProductsCatalog()
+      void fetchNewProductsCatalog(initialSource)
         .then((data) => {
           if (cancelled) {
             return;
           }
 
-          setCatalogData(data);
+          setCatalogDataBySource((current) => ({
+            ...current,
+            [initialSource]: data,
+          }));
           setCatalogStatus("ready");
         })
         .catch(() => {
@@ -307,23 +339,31 @@ export default function NewProductsClient({
       cancelled = true;
       cancelScheduledTask();
     };
-  }, []);
+  }, [initialSource]);
 
   const clientView = useMemo(() => {
+    const catalogData = catalogDataBySource[filters.source];
     if (filterMode !== "client" || !catalogData) {
       return null;
     }
 
     return deriveNewProductsView(catalogData.products, filters);
-  }, [catalogData, filterMode, filters]);
+  }, [catalogDataBySource, filterMode, filters]);
 
   const currentView = clientView ?? initialView;
+  const currentSource = filterMode === "client" ? filters.source : initialSource;
   const currentPeriod = filterMode === "client" ? filters.period : initialPeriod;
-  const currentSector = filterMode === "client" ? filters.sector : initialSector;
+  const currentSector =
+    currentSource === "convenience"
+      ? "all"
+      : filterMode === "client"
+        ? filters.sector
+        : initialSector;
   const currentBrand = currentView.selectedBrand;
+  const currentCatalogData = catalogDataBySource[currentSource];
   const currentLastUpdated =
     filterMode === "client"
-      ? catalogData?.lastUpdated ?? initialLastUpdated
+      ? currentCatalogData?.lastUpdated ?? initialLastUpdated
       : initialLastUpdated;
   const totalSectorCount = useMemo(
     () => Object.values(currentView.sectorCounts).reduce((sum, value) => sum + value, 0),
@@ -350,10 +390,15 @@ export default function NewProductsClient({
     currentView.brandOptions.find((option) => option.key === currentBrand)?.label ??
     currentBrand;
   const hasMore = visibleCount < currentView.products.length;
+  const isConvenience = currentSource === "convenience";
+  const totalBrandOptionCount = currentView.brandOptions.reduce(
+    (sum, option) => sum + option.count,
+    0
+  );
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [currentPeriod, currentSector, currentBrand, filterMode]);
+  }, [currentSource, currentPeriod, currentSector, currentBrand, filterMode]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -379,20 +424,28 @@ export default function NewProductsClient({
   const applyFilter = (
     nextPeriod: NewProductsPeriod,
     nextSector: NewProductSectorFilter,
-    nextBrand: string | null = currentBrand
+    nextBrand: string | null = currentBrand,
+    nextSource: NewProductSourceFilter = currentSource
   ) => {
+    const normalizedSector = nextSource === "convenience" ? "all" : nextSector;
     const requestedFilters: FilterState = {
+      source: nextSource,
       period: nextPeriod,
-      sector: nextSector,
-      brand: nextSector === "all" ? null : nextBrand,
+      sector: normalizedSector,
+      brand:
+        nextSource === "convenience" || normalizedSector !== "all"
+          ? nextBrand
+          : null,
     };
 
     Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
     setOpenDropdown(null);
 
+    const catalogData = catalogDataBySource[requestedFilters.source];
     if (catalogStatus !== "ready" || !catalogData) {
       router.replace(
         buildFilterHref(
+          requestedFilters.source,
           requestedFilters.period,
           requestedFilters.sector,
           requestedFilters.brand
@@ -416,7 +469,12 @@ export default function NewProductsClient({
     window.history.replaceState(
       {},
       "",
-      buildFilterHref(nextFilters.period, nextFilters.sector, nextFilters.brand)
+      buildFilterHref(
+        nextFilters.source,
+        nextFilters.period,
+        nextFilters.sector,
+        nextFilters.brand
+      )
     );
   };
 
@@ -434,6 +492,26 @@ export default function NewProductsClient({
         </p>
       </section>
 
+      <section className="mb-3 grid grid-cols-2 gap-1 rounded-full bg-line2 p-1">
+        {SOURCE_OPTIONS.map((option) => {
+          const active = currentSource === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => applyFilter(currentPeriod, "all", null, option.key)}
+              className={`rounded-full px-3 py-2 text-[12.5px] font-bold tracking-[-0.01em] transition-colors ${
+                active
+                  ? "bg-ink text-surface"
+                  : "text-ink3 hover:bg-surface"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </section>
+
       <section className="mb-4 flex flex-wrap gap-1.5">
         {PERIOD_OPTIONS.map((option) => {
           const active = currentPeriod === option.key;
@@ -441,7 +519,13 @@ export default function NewProductsClient({
             <button
               key={option.key}
               type="button"
-              onClick={() => applyFilter(option.key, currentSector, currentBrand)}
+              onClick={() =>
+                applyFilter(
+                  option.key,
+                  isConvenience ? "all" : currentSector,
+                  currentBrand
+                )
+              }
               className={`whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
                 active
                   ? "bg-ink text-surface"
@@ -456,36 +540,68 @@ export default function NewProductsClient({
 
       <section className="mb-4 rounded-[20px] border border-line bg-surface p-4">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-[11px] font-bold text-ink3">업종</p>
+          <p className="text-[11px] font-bold text-ink3">
+            {isConvenience ? "브랜드" : "업종"}
+          </p>
           <span className="text-[11px] text-ink4">
             {currentView.totalCount}개 · 브랜드 {currentView.brandCount}곳
           </span>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {SECTOR_OPTIONS.map((option) => {
-            const active = currentSector === option.key;
-            const count =
-              option.key === "all"
-                ? totalSectorCount
-                : currentView.sectorCounts[option.key];
-            return (
+        {isConvenience ? (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => applyFilter(currentPeriod, "all", null)}
+              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                !currentBrand
+                  ? "bg-accent text-surface"
+                  : "bg-accent-soft text-accent hover:bg-accent/20"
+              }`}
+            >
+              전체 브랜드 {totalBrandOptionCount}
+            </button>
+            {currentView.brandOptions.map((option) => (
               <button
                 key={option.key}
                 type="button"
-                onClick={() => applyFilter(currentPeriod, option.key, null)}
+                onClick={() => applyFilter(currentPeriod, "all", option.key)}
                 className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  active
+                  currentBrand === option.key
                     ? "bg-accent text-surface"
                     : "bg-accent-soft text-accent hover:bg-accent/20"
                 }`}
               >
-                {option.label} {count}
+                {option.label} {option.count}
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {SECTOR_OPTIONS.map((option) => {
+              const active = currentSector === option.key;
+              const count =
+                option.key === "all"
+                  ? totalSectorCount
+                  : currentView.sectorCounts[option.key];
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => applyFilter(currentPeriod, option.key, null)}
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    active
+                      ? "bg-accent text-surface"
+                      : "bg-accent-soft text-accent hover:bg-accent/20"
+                  }`}
+                >
+                  {option.label} {count}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {currentSector !== "all" && currentView.brandOptions.length > 0 ? (
+        {!isConvenience && currentSector !== "all" && currentView.brandOptions.length > 0 ? (
           <>
             <p className="mt-4 mb-2 text-[11px] font-bold text-ink3">
               브랜드
@@ -534,8 +650,8 @@ export default function NewProductsClient({
               조건에 맞는 신상이 아직 없습니다
             </p>
             <p className="mt-2 text-sm leading-relaxed text-ink3">
-              기간을 넓히거나 업종, 브랜드 필터를 바꿔보세요. 공식 채널 기준
-              데이터만 보여드립니다.
+              기간을 넓히거나 {isConvenience ? "브랜드" : "업종, 브랜드"} 필터를
+              바꿔보세요. 공식 채널 기준 데이터만 보여드립니다.
             </p>
           </div>
         ) : (
