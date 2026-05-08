@@ -2449,129 +2449,6 @@ async def _crawl_html_badge_menu(
     return list(products_by_id.values())
 
 
-async def _crawl_html_image_menu_cards(
-    client: httpx.AsyncClient,
-    source: NewProductSourceDefinition,
-) -> list[ParsedNewProduct]:
-    config = _get_parser_config(source)
-    soup = await _fetch_soup(client, source.crawl_url)
-    item_selector = str(config.get("item_selector") or "")
-    detail_link_selector = str(config.get("detail_link_selector") or "")
-    external_id_pattern = str(config.get("external_id_pattern") or "")
-    title_selector = str(config.get("title_selector") or "")
-    summary_selector = str(config.get("summary_selector") or "")
-    default_category = str(config.get("default_category") or "신규 메뉴")
-    summary_fallback = str(config.get("summary_fallback") or "{brand} 공식 신규 메뉴")
-    max_items = int(config.get("max_items", 40))
-    scan_limit = int(config.get("scan_limit", max_items * 3))
-    require_keyword = bool(config.get("require_keyword", False))
-    allow_food_names_without_keyword = bool(
-        config.get("allow_food_names_without_keyword", True)
-    )
-    short_name_max_length = int(config.get("short_name_max_length", 40))
-    name_hint_keywords = tuple(config.get("name_hint_keywords") or ())
-    title_block_keywords = tuple(config.get("title_block_keywords") or ())
-    timestamp_format = _resolve_timestamp_format(str(config.get("published_at_source") or ""))
-    image_timestamp_pattern = str(config.get("image_timestamp_pattern") or "")
-    published_at_required = bool(config.get("published_at_required", True))
-
-    if not item_selector or not title_selector:
-        return []
-
-    products_by_id: dict[str, ParsedNewProduct] = {}
-    for item in soup.select(item_selector)[:scan_limit]:
-        title_element = item.select_one(title_selector)
-        name = _normalize_text(
-            title_element.get_text(" ", strip=True) if title_element else ""
-        )
-        if not _passes_title_filters(
-            name,
-            require_keyword=require_keyword,
-            allow_food_names_without_keyword=allow_food_names_without_keyword,
-            short_name_max_length=short_name_max_length,
-            name_hint_keywords=name_hint_keywords,
-            title_block_keywords=title_block_keywords,
-        ):
-            continue
-
-        image_url = _extract_image_from_element(item, source=source, config=config)
-        published_at = _parse_image_timestamp(
-            image_url,
-            pattern=image_timestamp_pattern or None,
-            source_type=timestamp_format,
-        )
-        if published_at_required and not published_at:
-            continue
-        if published_at and not _is_recent_or_active(published_at):
-            continue
-
-        detail_link = item.select_one(detail_link_selector) if detail_link_selector else None
-        detail_url = _build_absolute_url(
-            source.site_url,
-            detail_link.get("href") if detail_link else None,
-        )
-
-        external_id = ""
-        if external_id_pattern:
-            external_id_match = re.search(
-                external_id_pattern,
-                detail_url or image_url or "",
-            )
-            if external_id_match:
-                external_id = (
-                    external_id_match.groupdict().get("id")
-                    or external_id_match.group(1)
-                )
-        if not external_id:
-            external_id = _build_stable_external_id(
-                source=source,
-                detail_url=detail_url,
-                image_url=image_url,
-                name=name,
-            )
-        if external_id in products_by_id:
-            continue
-
-        if summary_selector:
-            summary = _normalize_text(
-                item.select_one(summary_selector).get_text(" ", strip=True)
-                if item.select_one(summary_selector)
-                else ""
-            )
-        else:
-            summary = ""
-
-        products_by_id[external_id] = ParsedNewProduct(
-            external_id=external_id,
-            name=name,
-            brand=source.brand,
-            source_type=source.source_type,
-            channel=source.channel,
-            category=default_category,
-            summary=summary
-            or _format_template_value(
-                summary_fallback,
-                brand=source.brand,
-                category=default_category,
-            ),
-            image_url=image_url,
-            product_url=detail_url or source.site_url,
-            published_at=published_at,
-            available_from=published_at,
-            available_to=None,
-            is_limited=False,
-            is_food=True,
-            raw_payload={
-                "published_at_source": config.get("published_at_source"),
-            },
-        )
-
-        if len(products_by_id) >= max_items:
-            break
-
-    return list(products_by_id.values())
-
-
 async def _crawl_html_linked_menu_cards(
     client: httpx.AsyncClient,
     source: NewProductSourceDefinition,
@@ -2998,7 +2875,6 @@ _PARSER_HANDLERS: dict[str, Any] = {
     "kfc_new_menu": _crawl_kfc_new_menu,
     "html_paged_new_menu": _crawl_html_paged_new_menu,
     "html_badge_menu": _crawl_html_badge_menu,
-    "html_image_menu_cards": _crawl_html_image_menu_cards,
     "html_linked_menu_cards": _crawl_html_linked_menu_cards,
     "mcdonalds_promotion": _crawl_mcdonalds_promotion,
     "json_menu_feed": _crawl_json_menu_feed,
