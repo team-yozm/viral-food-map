@@ -148,9 +148,21 @@ def _resolve_keyword_category(row: dict[str, Any]) -> str:
     )
 
 
-def _resolve_trend_status(existing_status: str | None) -> str:
+def _resolve_trend_status(
+    existing_status: str | None,
+    *,
+    score: float,
+    acceleration: float,
+) -> str:
     if existing_status in {"active", "rising"}:
         return existing_status
+    if score >= settings.TREND_SCORE_THRESHOLD:
+        if (
+            acceleration >= settings.TREND_THRESHOLD
+            and score >= settings.TREND_RISING_SCORE_THRESHOLD
+        ):
+            return "rising"
+        return "active"
     return "watchlist"
 
 
@@ -845,13 +857,28 @@ def _apply_trend(row: dict[str, Any]) -> None:
     now = _now_iso()
     trend_name = clean_display_keyword(row.get("candidate_name"))
     existing_rows = []
+    existing_target_trend = None
     trend_id = _get_string(row.get("trend_id"))
+    client = get_client()
+
+    if trend_id:
+        target_rows = (
+            client
+            .table("trends")
+            .select("id, status, detected_at, peak_score")
+            .eq("id", trend_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        existing_target_trend = target_rows[0] if target_rows else None
 
     if not trend_id:
         existing_rows = (
-            get_client()
+            client
             .table("trends")
-            .select("id, status")
+            .select("id, status, detected_at, peak_score")
             .eq("name", trend_name)
             .limit(1)
             .execute()
@@ -860,15 +887,26 @@ def _apply_trend(row: dict[str, Any]) -> None:
         )
 
     existing_named_trend = existing_rows[0] if existing_rows else None
+    existing_trend = existing_target_trend or existing_named_trend
     existing_status = _get_string(payload.get("existing_status")) or _get_string(
-        existing_named_trend.get("status") if existing_named_trend else None
+        existing_trend.get("status") if existing_trend else None
     )
+    score = _get_number(payload.get("score")) or 0.0
+    acceleration = _get_number(payload.get("acceleration")) or 0.0
+    existing_peak = _get_number(existing_trend.get("peak_score") if existing_trend else None) or 0.0
     trend_data = {
         "name": trend_name,
         "category": _resolve_keyword_category(row),
-        "status": _resolve_trend_status(existing_status),
-        "detected_at": now,
-        "peak_score": _get_number(payload.get("score")) or 0,
+        "status": _resolve_trend_status(
+            existing_status,
+            score=score,
+            acceleration=acceleration,
+        ),
+        "detected_at": _get_string(existing_trend.get("detected_at") if existing_trend else None) or now,
+        "last_confirmed_at": now,
+        "current_score": score,
+        "last_scored_at": now,
+        "peak_score": max(existing_peak, score),
         "score_breakdown": _score_breakdown(payload.get("score_breakdown")),
         "ai_verdict": row.get("ai_verdict"),
         "ai_reason": row.get("reason"),
@@ -880,7 +918,6 @@ def _apply_trend(row: dict[str, Any]) -> None:
         "ai_consecutive_rejects": 0,
     }
 
-    client = get_client()
     if trend_id and (not existing_named_trend or existing_named_trend.get("id") == trend_id):
         client.table("trends").update(trend_data).eq("id", trend_id).execute()
         return

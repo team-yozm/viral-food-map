@@ -66,7 +66,7 @@ function FeaturedCard({ trend, rank }: { trend: Trend & { store_count?: number }
           {trend.name}
         </div>
         <div className="mt-1.5 text-[12px] text-white/75">
-          판매처 {trend.store_count ?? 0}곳 · 인기도 {trend.peak_score}
+          판매처 {trend.store_count ?? 0}곳 · 인기도 {trend.current_score ?? trend.peak_score}
         </div>
       </div>
     </Link>
@@ -81,7 +81,7 @@ function RankedRow({
   rank: number;
   isLast?: boolean;
 }) {
-  const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
+  const score = Math.min(Math.max(trend.current_score ?? trend.peak_score ?? 0, 0), 100);
   const unoptimized = shouldUseUnoptimizedImage(trend.image_url);
 
   return (

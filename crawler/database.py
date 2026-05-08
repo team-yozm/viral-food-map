@@ -100,8 +100,9 @@ def get_trends_by_names(names: list[str]):
         get_client()
         .table("trends")
         .select(
-            "id,name,category,description,image_url,status,peak_score,detected_at,"
-            "last_confirmed_at,ai_consecutive_accepts,ai_consecutive_rejects"
+            "id,name,category,description,image_url,status,current_score,peak_score,"
+            "detected_at,last_confirmed_at,last_scored_at,"
+            "ai_consecutive_accepts,ai_consecutive_rejects"
         )
         .in_("name", names)
         .execute()
@@ -160,7 +161,7 @@ def snapshot_daily_rank_baseline() -> dict[str, Any]:
             .table("trends")
             .select("id")
             .in_("status", RANKED_TREND_STATUSES)
-            .order("peak_score", desc=True)
+            .order("current_score", desc=True)
             .order("id", desc=False)
             .execute()
             .data

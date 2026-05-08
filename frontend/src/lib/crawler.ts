@@ -274,6 +274,7 @@ export interface InstagramPublishedTrend {
   name?: string;
   status?: string;
   category?: string;
+  current_score?: number;
   peak_score?: number;
 }
 

@@ -10,6 +10,7 @@ final class WidgetRankingItem {
 
     private final String id;
     private final String name;
+    private final int currentScore;
     private final int peakScore;
     private final Integer previousRank;
     private final int currentRank;
@@ -18,6 +19,7 @@ final class WidgetRankingItem {
     WidgetRankingItem(
             String id,
             String name,
+            int currentScore,
             int peakScore,
             Integer previousRank,
             int currentRank,
@@ -25,6 +27,7 @@ final class WidgetRankingItem {
     ) {
         this.id = id;
         this.name = name;
+        this.currentScore = currentScore;
         this.peakScore = peakScore;
         this.previousRank = previousRank;
         this.currentRank = currentRank;
@@ -45,6 +48,10 @@ final class WidgetRankingItem {
 
     int getPeakScore() {
         return peakScore;
+    }
+
+    int getCurrentScore() {
+        return currentScore;
     }
 
     int getStoreCount() {

@@ -111,7 +111,7 @@ public class TrendRankingWidgetProvider extends AppWidgetProvider {
                     META_IDS[index],
                     context.getString(
                             R.string.widget_rankings_meta,
-                            Math.min(item.getPeakScore(), 100),
+                            Math.min(item.getCurrentScore(), 100),
                             item.getStoreCount()
                     )
             );

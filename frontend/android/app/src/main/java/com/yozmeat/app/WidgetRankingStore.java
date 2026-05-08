@@ -55,12 +55,19 @@ final class WidgetRankingStore {
                     Integer previousRank = item.isNull("previous_rank")
                             ? null
                             : Integer.valueOf(item.optInt("previous_rank"));
+                    int peakScore = (int) Math.round(item.optDouble("peak_score", 0));
+                    int currentScore = (int) Math.round(
+                            item.isNull("current_score")
+                                    ? item.optDouble("peak_score", 0)
+                                    : item.optDouble("current_score", item.optDouble("peak_score", 0))
+                    );
 
                     items.add(
                             new WidgetRankingItem(
                                     item.optString("id"),
                                     item.optString("name"),
-                                    (int) Math.round(item.optDouble("peak_score", 0)),
+                                    currentScore,
+                                    peakScore,
                                     previousRank,
                                     item.optInt("current_rank"),
                                     item.optInt("store_count")

@@ -183,6 +183,7 @@ def _serialize_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "name": row.get("name"),
         "status": row.get("status"),
         "category": row.get("category"),
+        "current_score": row.get("current_score"),
         "peak_score": row.get("peak_score"),
         "detected_at": row.get("detected_at"),
         "store_count": row.get("store_count"),
@@ -195,10 +196,10 @@ def _list_candidate_trends() -> list[dict[str, Any]]:
         get_client()
         .table("trends")
         .select(
-            "id,name,category,description,image_url,status,peak_score,detected_at,stores(count)"
+            "id,name,category,description,image_url,status,current_score,peak_score,detected_at,stores(count)"
         )
         .in_("status", ["rising", "active"])
-        .order("peak_score", desc=True)
+        .order("current_score", desc=True)
         .order("detected_at", desc=True)
         .order("id", desc=False)
         .execute()
@@ -229,7 +230,7 @@ def _list_candidate_trends() -> list[dict[str, Any]]:
     return sorted(
         selected_group,
         key=lambda row: (
-            -(float(row.get("peak_score") or 0)),
+            -(float(row.get("current_score") or row.get("peak_score") or 0)),
             -_parse_detected_at(row.get("detected_at")).timestamp(),
             -(int(row.get("store_count") or 0)),
         ),

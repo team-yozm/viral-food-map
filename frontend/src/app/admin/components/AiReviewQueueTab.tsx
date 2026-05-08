@@ -136,9 +136,23 @@ function resolveKeywordCategory(row: QueueRow): string {
   );
 }
 
-function resolveTrendStatus(existingStatus: string | null): string {
+const TREND_THRESHOLD = 20;
+const TREND_SCORE_THRESHOLD = 25;
+const TREND_RISING_SCORE_THRESHOLD = 40;
+
+function resolveTrendStatus(
+  existingStatus: string | null,
+  score: number,
+  acceleration: number
+): string {
   if (existingStatus === "active" || existingStatus === "rising") {
     return existingStatus;
+  }
+  if (score >= TREND_SCORE_THRESHOLD) {
+    if (acceleration >= TREND_THRESHOLD && score >= TREND_RISING_SCORE_THRESHOLD) {
+      return "rising";
+    }
+    return "active";
   }
   return "watchlist";
 }
@@ -286,12 +300,23 @@ export default function AiReviewQueueTab() {
     const now = new Date().toISOString();
     const breakdown = getScoreBreakdown(payload.score_breakdown);
     const trendName = cleanDisplayKeyword(approvedName);
+    const existingTargetTrend = row.trend_id
+      ? await supabase
+          .from("trends")
+          .select("id, status, detected_at, peak_score")
+          .eq("id", row.trend_id)
+          .limit(1)
+          .maybeSingle()
+      : null;
+    if (existingTargetTrend?.error) {
+      throw existingTargetTrend.error;
+    }
     const existingNamedTrend =
       row.trend_id && trendName === cleanDisplayKeyword(row.candidate_name)
         ? null
         : await supabase
             .from("trends")
-            .select("id, status")
+            .select("id, status, detected_at, peak_score")
             .eq("name", trendName)
             .limit(1)
             .maybeSingle();
@@ -300,17 +325,33 @@ export default function AiReviewQueueTab() {
       throw existingNamedTrend.error;
     }
 
+    const targetTrend = existingTargetTrend?.data ?? null;
+    const namedTrend = existingNamedTrend?.data ?? null;
+    if (row.trend_id && namedTrend?.id && namedTrend.id !== row.trend_id) {
+      throw new Error(
+        "Approved trend name already exists. Merge the trends before applying this review."
+      );
+    }
+
+    const existingTrend = targetTrend ?? namedTrend ?? null;
+    const updateTrendId = targetTrend?.id ?? namedTrend?.id ?? null;
     const existingStatus =
       getString(payload.existing_status) ??
-      existingNamedTrend?.data?.status ??
+      existingTrend?.status ??
       null;
+    const score = getNumber(payload.score) ?? 0;
+    const acceleration = getNumber(payload.acceleration) ?? 0;
+    const existingPeakScore = getNumber(existingTrend?.peak_score) ?? 0;
 
     const trendData = {
       name: trendName,
       category: resolveKeywordCategory(row),
-      status: resolveTrendStatus(existingStatus),
-      detected_at: now,
-      peak_score: getNumber(payload.score) ?? 0,
+      status: resolveTrendStatus(existingStatus, score, acceleration),
+      detected_at: getString(existingTrend?.detected_at) ?? now,
+      last_confirmed_at: now,
+      current_score: score,
+      last_scored_at: now,
+      peak_score: Math.max(existingPeakScore, score),
       score_breakdown: breakdown,
       ai_verdict: row.ai_verdict,
       ai_reason: row.reason,
@@ -322,23 +363,11 @@ export default function AiReviewQueueTab() {
       ai_consecutive_rejects: 0,
     };
 
-    if (row.trend_id && (!existingNamedTrend?.data?.id || existingNamedTrend.data.id === row.trend_id)) {
+    if (updateTrendId) {
       const { error } = await supabase
         .from("trends")
         .update(trendData)
-        .eq("id", row.trend_id);
-
-      if (error) {
-        throw error;
-      }
-      return;
-    }
-
-    if (existingNamedTrend?.data?.id) {
-      const { error } = await supabase
-        .from("trends")
-        .update(trendData)
-        .eq("id", existingNamedTrend.data.id);
+        .eq("id", updateTrendId);
 
       if (error) {
         throw error;

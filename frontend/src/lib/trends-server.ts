@@ -31,7 +31,7 @@ export const getActiveTrends = cache(async (): Promise<TrendWithStoreCount[]> =>
     .from("trends")
     .select("*, stores(count)")
     .in("status", ["rising", "active", "declining"])
-    .order("peak_score", { ascending: false })
+    .order("current_score", { ascending: false })
     .order("id", { ascending: true });
 
   return (
@@ -72,7 +72,7 @@ export const getHomePageData = cache(async (): Promise<HomePageData> => {
     trends,
     verifiedStoreCount: verifiedStoresResult.count ?? 0,
     totalViewCount: analytics?.total_views ?? 0,
-    lastUpdated: trends[0]?.detected_at ?? null,
+    lastUpdated: trends[0]?.last_scored_at ?? trends[0]?.detected_at ?? null,
   };
 });
 

@@ -407,7 +407,7 @@ export default function TrendDetailPageClient({
           {[
             {
               l: "인기도",
-              v: `${initialTrend.peak_score}`,
+              v: `${initialTrend.current_score ?? initialTrend.peak_score}`,
               s: "/100",
             },
             {

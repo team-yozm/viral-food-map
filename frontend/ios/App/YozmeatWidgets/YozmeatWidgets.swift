@@ -19,6 +19,7 @@ private enum WidgetRoutes {
 private struct WidgetTrendItem: Decodable, Identifiable {
     let id: String
     let name: String
+    let currentScore: Double
     let peakScore: Double
     let previousRank: Int?
     let currentRank: Int
@@ -27,10 +28,41 @@ private struct WidgetTrendItem: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id
         case name
+        case currentScore = "current_score"
         case peakScore = "peak_score"
         case previousRank = "previous_rank"
         case currentRank = "current_rank"
         case storeCount = "store_count"
+    }
+
+    init(
+        id: String,
+        name: String,
+        currentScore: Double? = nil,
+        peakScore: Double,
+        previousRank: Int?,
+        currentRank: Int,
+        storeCount: Int
+    ) {
+        self.id = id
+        self.name = name
+        self.currentScore = currentScore ?? peakScore
+        self.peakScore = peakScore
+        self.previousRank = previousRank
+        self.currentRank = currentRank
+        self.storeCount = storeCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let peakScore = try container.decode(Double.self, forKey: .peakScore)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.peakScore = peakScore
+        self.currentScore = try container.decodeIfPresent(Double.self, forKey: .currentScore) ?? peakScore
+        self.previousRank = try container.decodeIfPresent(Int.self, forKey: .previousRank)
+        self.currentRank = try container.decode(Int.self, forKey: .currentRank)
+        self.storeCount = try container.decode(Int.self, forKey: .storeCount)
     }
 
     var deltaLabel: String {
@@ -209,7 +241,7 @@ private struct RankingRowView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text("인기도 \(min(Int(item.peakScore.rounded()), 100))% · 판매처 \(item.storeCount)곳")
+                Text("인기도 \(min(Int(item.currentScore.rounded()), 100))% · 판매처 \(item.storeCount)곳")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -293,7 +325,7 @@ private struct RankingWidgetEntryView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(2)
 
-            Text("인기도 \(min(Int(item.peakScore.rounded()), 100))% · 판매처 \(item.storeCount)곳")
+            Text("인기도 \(min(Int(item.currentScore.rounded()), 100))% · 판매처 \(item.storeCount)곳")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

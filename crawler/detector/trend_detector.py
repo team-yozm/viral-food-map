@@ -158,6 +158,13 @@ def classify_status(
     meets_active = score >= settings.TREND_SCORE_THRESHOLD
 
     if existing_status is None:
+        if meets_active:
+            if (
+                acceleration >= settings.TREND_THRESHOLD
+                and score >= settings.TREND_RISING_SCORE_THRESHOLD
+            ):
+                return "rising"
+            return "active"
         return "watchlist"
 
     if existing_status == "watchlist":
@@ -563,6 +570,7 @@ def _deactivate_stale_trends(
     confirmed_keywords: list[str],
     *,
     active_trends: list[dict] | None = None,
+    protected_keywords: list[str] | None = None,
 ) -> list[str]:
     cutoff = datetime.now(timezone.utc) - timedelta(
         hours=settings.ACTIVE_TREND_TTL_HOURS
@@ -570,12 +578,23 @@ def _deactivate_stale_trends(
     confirmed_keyword_set = {
         normalize_keyword_text(kw) for kw in confirmed_keywords
     }
+    protected_keyword_set = {
+        normalize_keyword_text(kw)
+        for kw in (protected_keywords or [])
+        if clean_display_keyword(kw)
+    }
     deactivated_trends: list[str] = []
 
     for trend in (active_trends if active_trends is not None else get_active_trends() or []):
         trend_id = trend.get("id")
         keyword = trend.get("name")
-        if not trend_id or not keyword or normalize_keyword_text(keyword) in confirmed_keyword_set:
+        normalized_keyword = normalize_keyword_text(keyword)
+        if (
+            not trend_id
+            or not keyword
+            or normalized_keyword in confirmed_keyword_set
+            or normalized_keyword in protected_keyword_set
+        ):
             continue
 
         reference_at = (
@@ -626,6 +645,7 @@ def _deactivate_stale_discovered_keywords(
     *,
     confirmed_keywords: list[str],
     alias_lookup: dict[str, str],
+    protected_keywords: list[str] | None = None,
 ) -> list[str]:
     cutoff = datetime.now(timezone.utc) - timedelta(
         hours=settings.KEYWORD_DISCOVERED_DORMANCY_HOURS
@@ -633,6 +653,11 @@ def _deactivate_stale_discovered_keywords(
     confirmed_keys = {
         normalize_keyword_text(keyword)
         for keyword in confirmed_keywords
+        if clean_display_keyword(keyword)
+    }
+    protected_keys = {
+        normalize_keyword_text(keyword)
+        for keyword in (protected_keywords or [])
         if clean_display_keyword(keyword)
     }
     stale_keywords: list[str] = []
@@ -645,7 +670,8 @@ def _deactivate_stale_discovered_keywords(
             continue
 
         canonical_keyword, _ = resolve_keyword_alias(raw_keyword, alias_lookup)
-        if normalize_keyword_text(canonical_keyword) in confirmed_keys:
+        normalized_canonical = normalize_keyword_text(canonical_keyword)
+        if normalized_canonical in confirmed_keys or normalized_canonical in protected_keys:
             continue
 
         reference_at = (
@@ -669,6 +695,7 @@ def _finalize_keyword_lifecycle(
     db_keywords: list[dict],
     alias_lookup: dict[str, str],
     confirmed_keywords: list[str],
+    protected_keywords: list[str] | None = None,
     deactivate_stale_keywords: bool = True,
 ) -> dict:
     confirmed_db_keywords = _collect_confirmed_db_keywords(
@@ -684,6 +711,7 @@ def _finalize_keyword_lifecycle(
             db_keywords,
             confirmed_keywords=confirmed_keywords,
             alias_lookup=alias_lookup,
+            protected_keywords=protected_keywords,
         )
         if deactivate_stale_keywords
         else []
@@ -1195,15 +1223,29 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     if not persistable_candidates:
         _early_active = get_active_trends() or []
+        protected_review_keywords = dedupe_terms(
+            [candidate["keyword"] for candidate in pending_review_candidates]
+        )
         if pending_review_candidates:
-            summary["skipped_lifecycle_reason"] = "candidates_pending_review"
-            summary["deactivated_trends"] = invalid_active_trends
+            summary["skipped_lifecycle_reason"] = "review_candidates_protected"
+            summary["deactivated_trends"] = _merge_deactivated_trends(
+                invalid_active_trends,
+                _deactivate_rejected_active_trends(
+                    rejected_keywords,
+                    active_trends=_early_active,
+                ),
+                _deactivate_stale_trends(
+                    [],
+                    active_trends=_early_active,
+                    protected_keywords=protected_review_keywords,
+                ),
+            )
             return _finalize_keyword_lifecycle(
                 summary,
                 db_keywords=db_keywords,
                 alias_lookup=alias_lookup,
                 confirmed_keywords=[],
-                deactivate_stale_keywords=False,
+                protected_keywords=protected_review_keywords,
             )
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
@@ -1292,6 +1334,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     confirmed_groups: dict[str, dict] = {}
     alias_rows_to_upsert: list[dict] = []
+    queued_review_keywords: list[str] = []
 
     for candidate in persistable_candidates:
         keyword = clean_display_keyword(candidate["keyword"])
@@ -1304,6 +1347,7 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
         existing_for_review = candidate_existing_trends.get(keyword)
 
         if review is None:
+            queued_review_keywords.append(keyword)
             _queue_trend_candidate_for_review(
                 summary,
                 candidate,
@@ -1447,10 +1491,16 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
 
     if not confirmed_groups:
         _early_active = get_active_trends() or []
+        protected_review_keywords = dedupe_terms(
+            [
+                *[candidate["keyword"] for candidate in pending_review_candidates],
+                *queued_review_keywords,
+            ]
+        )
         if summary["queued_for_review"] > 0:
             summary["skipped_lifecycle_reason"] = (
                 summary.get("skipped_lifecycle_reason")
-                or "candidates_queued_for_review"
+                or "review_candidates_protected"
             )
             summary["deactivated_trends"] = _merge_deactivated_trends(
                 invalid_active_trends,
@@ -1458,24 +1508,34 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     rejected_keywords,
                     active_trends=_early_active,
                 ),
+                _deactivate_stale_trends(
+                    [],
+                    active_trends=_early_active,
+                    protected_keywords=protected_review_keywords,
+                ),
             )
             return _finalize_keyword_lifecycle(
                 summary,
                 db_keywords=db_keywords,
                 alias_lookup=alias_lookup,
                 confirmed_keywords=[],
-                deactivate_stale_keywords=False,
+                protected_keywords=protected_review_keywords,
             )
         summary["deactivated_trends"] = _merge_deactivated_trends(
             invalid_active_trends,
             _deactivate_rejected_active_trends(rejected_keywords, active_trends=_early_active),
-            _deactivate_stale_trends([], active_trends=_early_active),
+            _deactivate_stale_trends(
+                [],
+                active_trends=_early_active,
+                protected_keywords=protected_review_keywords,
+            ),
         )
         return _finalize_keyword_lifecycle(
             summary,
             db_keywords=db_keywords,
             alias_lookup=alias_lookup,
             confirmed_keywords=[],
+            protected_keywords=protected_review_keywords,
         )
 
     consumed_existing_ids: set[str] = set()
@@ -1662,6 +1722,8 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
                     else now_iso
                 ),
                 "last_confirmed_at": now_iso,
+                "current_score": representative_candidate["score"],
+                "last_scored_at": now_iso,
                 "peak_score": max(existing_peak, representative_candidate["score"]),
                 "score_breakdown": representative_candidate.get("score_breakdown"),
                 "search_volume_data": _build_search_volume_map(
@@ -1722,19 +1784,20 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
     )
     deduped_confirmed_keywords = dedupe_terms(confirmed_keywords)
     deduped_new_confirmed_keywords = dedupe_terms(new_confirmed_keywords)
+    protected_review_keywords = dedupe_terms(
+        [
+            *[candidate["keyword"] for candidate in pending_review_candidates],
+            *queued_review_keywords,
+        ]
+    )
     summary["confirmed"] = len(deduped_confirmed_keywords)
     summary["confirmed_keywords"] = deduped_confirmed_keywords
     summary["new_confirmed_keywords"] = deduped_new_confirmed_keywords
     final_active_trends = get_active_trends() or []
-    skip_stale_lifecycle = summary["queued_for_review"] > 0 or bool(pending_review_candidates)
-    if skip_stale_lifecycle:
+    if protected_review_keywords:
         summary["skipped_lifecycle_reason"] = (
             summary.get("skipped_lifecycle_reason")
-            or (
-                "candidates_queued_for_review"
-                if summary["queued_for_review"] > 0
-                else "candidates_pending_review"
-            )
+            or "review_candidates_protected"
         )
     deactivated_groups = [
         invalid_active_trends,
@@ -1742,21 +1805,19 @@ async def detect_trends(trigger: str = "scheduler") -> dict:
             rejected_keywords,
             active_trends=final_active_trends,
         ),
+        _deactivate_stale_trends(
+            deduped_confirmed_keywords,
+            active_trends=final_active_trends,
+            protected_keywords=protected_review_keywords,
+        ),
     ]
-    if not skip_stale_lifecycle:
-        deactivated_groups.append(
-            _deactivate_stale_trends(
-                deduped_confirmed_keywords,
-                active_trends=final_active_trends,
-            )
-        )
     summary["deactivated_trends"] = _merge_deactivated_trends(*deactivated_groups)
     _finalize_keyword_lifecycle(
         summary,
         db_keywords=db_keywords,
         alias_lookup=alias_lookup,
         confirmed_keywords=deduped_confirmed_keywords,
-        deactivate_stale_keywords=not skip_stale_lifecycle,
+        protected_keywords=protected_review_keywords,
     )
 
     logger.info(

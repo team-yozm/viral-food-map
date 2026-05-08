@@ -5,7 +5,10 @@ export interface Trend {
   status: "rising" | "active" | "watchlist" | "declining" | "inactive";
   type: "viral" | "steady";
   detected_at: string;
+  last_confirmed_at?: string | null;
+  current_score: number;
   peak_score: number;
+  last_scored_at: string | null;
   search_volume_data: Record<string, number>;
   description: string | null;
   image_url: string | null;

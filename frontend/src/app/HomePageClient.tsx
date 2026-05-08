@@ -382,7 +382,7 @@ function TopTrendRollingBanner({
             Math.abs(prevSlideOffset) >= 1 &&
             Math.abs(slideOffset) >= 1 &&
             Math.sign(prevSlideOffset) !== Math.sign(slideOffset);
-          const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
+          const score = Math.min(Math.max(trend.current_score ?? trend.peak_score ?? 0, 0), 100);
 
           return (
             <Link
@@ -720,7 +720,7 @@ export default function HomePageClient({
       .from("trends")
       .select("*, stores(count)")
       .in("status", ["rising", "active", "declining"])
-      .order("peak_score", { ascending: false })
+      .order("current_score", { ascending: false })
       .order("id", { ascending: true });
 
     if (error || !data) {
@@ -1144,7 +1144,7 @@ export default function HomePageClient({
                         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
                           {topTrends.map((trend, index) => {
                             const rank = index + 1;
-                            const score = Math.min(Math.max(trend.peak_score || 0, 0), 100);
+                            const score = Math.min(Math.max(trend.current_score ?? trend.peak_score ?? 0, 0), 100);
                             const isLast = index === topTrends.length - 1;
                             return (
                               <Link

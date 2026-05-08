@@ -7,6 +7,7 @@ const WIDGET_RANKING_LIMIT = 10;
 type WidgetTrendRow = {
   id: string;
   name: string;
+  current_score: number;
   peak_score: number;
   previous_rank: number | null;
   stores?: { count: number }[] | null;
@@ -15,6 +16,7 @@ type WidgetTrendRow = {
 export interface WidgetRankingItem {
   id: string;
   name: string;
+  current_score: number;
   peak_score: number;
   previous_rank: number | null;
   current_rank: number;
@@ -42,9 +44,9 @@ export const getWidgetRankings = cache(
 
     const { data } = await supabase
       .from("trends")
-      .select("id, name, peak_score, previous_rank, stores(count)")
+      .select("id, name, current_score, peak_score, previous_rank, stores(count)")
       .in("status", ["rising", "active", "declining"])
-      .order("peak_score", { ascending: false })
+      .order("current_score", { ascending: false })
       .order("id", { ascending: true })
       .limit(limit);
 
@@ -52,6 +54,7 @@ export const getWidgetRankings = cache(
       (item, index) => ({
         id: item.id,
         name: item.name,
+        current_score: item.current_score ?? item.peak_score,
         peak_score: item.peak_score,
         previous_rank: item.previous_rank,
         current_rank: index + 1,

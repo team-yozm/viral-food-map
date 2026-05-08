@@ -71,10 +71,10 @@ export default function TrendCard({ trend }: TrendCardProps) {
               <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-primary"
-                  style={{ width: `${Math.min(trend.peak_score, 100)}%` }}
+                  style={{ width: `${Math.min(trend.current_score ?? trend.peak_score, 100)}%` }}
                 />
               </div>
-              <span className="font-medium text-primary">{Math.min(trend.peak_score, 100)}%</span>
+              <span className="font-medium text-primary">{Math.min(trend.current_score ?? trend.peak_score, 100)}%</span>
             </div>
           </div>
         </div>

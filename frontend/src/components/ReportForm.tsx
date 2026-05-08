@@ -80,7 +80,7 @@ export default function ReportForm({ initialTrends }: ReportFormProps) {
       .from("trends")
       .select("id, name, category, status")
       .in("status", ["rising", "active", "declining"])
-      .order("peak_score", { ascending: false })
+      .order("current_score", { ascending: false })
       .order("id", { ascending: true });
 
     if (error) {

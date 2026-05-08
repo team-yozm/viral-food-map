@@ -11,7 +11,9 @@ interface TrendRow {
   category: string;
   status: string;
   detected_at: string;
+  current_score: number;
   peak_score: number;
+  last_scored_at: string | null;
   description: string | null;
   image_url: string | null;
   stores: { count: number }[];
@@ -129,6 +131,8 @@ export default function TrendsTab() {
       status: newStatus,
       description: newDescription.trim() || null,
       detected_at: new Date().toISOString(),
+      current_score: 0,
+      last_scored_at: new Date().toISOString(),
       peak_score: 0,
     });
 
@@ -414,7 +418,7 @@ export default function TrendsTab() {
                         {t.category}
                       </span>
                       <span className="text-xs text-gray-300">
-                        점수 {t.peak_score}
+                        점수 {t.current_score ?? t.peak_score}
                       </span>
                     </div>
                     <h3 className="font-semibold text-gray-900">{t.name}</h3>
@@ -452,7 +456,7 @@ export default function TrendsTab() {
                       </div>
                     )}
                     {t.score_breakdown && Object.keys(t.score_breakdown).length > 0 && (
-                      <ScoreBreakdown breakdown={t.score_breakdown} total={t.peak_score} />
+                      <ScoreBreakdown breakdown={t.score_breakdown} total={t.current_score ?? t.peak_score} />
                     )}
                   </div>
 
