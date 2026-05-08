@@ -14,6 +14,7 @@ import {
 import NewProductsClient from "./NewProductsClient";
 import {
   normalizeBrand,
+  normalizeConvenienceCategory,
   normalizePeriod,
   normalizeSector,
   normalizeSource,
@@ -23,6 +24,7 @@ interface NewProductsPageProps {
   searchParams?: Promise<{
     period?: string;
     sector?: string;
+    category?: string;
     brand?: string;
     source?: string;
   }>;
@@ -46,8 +48,18 @@ export default async function NewProductsPage({
   const period = normalizePeriod(resolvedSearchParams.period);
   const sector =
     source === "convenience" ? "all" : normalizeSector(resolvedSearchParams.sector);
+  const category =
+    source === "convenience"
+      ? normalizeConvenienceCategory(resolvedSearchParams.category)
+      : "all";
   const brand = normalizeBrand(resolvedSearchParams.brand);
-  const pageData = await getNewProductsPageData({ source, period, sector, brand });
+  const pageData = await getNewProductsPageData({
+    source,
+    period,
+    sector,
+    category,
+    brand,
+  });
   const structuredData = [
     buildWebPageJsonLd({
       name: "신상 음식 모아보기",
@@ -77,6 +89,7 @@ export default async function NewProductsPage({
         <NewProductsClient
           initialProducts={pageData.products}
           initialSectorCounts={pageData.sectorCounts}
+          initialCategoryOptions={pageData.categoryOptions}
           initialBrandOptions={pageData.brandOptions}
           initialBrandCount={pageData.brandCount}
           initialTotalCount={pageData.totalCount}
@@ -84,6 +97,7 @@ export default async function NewProductsPage({
           initialSource={source}
           initialPeriod={period}
           initialSector={sector}
+          initialCategory={pageData.selectedCategory ?? "all"}
           initialBrand={pageData.selectedBrand}
         />
 

@@ -8,6 +8,7 @@ import NewProductCard from "@/components/NewProductCard";
 import {
   deriveNewProductsView,
   type NewProductBrandOption,
+  type NewProductCategoryOption,
   type NewProductListItem,
   type NewProductSourceFilter,
   type NewProductsPeriod,
@@ -40,6 +41,7 @@ type CatalogResponse = {
 interface NewProductsClientProps {
   initialProducts: NewProductListItem[];
   initialSectorCounts: Record<NewProductSectorKey, number>;
+  initialCategoryOptions: NewProductCategoryOption[];
   initialBrandOptions: NewProductBrandOption[];
   initialBrandCount: number;
   initialTotalCount: number;
@@ -47,6 +49,7 @@ interface NewProductsClientProps {
   initialSource: NewProductSourceFilter;
   initialPeriod: NewProductsPeriod;
   initialSector: NewProductSectorFilter;
+  initialCategory: string;
   initialBrand: string | null;
 }
 
@@ -64,6 +67,7 @@ interface FilterState {
   source: NewProductSourceFilter;
   period: NewProductsPeriod;
   sector: NewProductSectorFilter;
+  category: string;
   brand: string | null;
 }
 
@@ -253,6 +257,7 @@ function FilterDropdown<T extends string>({
 export default function NewProductsClient({
   initialProducts,
   initialSectorCounts,
+  initialCategoryOptions,
   initialBrandOptions,
   initialBrandCount,
   initialTotalCount,
@@ -260,6 +265,7 @@ export default function NewProductsClient({
   initialSource,
   initialPeriod,
   initialSector,
+  initialCategory,
   initialBrand,
 }: NewProductsClientProps) {
   const router = useRouter();
@@ -269,17 +275,21 @@ export default function NewProductsClient({
     () => ({
       products: initialProducts,
       sectorCounts: initialSectorCounts,
+      categoryOptions: initialCategoryOptions,
       brandOptions: initialBrandOptions,
       brandCount: initialBrandCount,
       totalCount: initialTotalCount,
+      selectedCategory: initialCategory === "all" ? null : initialCategory,
       selectedBrand: initialBrand,
     }),
     [
       initialProducts,
       initialSectorCounts,
+      initialCategoryOptions,
       initialBrandOptions,
       initialBrandCount,
       initialTotalCount,
+      initialCategory,
       initialBrand,
     ]
   );
@@ -288,6 +298,7 @@ export default function NewProductsClient({
     source: initialSource,
     period: initialPeriod,
     sector: initialSector,
+    category: initialCategory,
     brand: initialBrand,
   });
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -303,10 +314,18 @@ export default function NewProductsClient({
       source: initialSource,
       period: initialPeriod,
       sector: initialSector,
+      category: initialCategory,
       brand: initialBrand,
     });
     setFilterMode("server");
-  }, [initialSource, initialPeriod, initialSector, initialBrand, initialTotalCount]);
+  }, [
+    initialSource,
+    initialPeriod,
+    initialSector,
+    initialCategory,
+    initialBrand,
+    initialTotalCount,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -359,6 +378,10 @@ export default function NewProductsClient({
       : filterMode === "client"
         ? filters.sector
         : initialSector;
+  const currentCategory =
+    currentSource === "convenience"
+      ? currentView.selectedCategory ?? "all"
+      : "all";
   const currentBrand = currentView.selectedBrand;
   const currentCatalogData = catalogDataBySource[currentSource];
   const currentLastUpdated =
@@ -386,19 +409,26 @@ export default function NewProductsClient({
     [currentView.sectorCounts]
   );
   const visibleSectorHighlights = sectorSummary.slice(0, 3);
+  const totalCategoryCount = currentView.categoryOptions.reduce(
+    (sum, option) => sum + option.count,
+    0
+  );
   const selectedBrandLabel =
     currentView.brandOptions.find((option) => option.key === currentBrand)?.label ??
     currentBrand;
   const hasMore = visibleCount < currentView.products.length;
   const isConvenience = currentSource === "convenience";
-  const totalBrandOptionCount = currentView.brandOptions.reduce(
-    (sum, option) => sum + option.count,
-    0
-  );
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [currentSource, currentPeriod, currentSector, currentBrand, filterMode]);
+  }, [
+    currentSource,
+    currentPeriod,
+    currentSector,
+    currentCategory,
+    currentBrand,
+    filterMode,
+  ]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -425,15 +455,19 @@ export default function NewProductsClient({
     nextPeriod: NewProductsPeriod,
     nextSector: NewProductSectorFilter,
     nextBrand: string | null = currentBrand,
-    nextSource: NewProductSourceFilter = currentSource
+    nextSource: NewProductSourceFilter = currentSource,
+    nextCategory = currentCategory
   ) => {
     const normalizedSector = nextSource === "convenience" ? "all" : nextSector;
+    const normalizedCategory = nextSource === "convenience" ? nextCategory : "all";
     const requestedFilters: FilterState = {
       source: nextSource,
       period: nextPeriod,
       sector: normalizedSector,
+      category: normalizedCategory,
       brand:
-        nextSource === "convenience" || normalizedSector !== "all"
+        (nextSource === "convenience" && normalizedCategory !== "all") ||
+        (nextSource === "franchise" && normalizedSector !== "all")
           ? nextBrand
           : null,
     };
@@ -448,7 +482,8 @@ export default function NewProductsClient({
           requestedFilters.source,
           requestedFilters.period,
           requestedFilters.sector,
-          requestedFilters.brand
+          requestedFilters.brand,
+          requestedFilters.category
         ),
         { scroll: false }
       );
@@ -458,6 +493,10 @@ export default function NewProductsClient({
     const nextView = deriveNewProductsView(catalogData.products, requestedFilters);
     const nextFilters: FilterState = {
       ...requestedFilters,
+      category:
+        requestedFilters.source === "convenience"
+          ? nextView.selectedCategory ?? "all"
+          : "all",
       brand: nextView.selectedBrand,
     };
 
@@ -473,7 +512,8 @@ export default function NewProductsClient({
         nextFilters.source,
         nextFilters.period,
         nextFilters.sector,
-        nextFilters.brand
+        nextFilters.brand,
+        nextFilters.category
       )
     );
   };
@@ -499,7 +539,9 @@ export default function NewProductsClient({
             <button
               key={option.key}
               type="button"
-              onClick={() => applyFilter(currentPeriod, "all", null, option.key)}
+              onClick={() =>
+                applyFilter(currentPeriod, "all", null, option.key, "all")
+              }
               className={`rounded-full px-3 py-2 text-[12.5px] font-bold tracking-[-0.01em] transition-colors ${
                 active
                   ? "bg-ink text-surface"
@@ -523,7 +565,9 @@ export default function NewProductsClient({
                 applyFilter(
                   option.key,
                   isConvenience ? "all" : currentSector,
-                  currentBrand
+                  currentBrand,
+                  currentSource,
+                  isConvenience ? currentCategory : "all"
                 )
               }
               className={`whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold tracking-[-0.01em] transition-colors ${
@@ -541,7 +585,7 @@ export default function NewProductsClient({
       <section className="mb-4 rounded-[20px] border border-line bg-surface p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-[11px] font-bold text-ink3">
-            {isConvenience ? "브랜드" : "업종"}
+            {isConvenience ? "카테고리" : "업종"}
           </p>
           <span className="text-[11px] text-ink4">
             {currentView.totalCount}개 · 브랜드 {currentView.brandCount}곳
@@ -551,22 +595,24 @@ export default function NewProductsClient({
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
-              onClick={() => applyFilter(currentPeriod, "all", null)}
+              onClick={() => applyFilter(currentPeriod, "all", null, currentSource, "all")}
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                !currentBrand
+                currentCategory === "all"
                   ? "bg-accent text-surface"
                   : "bg-accent-soft text-accent hover:bg-accent/20"
               }`}
             >
-              전체 브랜드 {totalBrandOptionCount}
+              전체 {totalCategoryCount}
             </button>
-            {currentView.brandOptions.map((option) => (
+            {currentView.categoryOptions.map((option) => (
               <button
                 key={option.key}
                 type="button"
-                onClick={() => applyFilter(currentPeriod, "all", option.key)}
+                onClick={() =>
+                  applyFilter(currentPeriod, "all", null, currentSource, option.key)
+                }
                 className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  currentBrand === option.key
+                  currentCategory === option.key
                     ? "bg-accent text-surface"
                     : "bg-accent-soft text-accent hover:bg-accent/20"
                 }`}
@@ -601,7 +647,9 @@ export default function NewProductsClient({
           </div>
         )}
 
-        {!isConvenience && currentSector !== "all" && currentView.brandOptions.length > 0 ? (
+        {((isConvenience && currentCategory !== "all") ||
+          (!isConvenience && currentSector !== "all")) &&
+        currentView.brandOptions.length > 0 ? (
           <>
             <p className="mt-4 mb-2 text-[11px] font-bold text-ink3">
               브랜드
@@ -609,7 +657,15 @@ export default function NewProductsClient({
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => applyFilter(currentPeriod, currentSector, null)}
+                onClick={() =>
+                  applyFilter(
+                    currentPeriod,
+                    currentSector,
+                    null,
+                    currentSource,
+                    currentCategory
+                  )
+                }
                 className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                   !currentBrand
                     ? "bg-ink text-surface"
@@ -623,7 +679,13 @@ export default function NewProductsClient({
                   key={option.key}
                   type="button"
                   onClick={() =>
-                    applyFilter(currentPeriod, currentSector, option.key)
+                    applyFilter(
+                      currentPeriod,
+                      currentSector,
+                      option.key,
+                      currentSource,
+                      currentCategory
+                    )
                   }
                   className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                     currentBrand === option.key
@@ -650,7 +712,7 @@ export default function NewProductsClient({
               조건에 맞는 신상이 아직 없습니다
             </p>
             <p className="mt-2 text-sm leading-relaxed text-ink3">
-              기간을 넓히거나 {isConvenience ? "브랜드" : "업종, 브랜드"} 필터를
+              기간을 넓히거나 {isConvenience ? "카테고리, 브랜드" : "업종, 브랜드"} 필터를
               바꿔보세요. 공식 채널 기준 데이터만 보여드립니다.
             </p>
           </div>

@@ -50,11 +50,20 @@ export function normalizeBrand(brand?: string) {
   return trimmed ? trimmed : null;
 }
 
+export function normalizeConvenienceCategory(category?: string) {
+  const trimmed = category?.trim();
+  return trimmed &&
+    ["meal", "rice", "sandwich", "snack", "other"].includes(trimmed)
+    ? trimmed
+    : "all";
+}
+
 export function buildFilterHref(
   source: NewProductSourceFilter,
   period: NewProductsPeriod,
   sector: NewProductSectorFilter,
-  brand?: string | null
+  brand?: string | null,
+  category = "all"
 ) {
   const params = new URLSearchParams();
 
@@ -70,7 +79,15 @@ export function buildFilterHref(
     params.set("sector", sector);
   }
 
-  if ((source === "convenience" || sector !== "all") && brand) {
+  if (source === "convenience" && category !== "all") {
+    params.set("category", category);
+  }
+
+  if (
+    ((source === "convenience" && category !== "all") ||
+      (source === "franchise" && sector !== "all")) &&
+    brand
+  ) {
     params.set("brand", brand);
   }
 

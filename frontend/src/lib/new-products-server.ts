@@ -19,6 +19,7 @@ import type { NewProduct, NewProductSource } from "./types";
 
 export type {
   NewProductBrandOption,
+  NewProductCategoryOption,
   NewProductDisplayItem,
   NewProductDisplaySource,
   NewProductListItem,
@@ -40,6 +41,7 @@ interface NewProductsPageOptions {
   source: NewProductSourceFilter;
   period: NewProductsPeriod;
   sector: NewProductSectorFilter;
+  category: string;
   brand: string | null;
 }
 
@@ -195,13 +197,20 @@ export async function getNewProductsPageData({
   source,
   period,
   sector,
+  category,
   brand,
 }: NewProductsPageOptions): Promise<NewProductsPageData> {
   const rows = await getCachedVisibleNewProducts(source);
 
   const products = rows.map(mapNewProductRow);
   const lastUpdated = rows[0]?.last_seen_at ?? null;
-  const view = deriveNewProductsView(products, { source, period, sector, brand });
+  const view = deriveNewProductsView(products, {
+    source,
+    period,
+    sector,
+    category,
+    brand,
+  });
 
   return {
     ...view,

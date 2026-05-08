@@ -12,6 +12,12 @@ export interface NewProductBrandOption {
   count: number;
 }
 
+export interface NewProductCategoryOption {
+  key: string;
+  label: string;
+  count: number;
+}
+
 export interface NewProductDisplaySource {
   title: string;
   site_url: string | null;
@@ -43,9 +49,11 @@ export type NewProductListItem = NewProductDisplayItem;
 export interface NewProductsViewData {
   products: NewProductDisplayItem[];
   sectorCounts: Record<NewProductSectorKey, number>;
+  categoryOptions: NewProductCategoryOption[];
   brandOptions: NewProductBrandOption[];
   brandCount: number;
   totalCount: number;
+  selectedCategory: string | null;
   selectedBrand: string | null;
 }
 
@@ -53,6 +61,7 @@ interface DeriveNewProductsViewOptions {
   source: NewProductSourceFilter;
   period: NewProductsPeriod;
   sector: NewProductSectorFilter;
+  category: string;
   brand: string | null;
 }
 
@@ -109,9 +118,81 @@ function buildBrandOptions(products: NewProductDisplayItem[]): NewProductBrandOp
     });
 }
 
+function getConvenienceCategoryGroup(product: NewProductDisplayItem) {
+  const category = product.category?.trim() || "기타";
+
+  if (
+    category.includes("도시락") ||
+    category.includes("조리면") ||
+    category.includes("정식") ||
+    category.includes("덮밥")
+  ) {
+    return { key: "meal", label: "도시락/조리면" };
+  }
+
+  if (
+    category.includes("김밥") ||
+    category.includes("주먹밥") ||
+    category.includes("삼각")
+  ) {
+    return { key: "rice", label: "김밥/주먹밥" };
+  }
+
+  if (
+    category.includes("샌드위치") ||
+    category.includes("샌드") ||
+    category.includes("햄버거") ||
+    category.includes("버거")
+  ) {
+    return { key: "sandwich", label: "샌드위치/햄버거" };
+  }
+
+  if (
+    category.includes("간편식") ||
+    category.includes("즉석식") ||
+    category.includes("Fresh Food")
+  ) {
+    return { key: "snack", label: "간편식/즉석식" };
+  }
+
+  return { key: "other", label: "기타" };
+}
+
+function buildCategoryOptions(
+  products: NewProductDisplayItem[]
+): NewProductCategoryOption[] {
+  const counts = new Map<string, { label: string; count: number }>();
+
+  products.forEach((product) => {
+    const { key, label } = getConvenienceCategoryGroup(product);
+    const current = counts.get(key);
+
+    if (current) {
+      current.count += 1;
+      return;
+    }
+
+    counts.set(key, {
+      label,
+      count: 1,
+    });
+  });
+
+  return Array.from(counts.entries())
+    .map(([key, value]) => ({
+      key,
+      label: value.label,
+      count: value.count,
+    }))
+    .sort((a, b) => {
+      const order = ["meal", "rice", "sandwich", "snack", "other"];
+      return order.indexOf(a.key) - order.indexOf(b.key);
+    });
+}
+
 export function deriveNewProductsView(
   products: NewProductDisplayItem[],
-  { source, period, sector, brand }: DeriveNewProductsViewOptions
+  { source, period, sector, category, brand }: DeriveNewProductsViewOptions
 ): NewProductsViewData {
   const now = Date.now();
   const cutoffMs =
@@ -136,15 +217,30 @@ export function deriveNewProductsView(
     counts[product.sector_key] += 1;
     return counts;
   }, createEmptySectorCounts());
+  const categoryOptions =
+    source === "convenience" ? buildCategoryOptions(filteredByPeriod) : [];
+  const selectedCategory =
+    source === "convenience" &&
+    category !== "all" &&
+    categoryOptions.some((option) => option.key === category)
+      ? category
+      : null;
 
   const filteredBySector =
     source === "convenience" || sector === "all"
       ? filteredByPeriod
       : filteredByPeriod.filter((product) => product.sector_key === sector);
+  const filteredByCategory =
+    source === "convenience" && selectedCategory
+      ? filteredBySector.filter(
+          (product) => getConvenienceCategoryGroup(product).key === selectedCategory
+        )
+      : filteredBySector;
 
   const brandOptions =
-    source === "convenience" || sector !== "all"
-      ? buildBrandOptions(filteredBySector)
+    (source === "convenience" && selectedCategory) ||
+    (source === "franchise" && sector !== "all")
+      ? buildBrandOptions(filteredByCategory)
       : [];
   const selectedBrand =
     !brand || brandOptions.length === 0
@@ -153,7 +249,7 @@ export function deriveNewProductsView(
         ? brand
         : null;
 
-  const filteredProducts = filteredBySector
+  const filteredProducts = filteredByCategory
     .filter((product) => {
       if (!selectedBrand) {
         return true;
@@ -162,13 +258,17 @@ export function deriveNewProductsView(
       return product.brand === selectedBrand;
     })
     .sort(sortByEffectiveDateDesc);
+  const brandCountProducts =
+    source === "convenience" ? filteredByCategory : filteredByPeriod;
 
   return {
     products: filteredProducts,
     sectorCounts,
+    categoryOptions,
     brandOptions,
-    brandCount: new Set(filteredByPeriod.map((product) => product.brand)).size,
+    brandCount: new Set(brandCountProducts.map((product) => product.brand)).size,
     totalCount: filteredProducts.length,
+    selectedCategory,
     selectedBrand,
   };
 }
